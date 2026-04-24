@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lebensmittel-Inventar</title>
+<style>
+  :root {
+    --bg: #111827;
+    --surface: #1f2937;
+    --border: #374151;
+    --text: #f9fafb;
+    --muted: #9ca3af;
+    --ok: #10b981;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    --accent: #3b82f6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; min-height: 100vh; }
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 1rem 1.5rem; display: flex; align-items: center; gap: 1rem; }
+  header h1 { font-size: 1.25rem; }
+  .badge { padding: .25rem .6rem; border-radius: 999px; font-size: .75rem; font-weight: 600; }
+  .badge-ok   { background: #064e3b; color: var(--ok); }
+  .badge-warn { background: #78350f; color: var(--warn); }
+  .badge-danger { background: #7f1d1d; color: var(--danger); }
+
+  .stats { display: flex; gap: 1rem; padding: 1.25rem 1.5rem; flex-wrap: wrap; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: .75rem; padding: 1rem 1.5rem; min-width: 140px; }
+  .stat-card .label { font-size: .75rem; color: var(--muted); margin-bottom: .25rem; }
+  .stat-card .value { font-size: 2rem; font-weight: 700; }
+
+  .toolbar { padding: .75rem 1.5rem; display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+  input[type=search] {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: .5rem .75rem; border-radius: .5rem; font-size: .9rem; flex: 1; min-width: 200px;
+    outline: none;
+  }
+  input[type=search]:focus { border-color: var(--accent); }
+  select {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: .5rem .75rem; border-radius: .5rem; font-size: .9rem; outline: none;
+  }
+  button.btn {
+    background: var(--accent); color: white; border: none; padding: .5rem 1rem;
+    border-radius: .5rem; cursor: pointer; font-size: .9rem;
+  }
+  button.btn:hover { opacity: .85; }
+  button.btn-danger { background: var(--danger); }
+  button.btn-sm { padding: .25rem .6rem; font-size: .8rem; }
+
+  table { width: 100%; border-collapse: collapse; }
+  thead { background: var(--surface); position: sticky; top: 0; z-index: 1; }
+  th { padding: .75rem 1rem; text-align: left; font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--border); }
+  td { padding: .75rem 1rem; border-bottom: 1px solid var(--border); font-size: .9rem; vertical-align: middle; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+  .table-wrap { overflow-x: auto; padding: 0 1.5rem 2rem; }
+
+  .expiry-ok     { color: var(--ok); }
+  .expiry-warn   { color: var(--warn); }
+  .expiry-danger { color: var(--danger); }
+  .name-cell { font-weight: 500; }
+  .brand-cell { color: var(--muted); font-size: .8rem; }
+
+  .pill { display: inline-block; padding: .15rem .5rem; border-radius: 999px; font-size: .75rem; font-weight: 600; }
+  .pill-ok     { background: #064e3b; color: var(--ok); }
+  .pill-warn   { background: #78350f; color: var(--warn); }
+  .pill-danger { background: #7f1d1d; color: var(--danger); }
+
+  .empty { text-align: center; color: var(--muted); padding: 3rem; }
+  #loading { text-align: center; color: var(--muted); padding: 2rem; }
+
+  .refresh-btn { background: none; border: 1px solid var(--border); color: var(--muted); padding: .4rem .8rem; border-radius: .5rem; cursor: pointer; font-size: .85rem; }
+  .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  @media (max-width: 640px) {
+    .stats { gap: .5rem; }
+    .stat-card { min-width: 100px; }
+    .table-wrap { padding: 0 .75rem 2rem; }
+    th, td { padding: .6rem .5rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <span style="font-size:1.5rem">🥫</span>
+  <h1>Lebensmittel-Inventar</h1>
+  <span id="headerBadge" class="badge" style="margin-left:auto"></span>
+</header>
+
+<div class="stats">
+  <div class="stat-card">
+    <div class="label">Gesamt (Artikel)</div>
+    <div class="value" id="statTotal">–</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Bald ablaufend (≤7 Tage)</div>
+    <div class="value expiry-warn" id="statExpiring">–</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Abgelaufen</div>
+    <div class="value expiry-danger" id="statExpired">–</div>
+  </div>
+</div>
+
+<div class="toolbar">
+  <input type="search" id="searchInput" placeholder="Produkt suchen…" oninput="renderTable()">
+  <select id="filterSelect" onchange="renderTable()">
+    <option value="all">Alle anzeigen</option>
+    <option value="expiring">Bald ablaufend</option>
+    <option value="expired">Abgelaufen</option>
+    <option value="ok">OK</option>
+  </select>
+  <button class="refresh-btn" onclick="loadData()">↻ Aktualisieren</button>
+  <button class="btn btn-sm" onclick="exportCSV()">CSV Export</button>
+</div>
+
+<div class="table-wrap">
+  <div id="loading">Lade Daten…</div>
+  <table id="itemTable" style="display:none">
+    <thead>
+      <tr>
+        <th onclick="sortBy('name')" style="cursor:pointer">Produkt ↕</th>
+        <th>Marke</th>
+        <th onclick="sortBy('expiry')" style="cursor:pointer">MHD ↕</th>
+        <th onclick="sortBy('daysLeft')" style="cursor:pointer">Verbleibend ↕</th>
+        <th>Menge</th>
+        <th>Barcode</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+  <div id="emptyMsg" class="empty" style="display:none">Keine Einträge gefunden.</div>
+</div>
+
+<script>
+let allItems = [];
+let sortKey = 'daysLeft';
+let sortAsc = true;
+
+async function loadData() {
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('itemTable').style.display = 'none';
+  document.getElementById('emptyMsg').style.display = 'none';
+
+  try {
+    const [invRes, statsRes] = await Promise.all([
+      fetch('/api/inventory'),
+      fetch('/api/stats')
+    ]);
+    const inv   = await invRes.json();
+    const stats = await statsRes.json();
+
+    allItems = inv.items || [];
+    updateStats(stats);
+    renderTable();
+  } catch(e) {
+    document.getElementById('loading').textContent = 'Fehler beim Laden: ' + e.message;
+  }
+}
+
+function updateStats(stats) {
+  document.getElementById('statTotal').textContent    = stats.total ?? '–';
+  document.getElementById('statExpiring').textContent = stats.expiring ?? '–';
+  document.getElementById('statExpired').textContent  = stats.expired ?? '–';
+
+  const badge = document.getElementById('headerBadge');
+  if (stats.expired > 0) {
+    badge.className = 'badge badge-danger';
+    badge.textContent = stats.expired + ' abgelaufen!';
+  } else if (stats.expiring > 0) {
+    badge.className = 'badge badge-warn';
+    badge.textContent = stats.expiring + ' bald weg';
+  } else {
+    badge.className = 'badge badge-ok';
+    badge.textContent = 'Alles OK';
+  }
+}
+
+function statusClass(days) {
+  if (days < 0)  return 'danger';
+  if (days <= 3) return 'danger';
+  if (days <= 7) return 'warn';
+  return 'ok';
+}
+
+function daysLabel(days) {
+  if (days < 0)  return 'Abgelaufen';
+  if (days === 0) return 'Heute!';
+  if (days === 1) return '1 Tag';
+  return days + ' Tage';
+}
+
+function formatDate(iso) {
+  if (!iso) return '–';
+  const [y, m, d] = iso.split('-');
+  return d + '.' + m + '.' + y;
+}
+
+function renderTable() {
+  const query  = document.getElementById('searchInput').value.toLowerCase();
+  const filter = document.getElementById('filterSelect').value;
+
+  let items = allItems.filter(it => {
+    const matchSearch = !query ||
+      it.name.toLowerCase().includes(query) ||
+      (it.brand||'').toLowerCase().includes(query) ||
+      it.barcode.includes(query);
+    if (!matchSearch) return false;
+
+    const s = statusClass(it.daysLeft);
+    if (filter === 'expiring') return s === 'warn';
+    if (filter === 'expired')  return it.daysLeft < 0;
+    if (filter === 'ok')       return s === 'ok';
+    return true;
+  });
+
+  // Sortierung
+  items.sort((a, b) => {
+    let va = a[sortKey] ?? '';
+    let vb = b[sortKey] ?? '';
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    if (va < vb) return sortAsc ? -1 : 1;
+    if (va > vb) return sortAsc ? 1 : -1;
+    return 0;
+  });
+
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = '';
+
+  document.getElementById('loading').style.display = 'none';
+
+  if (items.length === 0) {
+    document.getElementById('itemTable').style.display = 'none';
+    document.getElementById('emptyMsg').style.display = 'block';
+    return;
+  }
+
+  document.getElementById('emptyMsg').style.display = 'none';
+  document.getElementById('itemTable').style.display = 'table';
+
+  items.forEach(it => {
+    const sc = statusClass(it.daysLeft);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="name-cell">${esc(it.name)}</td>
+      <td class="brand-cell">${esc(it.brand||'–')}</td>
+      <td class="expiry-${sc}">${formatDate(it.expiry)}</td>
+      <td><span class="pill pill-${sc}">${daysLabel(it.daysLeft)}</span></td>
+      <td>${it.qty}</td>
+      <td style="font-family:monospace;font-size:.8rem;color:var(--muted)">${esc(it.barcode)}</td>
+      <td>
+        <button class="btn btn-danger btn-sm"
+          onclick="deleteItem('${esc(it.barcode)}','${esc(it.expiry)}')">
+          Löschen
+        </button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function sortBy(key) {
+  if (sortKey === key) sortAsc = !sortAsc;
+  else { sortKey = key; sortAsc = true; }
+  renderTable();
+}
+
+async function deleteItem(barcode, expiry) {
+  if (!confirm(`Wirklich löschen?\n${barcode}\nMHD: ${expiry}`)) return;
+  const res = await fetch(`/api/item?barcode=${encodeURIComponent(barcode)}&expiry=${encodeURIComponent(expiry)}`, {
+    method: 'DELETE'
+  });
+  if (res.ok) {
+    allItems = allItems.filter(it => !(it.barcode === barcode && it.expiry === expiry));
+    renderTable();
+    const stats = await (await fetch('/api/stats')).json();
+    updateStats(stats);
+  } else {
+    alert('Fehler beim Löschen');
+  }
+}
+
+function exportCSV() {
+  const rows = [['Produkt','Marke','MHD','Verbleibend (Tage)','Menge','Barcode']];
+  allItems.forEach(it => {
+    rows.push([it.name, it.brand||'', it.expiry, it.daysLeft, it.qty, it.barcode]);
+  });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'inventar_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
+function esc(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+loadData();
+</script>
+</body>
+</html>
