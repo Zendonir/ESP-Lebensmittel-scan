@@ -1,54 +1,76 @@
 #include "DisplayManager.h"
 
-DisplayManager::DisplayManager() {}
+// ── Layout-Konstanten ──────────────────────────────────────────
+static constexpr int16_t W   = DISPLAY_W;
+static constexpr int16_t H   = DISPLAY_H;
+static constexpr int16_t HDR = 56;   // Header-Höhe
+static constexpr int16_t FTR = 44;   // Footer-Höhe
+static constexpr int16_t CTH = H - HDR - FTR;  // Content-Höhe
+static constexpr int16_t CY0 = HDR;             // Content-Start Y
+static constexpr int16_t FY0 = H - FTR;         // Footer-Start Y
 
-void DisplayManager::begin() {
-    _tft.init();
-    _tft.setRotation(0); // Portrait: 240x320
-    _tft.fillScreen(COLOR_BG);
-#ifdef TFT_BL
-    pinMode(TFT_BL, OUTPUT);
-    digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
-#endif
+// ── Konstruktor / Initialisierung ──────────────────────────────
+
+DisplayManager::DisplayManager() : _bus(nullptr), _gfx(nullptr) {}
+
+bool DisplayManager::begin() {
+    _bus = new Arduino_QSPI(LCD_CS, LCD_SCK, LCD_D0, LCD_D1, LCD_D2, LCD_D3);
+    // RM67162 – 280×456 Portrait
+    _gfx = new Arduino_RM67162(_bus, LCD_RST, 0 /*rotation*/, false /*IPS*/, W, H);
+
+    if (!_gfx->begin()) return false;
+
+    _gfx->fillScreen(COLOR_BG);
+    _gfx->setBrightness(220);
+    return true;
 }
 
-void DisplayManager::setBrightness(uint8_t pct) {
-#ifdef TFT_BL
-    analogWrite(TFT_BL, map(pct, 0, 100, 0, 255));
-#endif
+void DisplayManager::setBrightness(uint8_t val) {
+    if (_gfx) _gfx->setBrightness(val);
 }
 
-// ── Private Helfer ────────────────────────────────────────────
+// ── Privater Text-Helfer ───────────────────────────────────────
 
-void DisplayManager::drawHeader(const String &title, uint16_t color) {
-    _tft.fillRect(0, 0, 240, 36, color);
-    _tft.setTextColor(TFT_WHITE, color);
-    _tft.setTextSize(2);
-    _tft.setTextDatum(MC_DATUM);
-    _tft.drawString(title, 120, 18);
+int16_t DisplayManager::textWidth(const String &s, uint8_t sz) {
+    // Built-in GFX Font: 6px/char Breite * sz
+    return s.length() * 6 * sz;
+}
+
+void DisplayManager::textCenter(const String &s, int16_t cx, int16_t cy,
+                                 uint8_t sz, uint16_t color, uint16_t bg) {
+    _gfx->setTextSize(sz);
+    _gfx->setTextColor(color, bg);
+    _gfx->setCursor(cx - textWidth(s, sz) / 2, cy - 4 * sz);
+    _gfx->print(s);
+}
+
+void DisplayManager::textLeft(const String &s, int16_t x, int16_t y,
+                               uint8_t sz, uint16_t color, uint16_t bg) {
+    _gfx->setTextSize(sz);
+    _gfx->setTextColor(color, bg);
+    _gfx->setCursor(x, y);
+    _gfx->print(s);
+}
+
+// ── Layout-Bausteine ──────────────────────────────────────────
+
+void DisplayManager::drawHeader(const String &title, uint16_t bgColor) {
+    _gfx->fillRect(0, 0, W, HDR, bgColor);
+    textCenter(title, W / 2, HDR / 2, 2, 0xFFFF, bgColor);
 }
 
 void DisplayManager::drawFooter(const String &left, const String &right) {
-    _tft.fillRect(0, 296, 240, 24, COLOR_HEADER);
-    _tft.setTextColor(COLOR_SUBTEXT, COLOR_HEADER);
-    _tft.setTextSize(1);
-    _tft.setTextDatum(ML_DATUM);
-    _tft.drawString(left, 6, 308);
+    _gfx->fillRect(0, FY0, W, FTR, COLOR_SURFACE);
+    _gfx->drawFastHLine(0, FY0, W, COLOR_SUBTEXT);
+    textLeft(left, 8, FY0 + 14, 1, COLOR_SUBTEXT, COLOR_SURFACE);
     if (!right.isEmpty()) {
-        _tft.setTextDatum(MR_DATUM);
-        _tft.drawString(right, 234, 308);
+        int16_t rx = W - 8 - textWidth(right, 1);
+        textLeft(right, rx, FY0 + 14, 1, COLOR_SUBTEXT, COLOR_SURFACE);
     }
 }
 
-void DisplayManager::drawCentered(const String &text, int y, uint8_t size, uint16_t color) {
-    _tft.setTextColor(color, COLOR_BG);
-    _tft.setTextSize(size);
-    _tft.setTextDatum(MC_DATUM);
-    _tft.drawString(text, 120, y);
-}
-
-String DisplayManager::daysLeftLabel(int days) {
-    if (days < 0) return "ABGELAUFEN!";
+String DisplayManager::daysLabel(int days) {
+    if (days < 0)  return "ABGELAUFEN";
     if (days == 0) return "Heute!";
     if (days == 1) return "1 Tag";
     return String(days) + " Tage";
@@ -57,256 +79,252 @@ String DisplayManager::daysLeftLabel(int days) {
 // ── Bildschirme ───────────────────────────────────────────────
 
 void DisplayManager::showBooting(const String &msg) {
-    _tft.fillScreen(COLOR_BG);
-    drawHeader("Lebensmittel-Scanner");
-    drawCentered("Starte...", 160, 2, COLOR_ACCENT);
-    if (!msg.isEmpty()) drawCentered(msg, 200, 1, COLOR_SUBTEXT);
+    _gfx->fillScreen(COLOR_BG);
+    textCenter("Lebensmittel", W / 2, H / 2 - 50, 2, COLOR_ACCENT);
+    textCenter("Scanner",      W / 2, H / 2 - 26, 2, COLOR_ACCENT);
+    _gfx->drawFastHLine(30, H / 2 - 4, W - 60, COLOR_SURFACE);
+    if (!msg.isEmpty()) textCenter(msg, W / 2, H / 2 + 20, 1, COLOR_SUBTEXT);
 }
 
-void DisplayManager::showWifiConnecting(const String &ssid) {
-    _tft.fillScreen(COLOR_BG);
+void DisplayManager::showWifiConnecting(const String &ssid, int attempt) {
+    _gfx->fillScreen(COLOR_BG);
     drawHeader("WLAN Verbindung");
-    drawCentered("Verbinde mit:", 120, 1, COLOR_SUBTEXT);
-    drawCentered(ssid, 150, 2, COLOR_ACCENT);
 
-    // Animierter Spinner (statischer Aufruf – update durch wiederholten Aufruf)
-    static int dot = 0;
-    String dots = "";
-    for (int i = 0; i < dot % 4; i++) dots += ".";
-    drawCentered(dots + "   ", 200, 2, COLOR_TEXT);
-    dot++;
+    textCenter("Verbinde mit:", W / 2, CY0 + 60, 1, COLOR_SUBTEXT);
+    textCenter(ssid,           W / 2, CY0 + 90, 2, COLOR_ACCENT);
+
+    // Fortschrittsbalken
+    int barW = (W - 40);
+    int filled = min(barW, (attempt % 20) * (barW / 20));
+    _gfx->drawRect(20, CY0 + 130, barW, 12, COLOR_SURFACE);
+    _gfx->fillRect(20, CY0 + 130, filled, 12, COLOR_ACCENT);
+
+    textCenter("Bitte warten...", W / 2, CY0 + 170, 1, COLOR_SUBTEXT);
 }
 
-void DisplayManager::showIdle(int totalItems, int expiringItems, int expiredItems) {
-    _tft.fillScreen(COLOR_BG);
-    drawHeader("Bereit zum Scannen");
+void DisplayManager::showIdle(int total, int expiring, int expired) {
+    _gfx->fillScreen(COLOR_BG);
+    drawHeader("Bereit");
 
-    // Statistik-Kacheln
-    // Gesamt
-    _tft.fillRoundRect(10, 50, 105, 70, 6, COLOR_HEADER);
-    _tft.setTextColor(COLOR_SUBTEXT, COLOR_HEADER);
-    _tft.setTextSize(1);
-    _tft.setTextDatum(MC_DATUM);
-    _tft.drawString("Gesamt", 62, 68);
-    _tft.setTextColor(COLOR_TEXT, COLOR_HEADER);
-    _tft.setTextSize(3);
-    _tft.drawString(String(totalItems), 62, 100);
+    // ── 3 Stat-Kacheln ──
+    struct { const char *label; int val; uint16_t color; int x, y; } tiles[3] = {
+        { "Gesamt",      total,    COLOR_TEXT,   W/2,       CY0 + 50  },
+        { "Bald weg",    expiring, COLOR_WARN,   W/2,       CY0 + 150 },
+        { "Abgelaufen",  expired,  COLOR_DANGER, W/2,       CY0 + 250 },
+    };
 
-    // Bald ablaufend
-    uint16_t warnColor = expiringItems > 0 ? 0x8400 : COLOR_HEADER; // dunkelorange
-    _tft.fillRoundRect(125, 50, 105, 70, 6, warnColor);
-    _tft.setTextColor(COLOR_SUBTEXT, warnColor);
-    _tft.setTextSize(1);
-    _tft.drawString("Bald weg", 177, 68);
-    _tft.setTextColor(expiringItems > 0 ? COLOR_WARN : COLOR_TEXT, warnColor);
-    _tft.setTextSize(3);
-    _tft.drawString(String(expiringItems), 177, 100);
+    for (auto &t : tiles) {
+        uint16_t tileBg = COLOR_SURFACE;
+        if (t.val > 0 && t.color != COLOR_TEXT) tileBg = COLOR_SURFACE;
+        _gfx->fillRoundRect(t.x - 100, t.y - 30, 200, 70, 10, tileBg);
+        textCenter(t.label,       t.x, t.y - 14, 1, COLOR_SUBTEXT, tileBg);
+        textCenter(String(t.val), t.x, t.y + 18, 3, t.val > 0 ? t.color : COLOR_TEXT, tileBg);
+    }
 
-    // Abgelaufen
-    uint16_t expColor = expiredItems > 0 ? 0x6000 : COLOR_HEADER; // dunkelrot
-    _tft.fillRoundRect(10, 132, 220, 55, 6, expColor);
-    _tft.setTextColor(COLOR_SUBTEXT, expColor);
-    _tft.setTextSize(1);
-    _tft.drawString("Abgelaufen:", 120, 148);
-    _tft.setTextColor(expiredItems > 0 ? COLOR_DANGER : COLOR_TEXT, expColor);
-    _tft.setTextSize(3);
-    _tft.drawString(String(expiredItems), 120, 170);
-
-    // Anleitung
-    drawCentered("Barcode scannen zum Hinzufuegen", 220, 1, COLOR_SUBTEXT);
-    drawCentered("oder Web-Interface aufrufen", 238, 1, COLOR_SUBTEXT);
-    drawFooter("OK = Web-Info", "");
+    drawFooter("Barcode scannen", "OK = Inventar");
 }
 
 void DisplayManager::showScanning() {
-    _tft.fillScreen(COLOR_BG);
+    _gfx->fillScreen(COLOR_BG);
     drawHeader("Bitte scannen");
 
-    // Barcode-Symbol (manuell gezeichnet)
-    int bx = 40, by = 80, bw = 160, bh = 100;
+    // Barcode-Symbol zeichnen
+    int bx = 30, by = CY0 + 40, bw = W - 60, bh = 110;
     for (int x = 0; x < bw; x += 7) {
-        int w = (x % 14 < 7) ? 4 : 2;
-        _tft.fillRect(bx + x, by, w, bh, COLOR_TEXT);
+        int lw = (x % 14 < 7) ? 4 : 2;
+        _gfx->fillRect(bx + x, by, lw, bh, COLOR_TEXT);
     }
-    _tft.fillRect(bx, by + bh + 4, bw, 2, COLOR_TEXT);
+    _gfx->fillRect(bx, by + bh + 5, bw, 2, COLOR_SUBTEXT);
 
-    drawCentered("Barcode vor den Scanner halten", 220, 1, COLOR_SUBTEXT);
-    drawFooter("ZURUECK = Abbrechen");
+    textCenter("GM861 vor den Scanner halten", W / 2, CY0 + 210, 1, COLOR_SUBTEXT);
+    textCenter("Unterstuetzt: EAN, QR, DataMatrix", W / 2, CY0 + 230, 1, COLOR_SUBTEXT);
+
+    drawFooter("AB = Abbrechen");
 }
 
 void DisplayManager::showFetching(const String &barcode) {
-    _tft.fillScreen(COLOR_BG);
+    _gfx->fillScreen(COLOR_BG);
     drawHeader("Suche Produkt...");
-    drawCentered("Open Food Facts", 130, 1, COLOR_SUBTEXT);
-    drawCentered(barcode, 160, 2, COLOR_ACCENT);
 
-    static int dot = 0;
-    String anim = "";
-    for (int i = 0; i < 3; i++) anim += (i <= dot % 4) ? "." : " ";
-    drawCentered(anim, 210, 3, COLOR_TEXT);
-    dot++;
+    textCenter("Open Food Facts", W / 2, CY0 + 60, 1, COLOR_SUBTEXT);
+
+    // Barcode-Nummer
+    String b = barcode.length() > 20 ? barcode.substring(0, 20) : barcode;
+    textCenter(b, W / 2, CY0 + 100, 2, COLOR_ACCENT);
+
+    // Punkte-Animation (jedes Mal andere Anzahl → muss wiederholt aufgerufen werden)
+    static uint8_t dots = 0;
+    String d = "";
+    for (int i = 0; i < (dots % 4); i++) d += ".";
+    _gfx->fillRect(0, CY0 + 150, W, 30, COLOR_BG);
+    textCenter(d, W / 2, CY0 + 160, 3, COLOR_TEXT);
+    dots++;
+
+    drawFooter("Bitte warten...");
 }
 
 void DisplayManager::showProduct(const ProductInfo &info, int stock) {
-    _tft.fillScreen(COLOR_BG);
-    drawHeader("Produkt gefunden");
+    _gfx->fillScreen(COLOR_BG);
+    drawHeader(info.found ? "Produkt gefunden" : "Unbekanntes Produkt");
 
-    _tft.setTextColor(COLOR_TEXT, COLOR_BG);
-    _tft.setTextSize(2);
-    _tft.setTextDatum(TL_DATUM);
-
-    // Name umbrechen wenn nötig (max ~18 Zeichen pro Zeile bei Size 2)
-    String name = info.name;
-    if (name.length() > 18) {
-        _tft.drawString(name.substring(0, 18), 8, 48);
-        _tft.drawString(name.substring(18, 36), 8, 70);
+    // Produktname (bis 2 Zeilen à ~22 Zeichen bei Size 2)
+    String name = info.name.isEmpty() ? ("Barcode: " + info.barcode) : info.name;
+    int16_t y = CY0 + 20;
+    if (name.length() <= 22) {
+        textLeft(name.substring(0, 22), 10, y, 2, COLOR_TEXT);
     } else {
-        _tft.drawString(name, 8, 48);
+        textLeft(name.substring(0, 22), 10, y, 2, COLOR_TEXT);
+        textLeft(name.substring(22, 44), 10, y + 22, 2, COLOR_TEXT);
     }
 
-    _tft.setTextSize(1);
-    _tft.setTextColor(COLOR_SUBTEXT, COLOR_BG);
-    if (!info.brand.isEmpty())    _tft.drawString("Marke: " + info.brand,    8, 100);
-    if (!info.quantity.isEmpty()) _tft.drawString("Menge: " + info.quantity, 8, 116);
-    if (!info.category.isEmpty()) _tft.drawString("Kat.: "  + info.category, 8, 132);
+    y = CY0 + 80;
+    _gfx->drawFastHLine(10, y, W - 20, COLOR_SURFACE);
+    y += 10;
 
-    // Lagerbestand
-    _tft.setTextSize(1);
-    _tft.setTextColor(COLOR_SUBTEXT, COLOR_BG);
-    _tft.drawString("Im Lager: " + String(stock) + " Stk.", 8, 158);
-
-    _tft.fillRect(0, 178, 240, 1, COLOR_SUBTEXT);
+    if (!info.brand.isEmpty()) {
+        textLeft("Marke:  " + info.brand, 10, y, 1, COLOR_SUBTEXT);
+        y += 18;
+    }
+    if (!info.quantity.isEmpty()) {
+        textLeft("Menge:  " + info.quantity, 10, y, 1, COLOR_SUBTEXT);
+        y += 18;
+    }
+    if (!info.category.isEmpty()) {
+        textLeft("Kat.:   " + info.category, 10, y, 1, COLOR_SUBTEXT);
+        y += 18;
+    }
+    textLeft("Lager:  " + String(stock) + " Stk.", 10, y, 1,
+             stock > 0 ? COLOR_OK : COLOR_SUBTEXT);
 
     // Buttons
-    _tft.fillRoundRect(10, 188, 100, 36, 6, COLOR_OK);
-    _tft.setTextColor(TFT_BLACK, COLOR_OK);
-    _tft.setTextSize(2);
-    _tft.setTextDatum(MC_DATUM);
-    _tft.drawString("OK", 60, 206);
+    int16_t btnY = FY0 - 60;
+    _gfx->fillRoundRect(10,      btnY, 120, 44, 8, COLOR_OK);
+    _gfx->fillRoundRect(W - 130, btnY, 120, 44, 8, COLOR_SURFACE);
+    textCenter("OK",      70,      btnY + 22, 2, COLOR_BG,  COLOR_OK);
+    textCenter("Zurück",  W - 70,  btnY + 22, 2, COLOR_TEXT, COLOR_SURFACE);
 
-    _tft.fillRoundRect(130, 188, 100, 36, 6, 0x4208);
-    _tft.setTextColor(COLOR_TEXT, 0x4208);
-    _tft.drawString("Zurueck", 180, 206);
-
-    drawFooter("Barcode: " + info.barcode.substring(0, 13));
+    drawFooter("OK = Hinzufuegen", "AB = Zurueck");
 }
 
 void DisplayManager::showDateEntry(const DateInput &d, const String &productName) {
-    _tft.fillScreen(COLOR_BG);
+    _gfx->fillScreen(COLOR_BG);
     drawHeader("Haltbarkeitsdatum");
 
-    _tft.setTextColor(COLOR_SUBTEXT, COLOR_BG);
-    _tft.setTextSize(1);
-    _tft.setTextDatum(MC_DATUM);
-    String pn = productName.length() > 28 ? productName.substring(0, 28) : productName;
-    _tft.drawString(pn, 120, 50);
+    // Produktname (gekürzt)
+    String pn = productName.length() > 32 ? productName.substring(0, 32) : productName;
+    textCenter(pn, W / 2, CY0 + 20, 1, COLOR_SUBTEXT);
 
-    // Felder: Tag | Monat | Jahr
-    struct { int val; const char *label; int x; DateField field; } fields[3] = {
-        { d.day,   "Tag",   40,  FIELD_DAY   },
-        { d.month, "Monat", 120, FIELD_MONTH },
-        { d.year,  "Jahr",  200, FIELD_YEAR  },
+    // ── 3 Felder: Tag | Monat | Jahr ──
+    struct { int val; const char *label; int cx; DateField field; } fields[3] = {
+        { d.day,   "Tag",   50,       FIELD_DAY   },
+        { d.month, "Mon",   W / 2,    FIELD_MONTH },
+        { d.year,  "Jahr",  W - 50,   FIELD_YEAR  },
     };
 
     for (auto &f : fields) {
         bool active = (d.activeField == f.field);
-        uint16_t bg   = active ? COLOR_SELECTED : 0x2104;
-        uint16_t fg   = active ? COLOR_TEXT : COLOR_SUBTEXT;
+        uint16_t bg = active ? COLOR_SELECTED : COLOR_SURFACE;
+        uint16_t fg = active ? COLOR_OK : COLOR_TEXT;
 
-        _tft.fillRoundRect(f.x - 30, 80, 60, 70, 8, bg);
+        _gfx->fillRoundRect(f.cx - 45, CY0 + 50, 90, 110, 10, bg);
 
-        _tft.setTextSize(1);
-        _tft.setTextColor(fg, bg);
-        _tft.drawString(f.label, f.x, 92);
+        textCenter(f.label, f.cx, CY0 + 70, 1, COLOR_SUBTEXT, bg);
 
-        _tft.setTextSize(3);
-        _tft.setTextColor(active ? COLOR_OK : COLOR_TEXT, bg);
-        char buf[8];
+        char buf[6];
         if (f.field == FIELD_YEAR)
             snprintf(buf, sizeof(buf), "%d", f.val);
         else
             snprintf(buf, sizeof(buf), "%02d", f.val);
-        _tft.drawString(buf, f.x, 125);
+        textCenter(buf, f.cx, CY0 + 115, 3, fg, bg);
+
+        if (active) {
+            // Pfeil-Indikatoren
+            textCenter("v", f.cx, CY0 + 50,  1, COLOR_ACCENT, bg);
+            textCenter("^", f.cx, CY0 + 148, 1, COLOR_ACCENT, bg);
+        }
     }
 
-    // Datumsvorschau
+    // Datum-Vorschau
     char preview[12];
     snprintf(preview, sizeof(preview), "%02d.%02d.%04d", d.day, d.month, d.year);
-    _tft.setTextSize(2);
-    _tft.setTextColor(COLOR_ACCENT, COLOR_BG);
-    _tft.drawString(preview, 120, 175);
+    _gfx->fillRoundRect(20, CY0 + 185, W - 40, 44, 8, COLOR_SURFACE);
+    textCenter(preview, W / 2, CY0 + 207, 2, COLOR_ACCENT, COLOR_SURFACE);
 
-    _tft.setTextSize(1);
-    _tft.setTextColor(COLOR_SUBTEXT, COLOR_BG);
-    _tft.drawString("AUF/AB = aendern   OK = bestaetigen", 120, 210);
+    textCenter("AUF/AB = aendern   OK = weiter", W / 2, CY0 + 255, 1, COLOR_SUBTEXT);
 
     drawFooter("AUF  AB  OK");
 }
 
 void DisplayManager::showSuccess(const String &productName, const String &date) {
-    _tft.fillScreen(COLOR_BG);
+    _gfx->fillScreen(COLOR_BG);
     drawHeader("Hinzugefuegt!", COLOR_OK);
 
-    _tft.setTextSize(4);
-    _tft.setTextColor(COLOR_OK, COLOR_BG);
-    _tft.setTextDatum(MC_DATUM);
-    _tft.drawString("OK!", 120, 120);
+    // Grosses Häkchen
+    _gfx->fillCircle(W / 2, CY0 + 90, 50, COLOR_OK);
+    // Häkchen-Linie manuell
+    for (int t = 0; t < 4; t++) {
+        _gfx->drawLine(W/2 - 25 + t, CY0 + 90,  W/2 - 8 + t, CY0 + 113, COLOR_BG);
+        _gfx->drawLine(W/2 - 8 + t,  CY0 + 113, W/2 + 22 + t, CY0 + 68, COLOR_BG);
+    }
 
-    _tft.setTextSize(2);
-    _tft.setTextColor(COLOR_TEXT, COLOR_BG);
-    String pn = productName.length() > 18 ? productName.substring(0, 18) : productName;
-    _tft.drawString(pn, 120, 190);
+    String pn = productName.length() > 22 ? productName.substring(0, 22) : productName;
+    textCenter(pn, W / 2, CY0 + 185, 2, COLOR_TEXT);
+    textCenter("MHD: " + date, W / 2, CY0 + 215, 1, COLOR_SUBTEXT);
+    textCenter("Gespeichert!", W / 2, CY0 + 245, 1, COLOR_OK);
 
-    _tft.setTextSize(1);
-    _tft.setTextColor(COLOR_SUBTEXT, COLOR_BG);
-    _tft.drawString("MHD: " + date, 120, 220);
+    drawFooter("Weiter mit beliebiger Taste");
 }
 
 void DisplayManager::showError(const String &msg) {
-    _tft.fillScreen(COLOR_BG);
+    _gfx->fillScreen(COLOR_BG);
     drawHeader("Fehler", COLOR_DANGER);
 
-    _tft.setTextSize(3);
-    _tft.setTextColor(COLOR_DANGER, COLOR_BG);
-    _tft.setTextDatum(MC_DATUM);
-    _tft.drawString("!", 120, 120);
+    _gfx->fillCircle(W / 2, CY0 + 90, 50, COLOR_DANGER);
+    textCenter("!", W / 2, CY0 + 78, 4, COLOR_BG, COLOR_DANGER);
 
-    _tft.setTextSize(1);
-    _tft.setTextColor(COLOR_TEXT, COLOR_BG);
-    _tft.drawString(msg, 120, 190);
+    textCenter(msg, W / 2, CY0 + 190, 1, COLOR_TEXT);
     drawFooter("OK = Weiter");
 }
 
 void DisplayManager::showInventoryItem(int index, int total, const String &name,
                                         const String &expiry, int qty, int daysLeft) {
-    _tft.fillScreen(COLOR_BG);
-    String hdr = String(index + 1) + "/" + String(total);
-    drawHeader(hdr);
+    _gfx->fillScreen(COLOR_BG);
 
+    // Farbstreifen je nach Status
     uint16_t statusColor;
-    String statusLabel;
-    if (daysLeft < 0)            { statusColor = COLOR_DANGER; statusLabel = "ABGELAUFEN"; }
-    else if (daysLeft <= DANGER_DAYS) { statusColor = COLOR_DANGER; statusLabel = daysLeftLabel(daysLeft); }
-    else if (daysLeft <= WARNING_DAYS){ statusColor = COLOR_WARN;   statusLabel = daysLeftLabel(daysLeft); }
-    else                              { statusColor = COLOR_OK;     statusLabel = daysLeftLabel(daysLeft); }
+    if      (daysLeft < 0)           statusColor = COLOR_DANGER;
+    else if (daysLeft <= DANGER_DAYS) statusColor = COLOR_DANGER;
+    else if (daysLeft <= WARNING_DAYS)statusColor = COLOR_WARN;
+    else                              statusColor = COLOR_OK;
 
-    _tft.fillRect(0, 36, 240, 6, statusColor);
+    _gfx->fillRect(0, 0, W, 8, statusColor);
 
-    _tft.setTextSize(2);
-    _tft.setTextColor(COLOR_TEXT, COLOR_BG);
-    _tft.setTextDatum(TL_DATUM);
-    String n = name.length() > 18 ? name.substring(0, 18) : name;
-    _tft.drawString(n, 8, 56);
+    // Header mit Index
+    _gfx->fillRect(0, 8, W, HDR - 8, COLOR_HEADER);
+    textCenter(String(index + 1) + " / " + String(total), W / 2, HDR / 2 + 4, 2, 0xFFFF, COLOR_HEADER);
 
-    _tft.setTextSize(1);
-    _tft.setTextColor(COLOR_SUBTEXT, COLOR_BG);
-    _tft.drawString("MHD: " + expiry, 8, 90);
-    _tft.drawString("Menge: " + String(qty) + " Stk.", 8, 108);
+    // Produktname (2 Zeilen)
+    String n = name;
+    int16_t y = CY0 + 16;
+    if (n.length() <= 22) {
+        textLeft(n, 10, y, 2, COLOR_TEXT);
+    } else {
+        textLeft(n.substring(0, 22), 10, y,      2, COLOR_TEXT);
+        textLeft(n.substring(22, 44), 10, y + 22, 2, COLOR_TEXT);
+    }
 
-    _tft.setTextSize(2);
-    _tft.setTextColor(statusColor, COLOR_BG);
-    _tft.setTextDatum(MC_DATUM);
-    _tft.drawString(statusLabel, 120, 150);
+    // MHD und Menge
+    y = CY0 + 82;
+    textLeft("MHD:   " + expiry, 10, y,      1, COLOR_SUBTEXT);
+    textLeft("Menge: " + String(qty) + " Stk.", 10, y + 18, 1, COLOR_SUBTEXT);
+
+    _gfx->drawFastHLine(10, y + 40, W - 20, COLOR_SURFACE);
+
+    // Grosse Statusanzeige
+    textCenter(daysLabel(daysLeft), W / 2, CY0 + 190, 3, statusColor);
+    if (daysLeft >= 0) {
+        textCenter("verbleibend", W / 2, CY0 + 230, 1, COLOR_SUBTEXT);
+    }
 
     drawFooter("AUF/AB = blättern", "OK = Löschen");
 }

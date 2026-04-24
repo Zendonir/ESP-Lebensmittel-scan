@@ -174,7 +174,10 @@ void setup() {
     Serial.begin(115200);
     delay(100);
 
-    display.begin();
+    if (!display.begin()) {
+        // Display-Init fehlgeschlagen – nur seriell melden, weiter laufen
+        Serial.println("[Display] Init fehlgeschlagen! Pins prüfen.");
+    }
     display.showBooting("Display OK");
     delay(300);
 
@@ -212,8 +215,9 @@ void loop() {
     // ── WIFI_CONNECTING ──────────────────────────────────────
     case State::WIFI_CONNECTING: {
         static unsigned long lastDraw = 0;
+        static int wifiAttempt = 0;
         if (millis() - lastDraw > 400) {
-            display.showWifiConnecting(WIFI_SSID);
+            display.showWifiConnecting(WIFI_SSID, ++wifiAttempt);
             lastDraw = millis();
         }
         if (WiFi.status() == WL_CONNECTED) {

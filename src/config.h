@@ -8,32 +8,55 @@
 #define HOSTNAME      "lebensmittel-scanner"
 
 // ============================================================
-//  Taster (active LOW, interner Pull-up)
-//  GPIO 34/35 sind Input-only an ESP32 DevKit
+//  Display – Waveshare ESP32-S3 1.64" AMOLED (RM67162, QSPI)
+//  Pins fest auf der Platine verlötet – NICHT ändern
 // ============================================================
-#define BTN_UP    34
-#define BTN_DOWN  35
-#define BTN_OK    32
+#define LCD_CS   10
+#define LCD_SCK  12
+#define LCD_D0   11   // MOSI / SDA
+#define LCD_D1   13
+#define LCD_D2   14
+#define LCD_D3    9
+#define LCD_RST  17
+#define LCD_TE   18   // Tearing Effect (optional, für tear-free updates)
+
+// Auflösung – via platformio.ini als DISPLAY_W / DISPLAY_H definiert
+// Fallback falls ohne Build-Flag kompiliert wird:
+#ifndef DISPLAY_W
+  #define DISPLAY_W 280
+#endif
+#ifndef DISPLAY_H
+  #define DISPLAY_H 456
+#endif
 
 // ============================================================
-//  Barcode-Scanner UART (Hardware Serial2)
-//  Gängige Scanner: GM65, DE2120, Datalogic, etc.
+//  GM861 Barcode-Scanner (Hardware Serial1)
+//  Stecker: GND, VCC (3,3V), TX→GPIO1, RX→GPIO2
+//  Standard-Baudrate GM861: 9600
 // ============================================================
-#define BARCODE_RX_PIN  16
-#define BARCODE_TX_PIN  17
-#define BARCODE_BAUD    9600
+#define BARCODE_RX_PIN   1
+#define BARCODE_TX_PIN   2
+#define BARCODE_BAUD  9600
+
+// ============================================================
+//  Taster (active LOW, interner Pull-up)
+//  Externe Taster zwischen GPIO und GND
+// ============================================================
+#define BTN_UP    3
+#define BTN_DOWN  4
+#define BTN_OK    5
 
 // ============================================================
 //  Open Food Facts API
 // ============================================================
 #define OFF_HOST        "world.openfoodfacts.org"
-#define OFF_USER_AGENT  "ESP-Lebensmittel-Scanner/1.0 (github.com/zendonir/esp-lebensmittel-scan)"
+#define OFF_USER_AGENT  "ESP-Lebensmittel-Scanner/1.0"
 
 // ============================================================
 //  Speicher
 // ============================================================
 #define INVENTORY_FILE  "/inventory.json"
-#define MAX_ITEMS       200
+#define MAX_ITEMS       500   // 12 MB LittleFS → viel Platz
 
 // ============================================================
 //  Ablaufwarnungen (Tage)
@@ -44,20 +67,22 @@
 // ============================================================
 //  NTP / Zeitzone
 // ============================================================
-#define NTP_SERVER      "pool.ntp.org"
-#define NTP_SERVER2     "europe.pool.ntp.org"
-// POSIX TZ-String für Deutschland (CET/CEST mit Sommerzeit)
-#define TZ_STRING       "CET-1CEST,M3.5.0,M10.5.0/3"
+#define NTP_SERVER   "pool.ntp.org"
+#define NTP_SERVER2  "europe.pool.ntp.org"
+#define TZ_STRING    "CET-1CEST,M3.5.0,M10.5.0/3"
 
 // ============================================================
 //  Display-Farben (RGB565)
+//  AMOLED: schwarz = Pixel aus = kein Stromverbrauch → konsequent
+//  schwarzen Hintergrund nutzen
 // ============================================================
-#define COLOR_BG        TFT_BLACK
-#define COLOR_TEXT      TFT_WHITE
-#define COLOR_SUBTEXT   0xC618   // Hellgrau
-#define COLOR_OK        TFT_GREEN
-#define COLOR_WARN      TFT_YELLOW
-#define COLOR_DANGER    TFT_RED
-#define COLOR_ACCENT    TFT_CYAN
+#define COLOR_BG        0x0000   // Schwarz (AMOLED-optimal)
+#define COLOR_TEXT      0xFFFF   // Weiß
+#define COLOR_SUBTEXT   0x8410   // Grau
+#define COLOR_OK        0x07E0   // Grün
+#define COLOR_WARN      0xFD20   // Orange
+#define COLOR_DANGER    0xF800   // Rot
+#define COLOR_ACCENT    0x07FF   // Cyan
 #define COLOR_HEADER    0x1926   // Dunkelblau
-#define COLOR_SELECTED  0x4B0D   // Dunkelgrün (ausgewähltes Feld)
+#define COLOR_SELECTED  0x0320   // Dunkelgrün (aktives Feld)
+#define COLOR_SURFACE   0x18C3   // Dunkelgrau (Kacheln)
