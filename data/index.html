@@ -3,189 +3,235 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lebensmittel-Inventar</title>
+<title>Lebensmittel-Scanner</title>
 <style>
   :root {
-    --bg: #111827;
-    --surface: #1f2937;
-    --border: #374151;
-    --text: #f9fafb;
-    --muted: #9ca3af;
-    --ok: #10b981;
-    --warn: #f59e0b;
-    --danger: #ef4444;
-    --accent: #3b82f6;
+    --bg: #111827; --surface: #1f2937; --border: #374151;
+    --text: #f9fafb; --muted: #9ca3af;
+    --ok: #10b981; --warn: #f59e0b; --danger: #ef4444; --accent: #3b82f6;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; min-height: 100vh; }
-  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 1rem 1.5rem; display: flex; align-items: center; gap: 1rem; }
-  header h1 { font-size: 1.25rem; }
-  .badge { padding: .25rem .6rem; border-radius: 999px; font-size: .75rem; font-weight: 600; }
-  .badge-ok   { background: #064e3b; color: var(--ok); }
-  .badge-warn { background: #78350f; color: var(--warn); }
-  .badge-danger { background: #7f1d1d; color: var(--danger); }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; }
 
+  /* Nav */
+  nav { background: var(--surface); border-bottom: 1px solid var(--border);
+        display: flex; gap: 0; }
+  nav button { background: none; border: none; color: var(--muted); padding: .9rem 1.4rem;
+               cursor: pointer; font-size: .9rem; border-bottom: 2px solid transparent; }
+  nav button.active { color: var(--text); border-bottom-color: var(--accent); }
+
+  /* Panels */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* Stats */
   .stats { display: flex; gap: 1rem; padding: 1.25rem 1.5rem; flex-wrap: wrap; }
-  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: .75rem; padding: 1rem 1.5rem; min-width: 140px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border);
+               border-radius: .75rem; padding: 1rem 1.5rem; min-width: 130px; }
   .stat-card .label { font-size: .75rem; color: var(--muted); margin-bottom: .25rem; }
   .stat-card .value { font-size: 2rem; font-weight: 700; }
 
-  .toolbar { padding: .75rem 1.5rem; display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
-  input[type=search] {
-    background: var(--surface); border: 1px solid var(--border); color: var(--text);
-    padding: .5rem .75rem; border-radius: .5rem; font-size: .9rem; flex: 1; min-width: 200px;
-    outline: none;
-  }
-  input[type=search]:focus { border-color: var(--accent); }
-  select {
+  /* Toolbar */
+  .toolbar { padding: .75rem 1.5rem; display: flex; gap: .75rem; flex-wrap: wrap; align-items: center; }
+  input[type=search], input[type=text], select {
     background: var(--surface); border: 1px solid var(--border); color: var(--text);
     padding: .5rem .75rem; border-radius: .5rem; font-size: .9rem; outline: none;
   }
-  button.btn {
-    background: var(--accent); color: white; border: none; padding: .5rem 1rem;
-    border-radius: .5rem; cursor: pointer; font-size: .9rem;
-  }
-  button.btn:hover { opacity: .85; }
-  button.btn-danger { background: var(--danger); }
-  button.btn-sm { padding: .25rem .6rem; font-size: .8rem; }
+  input[type=search] { flex: 1; min-width: 180px; }
+  input[type=search]:focus, input[type=text]:focus { border-color: var(--accent); }
+  select { cursor: pointer; }
 
+  /* Buttons */
+  .btn { background: var(--accent); color: white; border: none; padding: .5rem 1rem;
+         border-radius: .5rem; cursor: pointer; font-size: .9rem; }
+  .btn:hover { opacity: .85; }
+  .btn-danger { background: var(--danger); }
+  .btn-ok     { background: var(--ok); }
+  .btn-sm     { padding: .25rem .6rem; font-size: .8rem; }
+  .btn-ghost  { background: none; border: 1px solid var(--border); color: var(--muted);
+                padding: .4rem .8rem; border-radius: .5rem; cursor: pointer; font-size: .85rem; }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; padding: 0 1.5rem 2rem; }
   table { width: 100%; border-collapse: collapse; }
   thead { background: var(--surface); position: sticky; top: 0; z-index: 1; }
-  th { padding: .75rem 1rem; text-align: left; font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--border); }
-  td { padding: .75rem 1rem; border-bottom: 1px solid var(--border); font-size: .9rem; vertical-align: middle; }
+  th { padding: .75rem 1rem; text-align: left; font-size: .8rem; color: var(--muted);
+       text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--border); }
+  td { padding: .75rem 1rem; border-bottom: 1px solid var(--border); font-size: .9rem;
+       vertical-align: middle; }
   tr:hover td { background: rgba(255,255,255,.02); }
-  .table-wrap { overflow-x: auto; padding: 0 1.5rem 2rem; }
 
-  .expiry-ok     { color: var(--ok); }
-  .expiry-warn   { color: var(--warn); }
-  .expiry-danger { color: var(--danger); }
-  .name-cell { font-weight: 500; }
-  .brand-cell { color: var(--muted); font-size: .8rem; }
-
-  .pill { display: inline-block; padding: .15rem .5rem; border-radius: 999px; font-size: .75rem; font-weight: 600; }
+  .pill { display: inline-block; padding: .15rem .5rem; border-radius: 999px;
+          font-size: .75rem; font-weight: 600; }
   .pill-ok     { background: #064e3b; color: var(--ok); }
   .pill-warn   { background: #78350f; color: var(--warn); }
   .pill-danger { background: #7f1d1d; color: var(--danger); }
 
-  .empty { text-align: center; color: var(--muted); padding: 3rem; }
-  #loading { text-align: center; color: var(--muted); padding: 2rem; }
+  /* Custom products form */
+  .add-form { margin: 0 1.5rem 2rem;
+              background: var(--surface); border: 1px solid var(--border);
+              border-radius: .75rem; padding: 1.25rem; }
+  .add-form h3 { font-size: .95rem; margin-bottom: 1rem; color: var(--text); }
+  .form-row { display: flex; gap: .75rem; flex-wrap: wrap; align-items: flex-end; }
+  .form-row label { display: flex; flex-direction: column; gap: .3rem;
+                    font-size: .8rem; color: var(--muted); flex: 1; min-width: 140px; }
+  .form-row label input { font-size: .9rem; }
+  .form-row .req { color: var(--danger); }
 
-  .refresh-btn { background: none; border: 1px solid var(--border); color: var(--muted); padding: .4rem .8rem; border-radius: .5rem; cursor: pointer; font-size: .85rem; }
-  .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .empty { text-align: center; color: var(--muted); padding: 3rem; }
+  #invLoading, #cpLoading { text-align: center; color: var(--muted); padding: 2rem; }
+
+  .mono { font-family: monospace; font-size: .8rem; color: var(--muted); }
 
   @media (max-width: 640px) {
     .stats { gap: .5rem; }
     .stat-card { min-width: 100px; }
     .table-wrap { padding: 0 .75rem 2rem; }
-    th, td { padding: .6rem .5rem; }
+    .toolbar { padding: .5rem .75rem; }
+    th, td { padding: .5rem .4rem; }
   }
 </style>
 </head>
 <body>
 
-<header>
-  <span style="font-size:1.5rem">🥫</span>
-  <h1>Lebensmittel-Inventar</h1>
-  <span id="headerBadge" class="badge" style="margin-left:auto"></span>
-</header>
+<nav>
+  <button class="active" onclick="switchTab('inv', this)">📦 Inventar</button>
+  <button onclick="switchTab('cp', this)">📋 Vorlagen</button>
+</nav>
 
-<div class="stats">
-  <div class="stat-card">
-    <div class="label">Gesamt (Artikel)</div>
-    <div class="value" id="statTotal">–</div>
+<!-- ═══════════════════════════════════════════════════════════
+     TAB 1: INVENTAR
+══════════════════════════════════════════════════════════════ -->
+<div id="inv" class="panel active">
+
+  <div class="stats">
+    <div class="stat-card">
+      <div class="label">Gesamt (Artikel)</div>
+      <div class="value" id="statTotal">–</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Bald ablaufend (≤7 Tage)</div>
+      <div class="value" style="color:var(--warn)" id="statExpiring">–</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Abgelaufen</div>
+      <div class="value" style="color:var(--danger)" id="statExpired">–</div>
+    </div>
   </div>
-  <div class="stat-card">
-    <div class="label">Bald ablaufend (≤7 Tage)</div>
-    <div class="value expiry-warn" id="statExpiring">–</div>
+
+  <div class="toolbar">
+    <input type="search" id="searchInput" placeholder="Produkt suchen…" oninput="renderInv()">
+    <select id="filterSelect" onchange="renderInv()">
+      <option value="all">Alle</option>
+      <option value="expiring">Bald ablaufend</option>
+      <option value="expired">Abgelaufen</option>
+      <option value="ok">OK</option>
+    </select>
+    <button class="btn-ghost" onclick="loadInv()">↻ Aktualisieren</button>
+    <button class="btn btn-sm" onclick="exportCSV()">CSV Export</button>
   </div>
-  <div class="stat-card">
-    <div class="label">Abgelaufen</div>
-    <div class="value expiry-danger" id="statExpired">–</div>
+
+  <div class="table-wrap">
+    <div id="invLoading">Lade Daten…</div>
+    <table id="invTable" style="display:none">
+      <thead>
+        <tr>
+          <th onclick="sortBy('name')" style="cursor:pointer">Produkt ↕</th>
+          <th>Marke</th>
+          <th onclick="sortBy('expiry')" style="cursor:pointer">MHD ↕</th>
+          <th onclick="sortBy('daysLeft')" style="cursor:pointer">Verbleibend ↕</th>
+          <th>Menge</th>
+          <th>Barcode</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="invBody"></tbody>
+    </table>
+    <div id="invEmpty" class="empty" style="display:none">Keine Einträge gefunden.</div>
   </div>
 </div>
 
-<div class="toolbar">
-  <input type="search" id="searchInput" placeholder="Produkt suchen…" oninput="renderTable()">
-  <select id="filterSelect" onchange="renderTable()">
-    <option value="all">Alle anzeigen</option>
-    <option value="expiring">Bald ablaufend</option>
-    <option value="expired">Abgelaufen</option>
-    <option value="ok">OK</option>
-  </select>
-  <button class="refresh-btn" onclick="loadData()">↻ Aktualisieren</button>
-  <button class="btn btn-sm" onclick="exportCSV()">CSV Export</button>
-</div>
+<!-- ═══════════════════════════════════════════════════════════
+     TAB 2: VORLAGEN (Custom Products)
+══════════════════════════════════════════════════════════════ -->
+<div id="cp" class="panel">
 
-<div class="table-wrap">
-  <div id="loading">Lade Daten…</div>
-  <table id="itemTable" style="display:none">
-    <thead>
-      <tr>
-        <th onclick="sortBy('name')" style="cursor:pointer">Produkt ↕</th>
-        <th>Marke</th>
-        <th onclick="sortBy('expiry')" style="cursor:pointer">MHD ↕</th>
-        <th onclick="sortBy('daysLeft')" style="cursor:pointer">Verbleibend ↕</th>
-        <th>Menge</th>
-        <th>Barcode</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody id="tableBody"></tbody>
-  </table>
-  <div id="emptyMsg" class="empty" style="display:none">Keine Einträge gefunden.</div>
+  <div class="toolbar" style="padding-top:1.25rem">
+    <span style="font-size:.9rem;color:var(--muted)">
+      Vorlagen erscheinen am Gerät unter <strong style="color:var(--text)">"Aus Liste wählen"</strong>.
+      Nützlich für häufig gekaufte Produkte ohne Barcode.
+    </span>
+    <button class="btn-ghost" onclick="loadCP()">↻ Aktualisieren</button>
+  </div>
+
+  <div class="table-wrap">
+    <div id="cpLoading">Lade Vorlagen…</div>
+    <table id="cpTable" style="display:none">
+      <thead>
+        <tr>
+          <th>Produktname</th>
+          <th>Marke</th>
+          <th>Barcode (optional)</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="cpBody"></tbody>
+    </table>
+    <div id="cpEmpty" class="empty" style="display:none">
+      Noch keine Vorlagen. Füge unten eine hinzu.
+    </div>
+  </div>
+
+  <!-- Hinzufügen-Formular -->
+  <div class="add-form">
+    <h3>Neue Vorlage hinzufügen</h3>
+    <div class="form-row">
+      <label>
+        Produktname <span class="req">*</span>
+        <input type="text" id="cpName" placeholder="z.B. Milch 3,5%" maxlength="60">
+      </label>
+      <label>
+        Marke
+        <input type="text" id="cpBrand" placeholder="z.B. Alpenmilch" maxlength="40">
+      </label>
+      <label>
+        Barcode
+        <input type="text" id="cpBarcode" placeholder="Optional (EAN13 etc.)" maxlength="30">
+      </label>
+      <button class="btn btn-ok" onclick="addCP()">Hinzufügen</button>
+    </div>
+    <div id="cpMsg" style="margin-top:.75rem;font-size:.85rem"></div>
+  </div>
+
 </div>
 
 <script>
-let allItems = [];
-let sortKey = 'daysLeft';
-let sortAsc = true;
-
-async function loadData() {
-  document.getElementById('loading').style.display = 'block';
-  document.getElementById('itemTable').style.display = 'none';
-  document.getElementById('emptyMsg').style.display = 'none';
-
-  try {
-    const [invRes, statsRes] = await Promise.all([
-      fetch('/api/inventory'),
-      fetch('/api/stats')
-    ]);
-    const inv   = await invRes.json();
-    const stats = await statsRes.json();
-
-    allItems = inv.items || [];
-    updateStats(stats);
-    renderTable();
-  } catch(e) {
-    document.getElementById('loading').textContent = 'Fehler beim Laden: ' + e.message;
-  }
+/* ── Tab-Navigation ──────────────────────────────────────── */
+function switchTab(id, btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+  if (id === 'cp') loadCP();
 }
 
-function updateStats(stats) {
-  document.getElementById('statTotal').textContent    = stats.total ?? '–';
-  document.getElementById('statExpiring').textContent = stats.expiring ?? '–';
-  document.getElementById('statExpired').textContent  = stats.expired ?? '–';
-
-  const badge = document.getElementById('headerBadge');
-  if (stats.expired > 0) {
-    badge.className = 'badge badge-danger';
-    badge.textContent = stats.expired + ' abgelaufen!';
-  } else if (stats.expiring > 0) {
-    badge.className = 'badge badge-warn';
-    badge.textContent = stats.expiring + ' bald weg';
-  } else {
-    badge.className = 'badge badge-ok';
-    badge.textContent = 'Alles OK';
-  }
+/* ── Hilfsfunktionen ────────────────────────────────────── */
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                  .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-
-function statusClass(days) {
+function fmtDate(iso) {
+  if (!iso || iso.length < 10) return '–';
+  const [y,m,d] = iso.split('-');
+  return d+'.'+m+'.'+y;
+}
+function statusOf(days) {
   if (days < 0)  return 'danger';
   if (days <= 3) return 'danger';
   if (days <= 7) return 'warn';
   return 'ok';
 }
-
 function daysLabel(days) {
   if (days < 0)  return 'Abgelaufen';
   if (days === 0) return 'Heute!';
@@ -193,114 +239,187 @@ function daysLabel(days) {
   return days + ' Tage';
 }
 
-function formatDate(iso) {
-  if (!iso) return '–';
-  const [y, m, d] = iso.split('-');
-  return d + '.' + m + '.' + y;
+/* ══════════════════════════════════════════════════════════
+   TAB 1: INVENTAR
+══════════════════════════════════════════════════════════ */
+let allItems = [];
+let sortKey  = 'daysLeft';
+let sortAsc  = true;
+
+async function loadInv() {
+  document.getElementById('invLoading').style.display = 'block';
+  document.getElementById('invTable').style.display = 'none';
+  document.getElementById('invEmpty').style.display = 'none';
+  try {
+    const [inv, stats] = await Promise.all([
+      fetch('/api/inventory').then(r => r.json()),
+      fetch('/api/stats').then(r => r.json())
+    ]);
+    allItems = inv.items || [];
+    updateStats(stats);
+    renderInv();
+  } catch(e) {
+    document.getElementById('invLoading').textContent = 'Fehler: ' + e.message;
+  }
 }
 
-function renderTable() {
-  const query  = document.getElementById('searchInput').value.toLowerCase();
-  const filter = document.getElementById('filterSelect').value;
+function updateStats(s) {
+  document.getElementById('statTotal').textContent    = s.total ?? '–';
+  document.getElementById('statExpiring').textContent = s.expiring ?? '–';
+  document.getElementById('statExpired').textContent  = s.expired ?? '–';
+}
 
+function renderInv() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const f = document.getElementById('filterSelect').value;
   let items = allItems.filter(it => {
-    const matchSearch = !query ||
-      it.name.toLowerCase().includes(query) ||
-      (it.brand||'').toLowerCase().includes(query) ||
-      it.barcode.includes(query);
-    if (!matchSearch) return false;
-
-    const s = statusClass(it.daysLeft);
-    if (filter === 'expiring') return s === 'warn';
-    if (filter === 'expired')  return it.daysLeft < 0;
-    if (filter === 'ok')       return s === 'ok';
+    const ms = !q || it.name.toLowerCase().includes(q) ||
+               (it.brand||'').toLowerCase().includes(q) || it.barcode.includes(q);
+    if (!ms) return false;
+    const s = statusOf(it.daysLeft);
+    if (f === 'expiring') return s === 'warn';
+    if (f === 'expired')  return it.daysLeft < 0;
+    if (f === 'ok')       return s === 'ok';
     return true;
   });
-
-  // Sortierung
-  items.sort((a, b) => {
-    let va = a[sortKey] ?? '';
-    let vb = b[sortKey] ?? '';
+  items.sort((a,b) => {
+    let va = a[sortKey] ?? '', vb = b[sortKey] ?? '';
     if (typeof va === 'string') va = va.toLowerCase();
     if (typeof vb === 'string') vb = vb.toLowerCase();
-    if (va < vb) return sortAsc ? -1 : 1;
-    if (va > vb) return sortAsc ? 1 : -1;
-    return 0;
+    return sortAsc ? (va<vb?-1:va>vb?1:0) : (va>vb?-1:va<vb?1:0);
   });
 
-  const tbody = document.getElementById('tableBody');
-  tbody.innerHTML = '';
-
-  document.getElementById('loading').style.display = 'none';
-
+  document.getElementById('invLoading').style.display = 'none';
   if (items.length === 0) {
-    document.getElementById('itemTable').style.display = 'none';
-    document.getElementById('emptyMsg').style.display = 'block';
+    document.getElementById('invTable').style.display = 'none';
+    document.getElementById('invEmpty').style.display = 'block';
     return;
   }
+  document.getElementById('invEmpty').style.display = 'none';
+  document.getElementById('invTable').style.display = 'table';
 
-  document.getElementById('emptyMsg').style.display = 'none';
-  document.getElementById('itemTable').style.display = 'table';
-
+  const tbody = document.getElementById('invBody');
+  tbody.innerHTML = '';
   items.forEach(it => {
-    const sc = statusClass(it.daysLeft);
+    const sc = statusOf(it.daysLeft);
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td class="name-cell">${esc(it.name)}</td>
-      <td class="brand-cell">${esc(it.brand||'–')}</td>
-      <td class="expiry-${sc}">${formatDate(it.expiry)}</td>
+      <td style="font-weight:500">${esc(it.name)}</td>
+      <td style="color:var(--muted);font-size:.8rem">${esc(it.brand||'–')}</td>
+      <td style="color:var(--${sc==='ok'?'ok':sc==='warn'?'warn':'danger'})">${fmtDate(it.expiry)}</td>
       <td><span class="pill pill-${sc}">${daysLabel(it.daysLeft)}</span></td>
       <td>${it.qty}</td>
-      <td style="font-family:monospace;font-size:.8rem;color:var(--muted)">${esc(it.barcode)}</td>
-      <td>
-        <button class="btn btn-danger btn-sm"
-          onclick="deleteItem('${esc(it.barcode)}','${esc(it.expiry)}')">
-          Löschen
-        </button>
-      </td>
-    `;
+      <td class="mono">${esc(it.barcode)}</td>
+      <td><button class="btn btn-danger btn-sm"
+          onclick="deleteItem('${esc(it.barcode)}','${esc(it.expiry)}')">Löschen</button></td>`;
     tbody.appendChild(tr);
   });
 }
 
 function sortBy(key) {
-  if (sortKey === key) sortAsc = !sortAsc;
-  else { sortKey = key; sortAsc = true; }
-  renderTable();
+  if (sortKey === key) sortAsc = !sortAsc; else { sortKey = key; sortAsc = true; }
+  renderInv();
 }
 
 async function deleteItem(barcode, expiry) {
-  if (!confirm(`Wirklich löschen?\n${barcode}\nMHD: ${expiry}`)) return;
-  const res = await fetch(`/api/item?barcode=${encodeURIComponent(barcode)}&expiry=${encodeURIComponent(expiry)}`, {
-    method: 'DELETE'
-  });
-  if (res.ok) {
-    allItems = allItems.filter(it => !(it.barcode === barcode && it.expiry === expiry));
-    renderTable();
-    const stats = await (await fetch('/api/stats')).json();
-    updateStats(stats);
-  } else {
-    alert('Fehler beim Löschen');
-  }
+  if (!confirm(`Löschen?\n${barcode}\nMHD: ${expiry}`)) return;
+  const r = await fetch(`/api/item?barcode=${encodeURIComponent(barcode)}&expiry=${encodeURIComponent(expiry)}`,
+                        {method:'DELETE'});
+  if (r.ok) {
+    allItems = allItems.filter(it => !(it.barcode===barcode && it.expiry===expiry));
+    renderInv();
+    const s = await fetch('/api/stats').then(r=>r.json());
+    updateStats(s);
+  } else { alert('Fehler beim Löschen'); }
 }
 
 function exportCSV() {
   const rows = [['Produkt','Marke','MHD','Verbleibend (Tage)','Menge','Barcode']];
-  allItems.forEach(it => {
-    rows.push([it.name, it.brand||'', it.expiry, it.daysLeft, it.qty, it.barcode]);
-  });
-  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  allItems.forEach(it => rows.push([it.name, it.brand||'', it.expiry, it.daysLeft, it.qty, it.barcode]));
+  const csv = rows.map(r => r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
   const a = document.createElement('a');
   a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
   a.download = 'inventar_' + new Date().toISOString().slice(0,10) + '.csv';
   a.click();
 }
 
-function esc(str) {
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+/* ══════════════════════════════════════════════════════════
+   TAB 2: VORLAGEN
+══════════════════════════════════════════════════════════ */
+let allCP = [];
+
+async function loadCP() {
+  document.getElementById('cpLoading').style.display = 'block';
+  document.getElementById('cpTable').style.display = 'none';
+  document.getElementById('cpEmpty').style.display = 'none';
+  try {
+    const data = await fetch('/api/custom-products').then(r => r.json());
+    allCP = data.products || [];
+    renderCP();
+  } catch(e) {
+    document.getElementById('cpLoading').textContent = 'Fehler: ' + e.message;
+  }
 }
 
-loadData();
+function renderCP() {
+  document.getElementById('cpLoading').style.display = 'none';
+  if (allCP.length === 0) {
+    document.getElementById('cpTable').style.display = 'none';
+    document.getElementById('cpEmpty').style.display = 'block';
+    return;
+  }
+  document.getElementById('cpEmpty').style.display = 'none';
+  document.getElementById('cpTable').style.display = 'table';
+
+  const tbody = document.getElementById('cpBody');
+  tbody.innerHTML = '';
+  allCP.forEach((p, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="font-weight:500">${esc(p.name)}</td>
+      <td style="color:var(--muted)">${esc(p.brand||'–')}</td>
+      <td class="mono">${esc(p.barcode||'–')}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteCP(${idx})">Löschen</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+async function addCP() {
+  const name    = document.getElementById('cpName').value.trim();
+  const brand   = document.getElementById('cpBrand').value.trim();
+  const barcode = document.getElementById('cpBarcode').value.trim();
+  const msg     = document.getElementById('cpMsg');
+
+  if (!name) { msg.style.color='var(--danger)'; msg.textContent='Name ist Pflichtfeld.'; return; }
+
+  const r = await fetch('/api/custom-products', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name, brand, barcode})
+  });
+  const data = await r.json();
+  if (r.ok) {
+    msg.style.color = 'var(--ok)';
+    msg.textContent = '✓ "' + name + '" hinzugefügt.';
+    document.getElementById('cpName').value    = '';
+    document.getElementById('cpBrand').value   = '';
+    document.getElementById('cpBarcode').value = '';
+    loadCP();
+  } else {
+    msg.style.color = 'var(--danger)';
+    msg.textContent = 'Fehler: ' + (data.error || r.status);
+  }
+}
+
+async function deleteCP(index) {
+  if (!confirm('Vorlage löschen?')) return;
+  const r = await fetch(`/api/custom-products?index=${index}`, {method:'DELETE'});
+  if (r.ok) loadCP();
+  else alert('Fehler beim Löschen');
+}
+
+/* ── Init ────────────────────────────────────────────────── */
+loadInv();
 </script>
 </body>
 </html>

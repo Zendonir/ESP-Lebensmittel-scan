@@ -7,6 +7,7 @@
 #include "TouchController.h"
 #include "FoodAPI.h"
 #include "Inventory.h"
+#include "CustomProducts.h"
 #include "WebInterface.h"
 
 // ============================================================
@@ -19,6 +20,7 @@ enum class State {
     SCANNING,
     FETCHING,
     SHOW_PRODUCT,
+    PRODUCT_LIST,    // Auswahl aus eigener Produkt-Liste
     ENTER_DATE,
     SAVING,
     SUCCESS,
@@ -32,16 +34,15 @@ enum class State {
 BarcodeScanner scanner(Serial1, BARCODE_RX_PIN, BARCODE_TX_PIN, BARCODE_BAUD);
 DisplayManager display;
 TouchController touch(TOUCH_SDA, TOUCH_SCL, TOUCH_INT, TOUCH_RST);
-FoodAPI foodAPI;
-Inventory inventory;
-WebInterface *webInterface = nullptr;
+FoodAPI        foodAPI;
+Inventory      inventory;
+CustomProducts customProducts;
+WebInterface  *webInterface = nullptr;
 
-// Optionaler physischer Zurück-Taster (BOOT-Taster auf ESP32-S3)
+// Optionaler physischer Zurück-Taster (BOOT-Taster)
 #if BTN_BACK >= 0
 class BackButton {
-    uint8_t _pin;
-    bool _prev = HIGH;
-    unsigned long _last = 0;
+    uint8_t _pin; bool _prev = HIGH; unsigned long _last = 0;
 public:
     BackButton(uint8_t p) : _pin(p) {}
     void begin() { pinMode(_pin, INPUT_PULLUP); }
@@ -59,14 +60,15 @@ public:
 // ============================================================
 //  Globale Zustands-Variablen
 // ============================================================
-State        state = State::BOOTING;
+State        state       = State::BOOTING;
 ProductInfo  currentProduct;
 DateInput    dateInput;
 String       currentBarcode;
 String       errorMsg;
-int          browseIndex   = 0;
-unsigned long stateEnter   = 0;
-bool         screenDirty   = true;   // erzwingt Neu-Zeichnen
+int          browseIndex = 0;   // Inventar-Browser
+int          listOffset  = 0;   // Produktliste Scroll-Offset
+unsigned long stateEnter = 0;
+bool         screenDirty = true;
 
 void setState(State s) {
     state       = s;
@@ -84,34 +86,26 @@ String todayStr() {
     snprintf(buf, sizeof(buf), "%04d-%02d-%02d", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday);
     return buf;
 }
-
 String dateInputToStr(const DateInput &d) {
     char buf[12];
     snprintf(buf, sizeof(buf), "%04d-%02d-%02d", d.year, d.month, d.day);
     return buf;
 }
-
 String dateInputDisplay(const DateInput &d) {
     char buf[12];
     snprintf(buf, sizeof(buf), "%02d.%02d.%04d", d.day, d.month, d.year);
     return buf;
 }
-
 void initDateToday() {
     time_t now = time(nullptr);
     struct tm *t = localtime(&now);
-    dateInput.day   = t->tm_mday;
-    dateInput.month = t->tm_mon + 1;
-    dateInput.year  = t->tm_year + 1900;
-    dateInput.activeField = FIELD_DAY;
+    dateInput = { t->tm_mday, t->tm_mon + 1, t->tm_year + 1900, FIELD_DAY };
 }
-
 int daysInMonth(int m, int y) {
     const int d[] = {31,28,31,30,31,30,31,31,30,31,30,31};
-    if (m == 2 && ((y % 4 == 0 && y % 100 != 0) || y % 400 == 0)) return 29;
-    return d[m - 1];
+    if (m == 2 && ((y%4==0 && y%100!=0) || y%400==0)) return 29;
+    return d[m-1];
 }
-
 void clampDate(DateInput &d) {
     if (d.month < 1)  d.month = 12;
     if (d.month > 12) d.month = 1;
@@ -120,20 +114,17 @@ void clampDate(DateInput &d) {
     if (d.year < 2024) d.year = 2024;
     if (d.year > 2099) d.year = 2099;
 }
-
 int stockForBarcode(const String &bc) {
     int n = 0;
-    for (const auto &it : inventory.items())
-        if (it.barcode == bc) n += it.quantity;
+    for (const auto &it : inventory.items()) if (it.barcode == bc) n += it.quantity;
     return n;
 }
-
 int daysUntilExpiry(const String &ds) {
     if (ds.length() < 10) return 9999;
     struct tm tm = {};
-    tm.tm_year = ds.substring(0, 4).toInt() - 1900;
-    tm.tm_mon  = ds.substring(5, 7).toInt() - 1;
-    tm.tm_mday = ds.substring(8, 10).toInt();
+    tm.tm_year = ds.substring(0,4).toInt() - 1900;
+    tm.tm_mon  = ds.substring(5,7).toInt() - 1;
+    tm.tm_mday = ds.substring(8,10).toInt();
     return (int)(difftime(mktime(&tm), time(nullptr)) / 86400.0);
 }
 
@@ -162,11 +153,10 @@ void setup() {
     display.showBooting("Scanner OK");
     delay(200);
 
-    display.showBooting("Lade Inventar...");
-    if (!inventory.begin()) {
-        display.showError("LittleFS Fehler!");
-        delay(3000);
-    }
+    display.showBooting("Lade Daten...");
+    if (!inventory.begin())
+        Serial.println("[Inventory] LittleFS Fehler!");
+    customProducts.begin();
 
     setState(State::WIFI_CONNECTING);
     WiFi.setHostname(HOSTNAME);
@@ -178,17 +168,15 @@ void setup() {
 // ============================================================
 void loop() {
     touch.update();
-    bool tapped = touch.wasTapped();
-    int16_t tx  = touch.tapX();
-    int16_t ty  = touch.tapY();
-    Gesture gest = touch.lastGesture();
+    bool    tapped = touch.wasTapped();
+    int16_t tx     = touch.tapX();
+    int16_t ty     = touch.tapY();
+    Gesture gest   = touch.lastGesture();
 
-    // Hit-Test Helfer: Tap innerhalb eines Rechtecks?
     auto hit = [&](int16_t bx, int16_t by, int16_t bw, int16_t bh) {
         return tapped && tx >= bx && tx < bx+bw && ty >= by && ty < by+bh;
     };
 
-    // Physischer Zurück-Taster (optional)
     bool hardBack = false;
 #if BTN_BACK >= 0
     hardBack = backBtn.pressed();
@@ -207,7 +195,7 @@ void loop() {
         if (WiFi.status() == WL_CONNECTED) {
             configTzTime(TZ_STRING, NTP_SERVER, NTP_SERVER2);
             Serial.printf("[WiFi] IP: %s\n", WiFi.localIP().toString().c_str());
-            webInterface = new WebInterface(inventory);
+            webInterface = new WebInterface(inventory, customProducts);
             webInterface->begin();
             setState(State::IDLE);
         }
@@ -223,7 +211,8 @@ void loop() {
         if (screenDirty) {
             display.showIdle(inventory.count(),
                              inventory.expiringIn(WARNING_DAYS),
-                             inventory.expiredCount());
+                             inventory.expiredCount(),
+                             customProducts.count());
             screenDirty = false;
         }
 
@@ -232,10 +221,16 @@ void loop() {
             currentBarcode = scanner.getBarcode();
             Serial.printf("[Scan] %s\n", currentBarcode.c_str());
             setState(State::FETCHING);
+            break;
         }
 
-        // Inventar-Button
-        if (hit(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H) && inventory.count() > 0) {
+        // "Aus Liste wählen"
+        if (hit(TBTN_X, IDLE_LIST_BTN_Y, TBTN_W, IDLE_BTN_H)) {
+            listOffset = 0;
+            setState(State::PRODUCT_LIST);
+        }
+        // "Inventar anzeigen"
+        if (hit(TBTN_X, IDLE_INV_BTN_Y, TBTN_W, IDLE_BTN_H) && inventory.count() > 0) {
             browseIndex = 0;
             setState(State::INVENTORY_BROWSE);
         }
@@ -243,16 +238,12 @@ void loop() {
     }
 
     // ── SCANNING ─────────────────────────────────────────────
-    // (Fallback: manuell in den Scan-Modus wechseln, z.B. wenn Scanner nicht auto-sendet)
     case State::SCANNING: {
         if (screenDirty) { display.showScanning(); screenDirty = false; }
-
         if (scanner.available()) {
             currentBarcode = scanner.getBarcode();
             setState(State::FETCHING);
         }
-
-        // Abbrechen-Button oder Wisch nach links
         if (hit(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H) || hardBack ||
             gest == Gesture::SWIPE_LEFT || gest == Gesture::SWIPE_RIGHT) {
             scanner.flush();
@@ -268,11 +259,9 @@ void loop() {
             display.showFetching(currentBarcode);
             lastAnim = millis();
         }
-
         currentProduct = (WiFi.status() == WL_CONNECTED)
             ? foodAPI.lookup(currentBarcode)
             : ProductInfo{false, currentBarcode, "Unbekannt (" + currentBarcode + ")", "", "", ""};
-
         initDateToday();
         setState(State::SHOW_PRODUCT);
         break;
@@ -284,14 +273,47 @@ void loop() {
             display.showProduct(currentProduct, stockForBarcode(currentProduct.barcode));
             screenDirty = false;
         }
-
-        // "Hinzufuegen"
         if (hit(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H))
             setState(State::ENTER_DATE);
-
-        // "Abbrechen" oder Wisch
         if (hit(TBTN_X, TBTN_SECONDARY_Y, TBTN_W, 40) || hardBack ||
             gest == Gesture::SWIPE_LEFT || gest == Gesture::SWIPE_RIGHT)
+            setState(State::IDLE);
+        break;
+    }
+
+    // ── PRODUCT_LIST ─────────────────────────────────────────
+    case State::PRODUCT_LIST: {
+        if (screenDirty) {
+            display.showProductList(customProducts.items(), listOffset);
+            screenDirty = false;
+        }
+
+        const auto &prods = customProducts.items();
+
+        // Tap auf einen Listen-Eintrag
+        if (tapped && ty >= 56 && ty < 56 + LIST_MAX_VIS * LIST_ITEM_H) {
+            int idx = listOffset + (ty - 56) / LIST_ITEM_H;
+            if (idx < (int)prods.size()) {
+                const auto &p = prods[idx];
+                currentProduct = { true, p.barcode, p.name, p.brand, "", "" };
+                currentBarcode = p.barcode;
+                initDateToday();
+                setState(State::ENTER_DATE);  // direkt zu Datum, kein API-Call
+                break;
+            }
+        }
+
+        // Wischen zum Scrollen
+        if (gest == Gesture::SWIPE_UP || gest == Gesture::SWIPE_LEFT) {
+            int maxOff = max(0, (int)prods.size() - LIST_MAX_VIS);
+            if (listOffset < maxOff) { listOffset++; screenDirty = true; }
+        }
+        if (gest == Gesture::SWIPE_DOWN || gest == Gesture::SWIPE_RIGHT) {
+            if (listOffset > 0) { listOffset--; screenDirty = true; }
+        }
+
+        // Zurück-Button oder Hardware-Taster
+        if (hit(TBTN_X, LIST_BACK_BTN_Y, TBTN_W, 40) || hardBack)
             setState(State::IDLE);
         break;
     }
@@ -301,32 +323,23 @@ void loop() {
         if (screenDirty) { display.showDateEntry(dateInput, currentProduct.name); screenDirty = false; }
 
         bool changed = false;
-
-        // Plus-Buttons (obere Hälfte der Spalte)
         if (tapped && ty >= DATE_PLUS_Y0 && ty < DATE_PLUS_Y1) {
             int col = tx / DATE_COL_W;
             if      (col == 0) { dateInput.day++;   clampDate(dateInput); changed = true; }
             else if (col == 1) { dateInput.month++;  clampDate(dateInput); changed = true; }
             else if (col == 2) { dateInput.year++;   clampDate(dateInput); changed = true; }
         }
-
-        // Minus-Buttons (untere Hälfte der Spalte)
         if (tapped && ty >= DATE_MINUS_Y0 && ty < DATE_MINUS_Y1) {
             int col = tx / DATE_COL_W;
             if      (col == 0) { dateInput.day--;   clampDate(dateInput); changed = true; }
             else if (col == 1) { dateInput.month--;  clampDate(dateInput); changed = true; }
             else if (col == 2) { dateInput.year--;   clampDate(dateInput); changed = true; }
         }
+        if (changed) display.showDateEntry(dateInput, currentProduct.name);
 
-        if (changed) { display.showDateEntry(dateInput, currentProduct.name); }
-
-        // Bestätigen
-        if (hit(TBTN_X, DATE_OK_Y, TBTN_W, TBTN_H))
-            setState(State::SAVING);
-
-        // Abbrechen
+        if (hit(TBTN_X, DATE_OK_Y,   TBTN_W, TBTN_H)) setState(State::SAVING);
         if (hit(TBTN_X, DATE_BACK_Y, TBTN_W, 40) || hardBack)
-            setState(State::SHOW_PRODUCT);
+            setState(currentProduct.barcode.isEmpty() ? State::PRODUCT_LIST : State::SHOW_PRODUCT);
         break;
     }
 
@@ -339,13 +352,11 @@ void loop() {
         item.expiryDate = dateInputToStr(dateInput);
         item.addedDate  = todayStr();
         item.quantity   = 1;
-
         if (inventory.addItem(item)) {
             display.showSuccess(item.name, dateInputDisplay(dateInput));
             setState(State::SUCCESS);
         } else {
-            errorMsg = "Speichern fehlgeschlagen!";
-            display.showError(errorMsg);
+            display.showError("Speichern fehlgeschlagen!");
             setState(State::ERROR);
         }
         break;
@@ -353,7 +364,6 @@ void loop() {
 
     // ── SUCCESS ──────────────────────────────────────────────
     case State::SUCCESS: {
-        // Nach 2,5 s automatisch zurück oder bei Tap/Wisch
         if (millis() - stateEnter > 2500 || tapped || hardBack)
             setState(State::IDLE);
         break;
@@ -370,7 +380,6 @@ void loop() {
     case State::INVENTORY_BROWSE: {
         const auto &items = inventory.items();
         if (items.empty()) { setState(State::IDLE); break; }
-
         if (browseIndex >= (int)items.size()) browseIndex = items.size() - 1;
 
         if (screenDirty) {
@@ -381,29 +390,19 @@ void loop() {
             screenDirty = false;
         }
 
-        // Wischen zum Blättern
         if (gest == Gesture::SWIPE_UP || gest == Gesture::SWIPE_LEFT) {
-            browseIndex = (browseIndex + 1) % items.size();
-            screenDirty = true;
+            browseIndex = (browseIndex + 1) % items.size(); screenDirty = true;
         }
         if (gest == Gesture::SWIPE_DOWN || gest == Gesture::SWIPE_RIGHT) {
-            browseIndex = (browseIndex - 1 + items.size()) % items.size();
-            screenDirty = true;
+            browseIndex = (browseIndex - 1 + items.size()) % items.size(); screenDirty = true;
         }
-
-        // Löschen-Button
         if (hit(TBTN_X, INV_DEL_Y, TBTN_W, TBTN_H)) {
-            const auto &it = items[browseIndex];
-            inventory.removeItem(it.barcode, it.expiryDate);
-            if (browseIndex >= (int)inventory.items().size())
-                browseIndex = max(0, (int)inventory.items().size() - 1);
+            inventory.removeItem(items[browseIndex].barcode, items[browseIndex].expiryDate);
+            browseIndex = min(browseIndex, max(0, (int)inventory.items().size() - 1));
             if (inventory.items().empty()) setState(State::IDLE);
             else screenDirty = true;
         }
-
-        // Zurück-Button
-        if (hit(TBTN_X, INV_BACK_Y, TBTN_W, 36) || hardBack ||
-            gest == Gesture::LONG_PRESS)
+        if (hit(TBTN_X, INV_BACK_Y, TBTN_W, 36) || hardBack || gest == Gesture::LONG_PRESS)
             setState(State::IDLE);
         break;
     }

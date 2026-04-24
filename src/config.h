@@ -61,8 +61,10 @@
 // ============================================================
 //  Speicher
 // ============================================================
-#define INVENTORY_FILE  "/inventory.json"
-#define MAX_ITEMS       500
+#define INVENTORY_FILE       "/inventory.json"
+#define CUSTOM_PRODUCTS_FILE "/custom_products.json"
+#define MAX_ITEMS            500
+#define MAX_CUSTOM_PRODUCTS  100
 
 // ============================================================
 //  Ablaufwarnungen (Tage)

@@ -2,6 +2,7 @@
 #include <Arduino_GFX_Library.h>
 #include "config.h"
 #include "FoodAPI.h"
+#include "CustomProducts.h"
 
 enum DateField { FIELD_DAY = 0, FIELD_MONTH, FIELD_YEAR, FIELD_DONE };
 
@@ -10,29 +11,37 @@ struct DateInput {
     DateField activeField;
 };
 
-// ── Touch-Button-Positionen (für Hit-Tests in main.cpp) ──────────
-// Standard: zentriert, 260px breit
+// ── Touch-Button-Konstanten (für Hit-Tests in main.cpp) ──────────
+
+// Universelle Standard-Buttons (SCANNING, SHOW_PRODUCT, SUCCESS, ERROR …)
 static constexpr int16_t TBTN_X  = 10;
 static constexpr int16_t TBTN_W  = 260;
 static constexpr int16_t TBTN_H  = 52;
-
-// Zwei Standard-Buttons übereinander am unteren Bildschirmrand
 static constexpr int16_t TBTN_PRIMARY_Y   = 348;
 static constexpr int16_t TBTN_SECONDARY_Y = 408;
 
-// Datumseingabe: 3 Spalten (Tag=0, Mon=1, Jahr=2)
-static constexpr int16_t DATE_COL_W  = DISPLAY_W / 3;   // 93px
+// IDLE-Screen (zwei Aktions-Buttons)
+static constexpr int16_t IDLE_LIST_BTN_Y = 300;   // "Aus Liste wählen"
+static constexpr int16_t IDLE_INV_BTN_Y  = 364;   // "Inventar anzeigen"
+static constexpr int16_t IDLE_BTN_H      = 56;
+
+// Datumseingabe
+static constexpr int16_t DATE_COL_W    = DISPLAY_W / 3;   // 93px
 static constexpr int16_t DATE_PLUS_Y0  = 90;
 static constexpr int16_t DATE_PLUS_Y1  = 165;
 static constexpr int16_t DATE_VAL_Y0   = 165;
 static constexpr int16_t DATE_VAL_Y1   = 245;
 static constexpr int16_t DATE_MINUS_Y0 = 245;
 static constexpr int16_t DATE_MINUS_Y1 = 320;
-// OK und Zurück bei Datum
 static constexpr int16_t DATE_OK_Y     = 330;
 static constexpr int16_t DATE_BACK_Y   = 396;
 
-// Inventar-Browser Buttons
+// Produktliste (scrollbare Liste)
+static constexpr int16_t LIST_ITEM_H    = 50;
+static constexpr int16_t LIST_MAX_VIS   = 7;
+static constexpr int16_t LIST_BACK_BTN_Y = DISPLAY_H - 44;  // 412
+
+// Inventar-Browser
 static constexpr int16_t INV_DEL_Y    = 355;
 static constexpr int16_t INV_BACK_Y   = 415;
 
@@ -44,11 +53,13 @@ public:
 
     void showBooting(const String &msg = "");
     void showWifiConnecting(const String &ssid, int attempt = 0);
-    void showIdle(int totalItems, int expiringItems, int expiredItems);
+    void showIdle(int totalItems, int expiringItems, int expiredItems,
+                  int customCount = 0);
     void showScanning();
     void showFetching(const String &barcode);
     void showProduct(const ProductInfo &info, int stock);
     void showDateEntry(const DateInput &date, const String &productName);
+    void showProductList(const std::vector<CustomProduct> &products, int offset);
     void showSuccess(const String &productName, const String &date);
     void showError(const String &msg);
     void showInventoryItem(int index, int total, const String &name,
@@ -68,7 +79,6 @@ private:
     void drawTouchButton(int16_t x, int16_t y, int16_t w, int16_t h,
                          const String &label, uint16_t bg, uint16_t fg,
                          uint8_t textSz = 2);
-    void drawPlusMinusColumn(int col, int value, bool isYear,
-                             bool plusActive, bool minusActive);
+    void drawPlusMinusColumn(int col, int value, bool isYear);
     String daysLabel(int days);
 };
