@@ -4,6 +4,7 @@
 #include "config.h"
 #include "BarcodeScanner.h"
 #include "DisplayManager.h"
+#include "TouchController.h"
 #include "FoodAPI.h"
 #include "Inventory.h"
 #include "WebInterface.h"
@@ -28,91 +29,75 @@ enum class State {
 // ============================================================
 //  Objekte
 // ============================================================
-BarcodeScanner scanner(Serial2, BARCODE_RX_PIN, BARCODE_TX_PIN, BARCODE_BAUD);
+BarcodeScanner scanner(Serial1, BARCODE_RX_PIN, BARCODE_TX_PIN, BARCODE_BAUD);
 DisplayManager display;
+TouchController touch(TOUCH_SDA, TOUCH_SCL, TOUCH_INT, TOUCH_RST);
 FoodAPI foodAPI;
 Inventory inventory;
-WebInterface* webInterface = nullptr;
+WebInterface *webInterface = nullptr;
 
-// ============================================================
-//  Taster (einfaches Debounce mit Flanken-Erkennung)
-// ============================================================
-class Button {
+// Optionaler physischer Zurück-Taster (BOOT-Taster auf ESP32-S3)
+#if BTN_BACK >= 0
+class BackButton {
+    uint8_t _pin;
+    bool _prev = HIGH;
+    unsigned long _last = 0;
 public:
-    Button(uint8_t pin) : _pin(pin), _prev(HIGH), _lastChange(0) {}
-
-    void begin() {
-        pinMode(_pin, INPUT_PULLUP);
-        _prev = HIGH;
-    }
-
-    // true genau einmal beim Drücken
+    BackButton(uint8_t p) : _pin(p) {}
+    void begin() { pinMode(_pin, INPUT_PULLUP); }
     bool pressed() {
         bool cur = digitalRead(_pin);
-        if (cur == LOW && _prev == HIGH && millis() - _lastChange > 60) {
-            _lastChange = millis();
-            _prev = cur;
-            return true;
+        if (cur == LOW && _prev == HIGH && millis() - _last > 80) {
+            _last = millis(); _prev = cur; return true;
         }
-        if (cur != _prev) {
-            _lastChange = millis();
-            _prev = cur;
-        }
+        if (cur != _prev) { _last = millis(); _prev = cur; }
         return false;
     }
-
-private:
-    uint8_t _pin;
-    bool _prev;
-    unsigned long _lastChange;
-};
-
-Button btnUp(BTN_UP);
-Button btnDown(BTN_DOWN);
-Button btnOk(BTN_OK);
+} backBtn(BTN_BACK);
+#endif
 
 // ============================================================
 //  Globale Zustands-Variablen
 // ============================================================
-State state = State::BOOTING;
-ProductInfo currentProduct;
-DateInput dateInput;
-String currentBarcode;
-String errorMsg;
-int browseIndex = 0;
-
-unsigned long stateEnter = 0;
-unsigned long lastDisplayRefresh = 0;
+State        state = State::BOOTING;
+ProductInfo  currentProduct;
+DateInput    dateInput;
+String       currentBarcode;
+String       errorMsg;
+int          browseIndex   = 0;
+unsigned long stateEnter   = 0;
+bool         screenDirty   = true;   // erzwingt Neu-Zeichnen
 
 void setState(State s) {
-    state = s;
-    stateEnter = millis();
+    state       = s;
+    stateEnter  = millis();
+    screenDirty = true;
 }
 
 // ============================================================
-//  Hilfsfunktionen
+//  Hilfs-Funktionen
 // ============================================================
 String todayStr() {
     time_t now = time(nullptr);
     struct tm *t = localtime(&now);
     char buf[12];
     snprintf(buf, sizeof(buf), "%04d-%02d-%02d", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday);
-    return String(buf);
+    return buf;
 }
 
 String dateInputToStr(const DateInput &d) {
     char buf[12];
     snprintf(buf, sizeof(buf), "%04d-%02d-%02d", d.year, d.month, d.day);
-    return String(buf);
+    return buf;
 }
 
 String dateInputDisplay(const DateInput &d) {
     char buf[12];
     snprintf(buf, sizeof(buf), "%02d.%02d.%04d", d.day, d.month, d.year);
-    return String(buf);
+    return buf;
 }
 
-void initDateInput() {
+void initDateToday() {
     time_t now = time(nullptr);
     struct tm *t = localtime(&now);
     dateInput.day   = t->tm_mday;
@@ -122,49 +107,34 @@ void initDateInput() {
 }
 
 int daysInMonth(int m, int y) {
-    const int days[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+    const int d[] = {31,28,31,30,31,30,31,31,30,31,30,31};
     if (m == 2 && ((y % 4 == 0 && y % 100 != 0) || y % 400 == 0)) return 29;
-    return days[m - 1];
+    return d[m - 1];
 }
 
-void stepField(DateInput &d, int delta) {
-    switch (d.activeField) {
-        case FIELD_DAY:
-            d.day += delta;
-            if (d.day < 1)  d.day = daysInMonth(d.month, d.year);
-            if (d.day > daysInMonth(d.month, d.year)) d.day = 1;
-            break;
-        case FIELD_MONTH:
-            d.month += delta;
-            if (d.month < 1)  d.month = 12;
-            if (d.month > 12) d.month = 1;
-            if (d.day > daysInMonth(d.month, d.year))
-                d.day = daysInMonth(d.month, d.year);
-            break;
-        case FIELD_YEAR:
-            d.year += delta;
-            if (d.year < 2020) d.year = 2020;
-            if (d.year > 2099) d.year = 2099;
-            break;
-        default: break;
-    }
+void clampDate(DateInput &d) {
+    if (d.month < 1)  d.month = 12;
+    if (d.month > 12) d.month = 1;
+    if (d.day < 1)    d.day = daysInMonth(d.month, d.year);
+    if (d.day > daysInMonth(d.month, d.year)) d.day = 1;
+    if (d.year < 2024) d.year = 2024;
+    if (d.year > 2099) d.year = 2099;
 }
 
-void advanceField(DateInput &d) {
-    switch (d.activeField) {
-        case FIELD_DAY:   d.activeField = FIELD_MONTH; break;
-        case FIELD_MONTH: d.activeField = FIELD_YEAR;  break;
-        case FIELD_YEAR:  d.activeField = FIELD_DONE;  break;
-        default: break;
-    }
+int stockForBarcode(const String &bc) {
+    int n = 0;
+    for (const auto &it : inventory.items())
+        if (it.barcode == bc) n += it.quantity;
+    return n;
 }
 
-int stockForBarcode(const String &barcode) {
-    int total = 0;
-    for (const auto &item : inventory.items()) {
-        if (item.barcode == barcode) total += item.quantity;
-    }
-    return total;
+int daysUntilExpiry(const String &ds) {
+    if (ds.length() < 10) return 9999;
+    struct tm tm = {};
+    tm.tm_year = ds.substring(0, 4).toInt() - 1900;
+    tm.tm_mon  = ds.substring(5, 7).toInt() - 1;
+    tm.tm_mday = ds.substring(8, 10).toInt();
+    return (int)(difftime(mktime(&tm), time(nullptr)) / 86400.0);
 }
 
 // ============================================================
@@ -174,29 +144,30 @@ void setup() {
     Serial.begin(115200);
     delay(100);
 
-    if (!display.begin()) {
-        // Display-Init fehlgeschlagen – nur seriell melden, weiter laufen
-        Serial.println("[Display] Init fehlgeschlagen! Pins prüfen.");
-    }
+    if (!display.begin())
+        Serial.println("[Display] Init fehlgeschlagen – Pins prüfen!");
     display.showBooting("Display OK");
-    delay(300);
+    delay(200);
 
-    btnUp.begin();
-    btnDown.begin();
-    btnOk.begin();
+#if BTN_BACK >= 0
+    backBtn.begin();
+#endif
+
+    if (!touch.begin())
+        Serial.println("[Touch] CST816S nicht gefunden – Touch-Pins prüfen!");
+    display.showBooting("Touch OK");
+    delay(200);
 
     scanner.begin();
-    display.showBooting("Scanner bereit");
-    delay(300);
+    display.showBooting("Scanner OK");
+    delay(200);
 
-    // Inventar laden
     display.showBooting("Lade Inventar...");
     if (!inventory.begin()) {
         display.showError("LittleFS Fehler!");
         delay(3000);
     }
 
-    // WiFi verbinden
     setState(State::WIFI_CONNECTING);
     WiFi.setHostname(HOSTNAME);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -206,32 +177,40 @@ void setup() {
 //  loop()
 // ============================================================
 void loop() {
-    bool up = btnUp.pressed();
-    bool dn = btnDown.pressed();
-    bool ok = btnOk.pressed();
+    touch.update();
+    bool tapped = touch.wasTapped();
+    int16_t tx  = touch.tapX();
+    int16_t ty  = touch.tapY();
+    Gesture gest = touch.lastGesture();
+
+    // Hit-Test Helfer: Tap innerhalb eines Rechtecks?
+    auto hit = [&](int16_t bx, int16_t by, int16_t bw, int16_t bh) {
+        return tapped && tx >= bx && tx < bx+bw && ty >= by && ty < by+bh;
+    };
+
+    // Physischer Zurück-Taster (optional)
+    bool hardBack = false;
+#if BTN_BACK >= 0
+    hardBack = backBtn.pressed();
+#endif
 
     switch (state) {
 
     // ── WIFI_CONNECTING ──────────────────────────────────────
     case State::WIFI_CONNECTING: {
         static unsigned long lastDraw = 0;
-        static int wifiAttempt = 0;
-        if (millis() - lastDraw > 400) {
-            display.showWifiConnecting(WIFI_SSID, ++wifiAttempt);
+        static int attempt = 0;
+        if (millis() - lastDraw > 450) {
+            display.showWifiConnecting(WIFI_SSID, ++attempt);
             lastDraw = millis();
         }
         if (WiFi.status() == WL_CONNECTED) {
-            // NTP Zeit synchronisieren
             configTzTime(TZ_STRING, NTP_SERVER, NTP_SERVER2);
             Serial.printf("[WiFi] IP: %s\n", WiFi.localIP().toString().c_str());
-
-            // Web-Server starten
             webInterface = new WebInterface(inventory);
             webInterface->begin();
-
             setState(State::IDLE);
         }
-        // Timeout nach 30 s → trotzdem weiter (kein Web / kein API)
         if (millis() - stateEnter > 30000) {
             Serial.println("[WiFi] Timeout – offline weiter");
             setState(State::IDLE);
@@ -241,32 +220,22 @@ void loop() {
 
     // ── IDLE ─────────────────────────────────────────────────
     case State::IDLE: {
-        if (millis() - lastDisplayRefresh > 30000) {
+        if (screenDirty) {
             display.showIdle(inventory.count(),
                              inventory.expiringIn(WARNING_DAYS),
                              inventory.expiredCount());
-            lastDisplayRefresh = millis();
-        }
-        if (stateEnter == millis() - (millis() - stateEnter)) {
-            // Direkt beim Eintreten zeichnen
-        }
-        // Beim ersten Eintreten sofort zeichnen
-        static State lastState = State::BOOTING;
-        if (lastState != State::IDLE) {
-            display.showIdle(inventory.count(),
-                             inventory.expiringIn(WARNING_DAYS),
-                             inventory.expiredCount());
-            lastState = State::IDLE;
+            screenDirty = false;
         }
 
-        // Barcode gescannt → direkt weiter
+        // Barcode automatisch erkannt
         if (scanner.available()) {
             currentBarcode = scanner.getBarcode();
-            Serial.printf("[Scan] Barcode: %s\n", currentBarcode.c_str());
+            Serial.printf("[Scan] %s\n", currentBarcode.c_str());
             setState(State::FETCHING);
         }
-        // OK-Taste → Inventar durchblättern
-        if (ok && inventory.count() > 0) {
+
+        // Inventar-Button
+        if (hit(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H) && inventory.count() > 0) {
             browseIndex = 0;
             setState(State::INVENTORY_BROWSE);
         }
@@ -274,85 +243,90 @@ void loop() {
     }
 
     // ── SCANNING ─────────────────────────────────────────────
+    // (Fallback: manuell in den Scan-Modus wechseln, z.B. wenn Scanner nicht auto-sendet)
     case State::SCANNING: {
-        static State lastState2 = State::BOOTING;
-        if (lastState2 != State::SCANNING) {
-            display.showScanning();
-            lastState2 = State::SCANNING;
-            scanner.flush();
-        }
+        if (screenDirty) { display.showScanning(); screenDirty = false; }
+
         if (scanner.available()) {
             currentBarcode = scanner.getBarcode();
             setState(State::FETCHING);
         }
-        if (dn) setState(State::IDLE); // ZURÜCK
+
+        // Abbrechen-Button oder Wisch nach links
+        if (hit(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H) || hardBack ||
+            gest == Gesture::SWIPE_LEFT || gest == Gesture::SWIPE_RIGHT) {
+            scanner.flush();
+            setState(State::IDLE);
+        }
         break;
     }
 
     // ── FETCHING ─────────────────────────────────────────────
     case State::FETCHING: {
-        static unsigned long lastDraw2 = 0;
-        if (millis() - lastDraw2 > 500) {
+        static unsigned long lastAnim = 0;
+        if (millis() - lastAnim > 500) {
             display.showFetching(currentBarcode);
-            lastDraw2 = millis();
+            lastAnim = millis();
         }
 
-        if (WiFi.status() == WL_CONNECTED) {
-            currentProduct = foodAPI.lookup(currentBarcode);
-        } else {
-            currentProduct.found   = false;
-            currentProduct.barcode = currentBarcode;
-            currentProduct.name    = "Unbekannt (" + currentBarcode + ")";
-        }
+        currentProduct = (WiFi.status() == WL_CONNECTED)
+            ? foodAPI.lookup(currentBarcode)
+            : ProductInfo{false, currentBarcode, "Unbekannt (" + currentBarcode + ")", "", "", ""};
 
-        initDateInput();
+        initDateToday();
         setState(State::SHOW_PRODUCT);
         break;
     }
 
     // ── SHOW_PRODUCT ─────────────────────────────────────────
     case State::SHOW_PRODUCT: {
-        static State lastSP = State::BOOTING;
-        if (lastSP != State::SHOW_PRODUCT) {
-            int stock = stockForBarcode(currentProduct.barcode);
-            display.showProduct(currentProduct, stock);
-            lastSP = State::SHOW_PRODUCT;
+        if (screenDirty) {
+            display.showProduct(currentProduct, stockForBarcode(currentProduct.barcode));
+            screenDirty = false;
         }
-        if (ok) {
-            // Weiter zur Datum-Eingabe
+
+        // "Hinzufuegen"
+        if (hit(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H))
             setState(State::ENTER_DATE);
-        }
-        if (dn) {
-            // Zurück
+
+        // "Abbrechen" oder Wisch
+        if (hit(TBTN_X, TBTN_SECONDARY_Y, TBTN_W, 40) || hardBack ||
+            gest == Gesture::SWIPE_LEFT || gest == Gesture::SWIPE_RIGHT)
             setState(State::IDLE);
-            static State resetSP = State::BOOTING;
-            lastSP = resetSP;
-        }
         break;
     }
 
     // ── ENTER_DATE ───────────────────────────────────────────
     case State::ENTER_DATE: {
-        static State lastED = State::BOOTING;
-        if (lastED != State::ENTER_DATE) {
-            display.showDateEntry(dateInput, currentProduct.name);
-            lastED = State::ENTER_DATE;
+        if (screenDirty) { display.showDateEntry(dateInput, currentProduct.name); screenDirty = false; }
+
+        bool changed = false;
+
+        // Plus-Buttons (obere Hälfte der Spalte)
+        if (tapped && ty >= DATE_PLUS_Y0 && ty < DATE_PLUS_Y1) {
+            int col = tx / DATE_COL_W;
+            if      (col == 0) { dateInput.day++;   clampDate(dateInput); changed = true; }
+            else if (col == 1) { dateInput.month++;  clampDate(dateInput); changed = true; }
+            else if (col == 2) { dateInput.year++;   clampDate(dateInput); changed = true; }
         }
 
-        bool redraw = false;
-        if (up) { stepField(dateInput, +1); redraw = true; }
-        if (dn) { stepField(dateInput, -1); redraw = true; }
-        if (ok) {
-            advanceField(dateInput);
-            if (dateInput.activeField == FIELD_DONE) {
-                setState(State::SAVING);
-                break;
-            }
-            redraw = true;
+        // Minus-Buttons (untere Hälfte der Spalte)
+        if (tapped && ty >= DATE_MINUS_Y0 && ty < DATE_MINUS_Y1) {
+            int col = tx / DATE_COL_W;
+            if      (col == 0) { dateInput.day--;   clampDate(dateInput); changed = true; }
+            else if (col == 1) { dateInput.month--;  clampDate(dateInput); changed = true; }
+            else if (col == 2) { dateInput.year--;   clampDate(dateInput); changed = true; }
         }
-        if (redraw) {
-            display.showDateEntry(dateInput, currentProduct.name);
-        }
+
+        if (changed) { display.showDateEntry(dateInput, currentProduct.name); }
+
+        // Bestätigen
+        if (hit(TBTN_X, DATE_OK_Y, TBTN_W, TBTN_H))
+            setState(State::SAVING);
+
+        // Abbrechen
+        if (hit(TBTN_X, DATE_BACK_Y, TBTN_W, 40) || hardBack)
+            setState(State::SHOW_PRODUCT);
         break;
     }
 
@@ -370,7 +344,7 @@ void loop() {
             display.showSuccess(item.name, dateInputDisplay(dateInput));
             setState(State::SUCCESS);
         } else {
-            errorMsg = "Speichern fehlgeschlagen";
+            errorMsg = "Speichern fehlgeschlagen!";
             display.showError(errorMsg);
             setState(State::ERROR);
         }
@@ -379,79 +353,58 @@ void loop() {
 
     // ── SUCCESS ──────────────────────────────────────────────
     case State::SUCCESS: {
-        // Nach 2 s automatisch zurück, oder sofort mit Taste
-        if (millis() - stateEnter > 2000 || ok || up || dn) {
+        // Nach 2,5 s automatisch zurück oder bei Tap/Wisch
+        if (millis() - stateEnter > 2500 || tapped || hardBack)
             setState(State::IDLE);
-            // IDLE-Anzeige sofort auffrischen
-            lastDisplayRefresh = 0;
-        }
         break;
     }
 
     // ── ERROR ────────────────────────────────────────────────
     case State::ERROR: {
-        if (ok || millis() - stateEnter > 4000) {
+        if (tapped || hardBack || millis() - stateEnter > 5000)
             setState(State::IDLE);
-        }
         break;
     }
 
     // ── INVENTORY_BROWSE ─────────────────────────────────────
     case State::INVENTORY_BROWSE: {
         const auto &items = inventory.items();
-        if (items.empty()) {
-            setState(State::IDLE);
-            break;
-        }
+        if (items.empty()) { setState(State::IDLE); break; }
 
-        static int lastIdx = -1;
-        if (lastIdx != browseIndex) {
+        if (browseIndex >= (int)items.size()) browseIndex = items.size() - 1;
+
+        if (screenDirty) {
             const auto &it = items[browseIndex];
-
-            // Tage bis Ablauf
-            time_t now = time(nullptr);
-            struct tm tm = {};
-            tm.tm_year = it.expiryDate.substring(0, 4).toInt() - 1900;
-            tm.tm_mon  = it.expiryDate.substring(5, 7).toInt() - 1;
-            tm.tm_mday = it.expiryDate.substring(8, 10).toInt();
-            int daysLeft = (int)(difftime(mktime(&tm), now) / 86400.0);
-
             display.showInventoryItem(browseIndex, items.size(),
                                       it.name, it.expiryDate,
-                                      it.quantity, daysLeft);
-            lastIdx = browseIndex;
+                                      it.quantity, daysUntilExpiry(it.expiryDate));
+            screenDirty = false;
         }
 
-        if (up) {
-            browseIndex = (browseIndex - 1 + items.size()) % items.size();
-            lastIdx = -1;
-        }
-        if (dn) {
+        // Wischen zum Blättern
+        if (gest == Gesture::SWIPE_UP || gest == Gesture::SWIPE_LEFT) {
             browseIndex = (browseIndex + 1) % items.size();
-            lastIdx = -1;
+            screenDirty = true;
         }
-        if (ok) {
-            // Artikel löschen (1 Stück)
+        if (gest == Gesture::SWIPE_DOWN || gest == Gesture::SWIPE_RIGHT) {
+            browseIndex = (browseIndex - 1 + items.size()) % items.size();
+            screenDirty = true;
+        }
+
+        // Löschen-Button
+        if (hit(TBTN_X, INV_DEL_Y, TBTN_W, TBTN_H)) {
             const auto &it = items[browseIndex];
             inventory.removeItem(it.barcode, it.expiryDate);
             if (browseIndex >= (int)inventory.items().size())
                 browseIndex = max(0, (int)inventory.items().size() - 1);
-            lastIdx = -1;
-
             if (inventory.items().empty()) setState(State::IDLE);
+            else screenDirty = true;
         }
-        // Langes Halten von AUF = zurück zur Idle
-        static unsigned long upHold = 0;
-        if (digitalRead(BTN_UP) == LOW) {
-            if (upHold == 0) upHold = millis();
-            if (millis() - upHold > 1500) {
-                upHold = 0;
-                lastIdx = -1;
-                setState(State::IDLE);
-            }
-        } else {
-            upHold = 0;
-        }
+
+        // Zurück-Button
+        if (hit(TBTN_X, INV_BACK_Y, TBTN_W, 36) || hardBack ||
+            gest == Gesture::LONG_PRESS)
+            setState(State::IDLE);
         break;
     }
 

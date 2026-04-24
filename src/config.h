@@ -9,19 +9,17 @@
 
 // ============================================================
 //  Display – Waveshare ESP32-S3 1.64" AMOLED (RM67162, QSPI)
-//  Pins fest auf der Platine verlötet – NICHT ändern
+//  Fest auf der Platine verlötet – NICHT ändern
 // ============================================================
 #define LCD_CS   10
 #define LCD_SCK  12
-#define LCD_D0   11   // MOSI / SDA
+#define LCD_D0   11
 #define LCD_D1   13
 #define LCD_D2   14
 #define LCD_D3    9
 #define LCD_RST  17
-#define LCD_TE   18   // Tearing Effect (optional, für tear-free updates)
+#define LCD_TE   18
 
-// Auflösung – via platformio.ini als DISPLAY_W / DISPLAY_H definiert
-// Fallback falls ohne Build-Flag kompiliert wird:
 #ifndef DISPLAY_W
   #define DISPLAY_W 280
 #endif
@@ -30,21 +28,29 @@
 #endif
 
 // ============================================================
-//  GM861 Barcode-Scanner (Hardware Serial1)
-//  Stecker: GND, VCC (3,3V), TX→GPIO1, RX→GPIO2
-//  Standard-Baudrate GM861: 9600
+//  Touch – CST816S (I2C, auf der Platine integriert)
+//  Pins bitte mit Waveshare-Wiki für dein Modell abgleichen
+// ============================================================
+#define TOUCH_SDA  6
+#define TOUCH_SCL  7
+#define TOUCH_INT  8
+#define TOUCH_RST  21
+
+// ============================================================
+//  Optionaler physischer Taster (ZURÜCK / HOME)
+//  Auf -1 setzen falls kein Taster angeschlossen
+// ============================================================
+#define BTN_BACK   0   // BOOT-Taster auf ESP32-S3 DevKit
+                       // (bereits auf der Platine, kein extra Taster nötig)
+
+// ============================================================
+//  GM861 Barcode-Scanner (Hardware Serial1, UART)
+//  TX des GM861 → GPIO1 (ESP32 RX)
+//  RX des GM861 → GPIO2 (ESP32 TX)
 // ============================================================
 #define BARCODE_RX_PIN   1
 #define BARCODE_TX_PIN   2
 #define BARCODE_BAUD  9600
-
-// ============================================================
-//  Taster (active LOW, interner Pull-up)
-//  Externe Taster zwischen GPIO und GND
-// ============================================================
-#define BTN_UP    3
-#define BTN_DOWN  4
-#define BTN_OK    5
 
 // ============================================================
 //  Open Food Facts API
@@ -56,7 +62,7 @@
 //  Speicher
 // ============================================================
 #define INVENTORY_FILE  "/inventory.json"
-#define MAX_ITEMS       500   // 12 MB LittleFS → viel Platz
+#define MAX_ITEMS       500
 
 // ============================================================
 //  Ablaufwarnungen (Tage)
@@ -72,17 +78,17 @@
 #define TZ_STRING    "CET-1CEST,M3.5.0,M10.5.0/3"
 
 // ============================================================
-//  Display-Farben (RGB565)
-//  AMOLED: schwarz = Pixel aus = kein Stromverbrauch → konsequent
-//  schwarzen Hintergrund nutzen
+//  Display-Farben (RGB565, AMOLED: schwarz = Pixel aus)
 // ============================================================
-#define COLOR_BG        0x0000   // Schwarz (AMOLED-optimal)
-#define COLOR_TEXT      0xFFFF   // Weiß
-#define COLOR_SUBTEXT   0x8410   // Grau
-#define COLOR_OK        0x07E0   // Grün
-#define COLOR_WARN      0xFD20   // Orange
-#define COLOR_DANGER    0xF800   // Rot
-#define COLOR_ACCENT    0x07FF   // Cyan
-#define COLOR_HEADER    0x1926   // Dunkelblau
-#define COLOR_SELECTED  0x0320   // Dunkelgrün (aktives Feld)
-#define COLOR_SURFACE   0x18C3   // Dunkelgrau (Kacheln)
+#define COLOR_BG        0x0000
+#define COLOR_TEXT      0xFFFF
+#define COLOR_SUBTEXT   0x8410
+#define COLOR_OK        0x07E0
+#define COLOR_WARN      0xFD20
+#define COLOR_DANGER    0xF800
+#define COLOR_ACCENT    0x07FF
+#define COLOR_HEADER    0x1926
+#define COLOR_SELECTED  0x0B60
+#define COLOR_SURFACE   0x18C3
+#define COLOR_BTN_OK    0x0640
+#define COLOR_BTN_BACK  0x2945
