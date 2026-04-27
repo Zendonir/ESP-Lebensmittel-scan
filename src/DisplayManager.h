@@ -3,6 +3,7 @@
 #include "config.h"
 #include "FoodAPI.h"
 #include "CustomProducts.h"
+#include "Categories.h"
 
 enum DateField { FIELD_DAY = 0, FIELD_MONTH, FIELD_YEAR, FIELD_DONE };
 
@@ -11,22 +12,22 @@ struct DateInput {
     DateField activeField;
 };
 
-// ── Touch-Button-Konstanten (für Hit-Tests in main.cpp) ──────────
+// ── Touch-Button-Konstanten ──────────────────────────────────
 
-// Universelle Standard-Buttons (SCANNING, SHOW_PRODUCT, SUCCESS, ERROR …)
-static constexpr int16_t TBTN_X  = 10;
-static constexpr int16_t TBTN_W  = 260;
-static constexpr int16_t TBTN_H  = 52;
+// Universelle Buttons
+static constexpr int16_t TBTN_X           = 10;
+static constexpr int16_t TBTN_W           = 260;
+static constexpr int16_t TBTN_H           = 52;
 static constexpr int16_t TBTN_PRIMARY_Y   = 348;
 static constexpr int16_t TBTN_SECONDARY_Y = 408;
 
-// IDLE-Screen (zwei Aktions-Buttons)
-static constexpr int16_t IDLE_LIST_BTN_Y = 300;   // "Aus Liste wählen"
-static constexpr int16_t IDLE_INV_BTN_Y  = 364;   // "Inventar anzeigen"
+// IDLE-Screen
+static constexpr int16_t IDLE_LIST_BTN_Y = 300;
+static constexpr int16_t IDLE_INV_BTN_Y  = 364;
 static constexpr int16_t IDLE_BTN_H      = 56;
 
 // Datumseingabe
-static constexpr int16_t DATE_COL_W    = DISPLAY_W / 3;   // 93px
+static constexpr int16_t DATE_COL_W    = DISPLAY_W / 3;
 static constexpr int16_t DATE_PLUS_Y0  = 90;
 static constexpr int16_t DATE_PLUS_Y1  = 165;
 static constexpr int16_t DATE_VAL_Y0   = 165;
@@ -36,10 +37,17 @@ static constexpr int16_t DATE_MINUS_Y1 = 320;
 static constexpr int16_t DATE_OK_Y     = 330;
 static constexpr int16_t DATE_BACK_Y   = 396;
 
-// Produktliste (scrollbare Liste)
-static constexpr int16_t LIST_ITEM_H    = 50;
-static constexpr int16_t LIST_MAX_VIS   = 7;
-static constexpr int16_t LIST_BACK_BTN_Y = DISPLAY_H - 44;  // 412
+// Kategorien-Grid (2 Spalten × 4 Zeilen)
+static constexpr int16_t CAT_X0      = 8;
+static constexpr int16_t CAT_Y0      = 64;    // nach Header (56px) + 8px
+static constexpr int16_t CAT_BTN_W   = 128;
+static constexpr int16_t CAT_BTN_H   = 88;
+static constexpr int16_t CAT_GAP     = 8;
+
+// Produktliste
+static constexpr int16_t LIST_ITEM_H     = 50;
+static constexpr int16_t LIST_MAX_VIS    = 7;
+static constexpr int16_t LIST_BACK_BTN_Y = DISPLAY_H - 44;
 
 // Inventar-Browser
 static constexpr int16_t INV_DEL_Y    = 355;
@@ -58,8 +66,10 @@ public:
     void showScanning();
     void showFetching(const String &barcode);
     void showProduct(const ProductInfo &info, int stock);
+    void showCategorySelect();
+    void showProductList(const std::vector<CustomProduct> &products,
+                         int offset, const String &category);
     void showDateEntry(const DateInput &date, const String &productName);
-    void showProductList(const std::vector<CustomProduct> &products, int offset);
     void showSuccess(const String &productName, const String &date);
     void showError(const String &msg);
     void showInventoryItem(int index, int total, const String &name,
@@ -80,5 +90,6 @@ private:
                          const String &label, uint16_t bg, uint16_t fg,
                          uint8_t textSz = 2);
     void drawPlusMinusColumn(int col, int value, bool isYear);
+    void drawCategoryIcon(uint8_t catIndex, int16_t cx, int16_t cy);
     String daysLabel(int days);
 };

@@ -5,7 +5,8 @@
 struct CustomProduct {
     String name;
     String brand;
-    String barcode;   // leer wenn kein Barcode vorhanden
+    String barcode;
+    String category;   // muss einem der CATEGORIES[i].name entsprechen
 };
 
 class CustomProducts {
@@ -20,6 +21,9 @@ public:
 
     const std::vector<CustomProduct>& items() const { return _items; }
     int count() const { return _items.size(); }
+
+    // Gefilterte Liste nach Kategorie
+    std::vector<CustomProduct> byCategory(const String &cat) const;
 
 private:
     std::vector<CustomProduct> _items;
