@@ -1,6 +1,7 @@
 #include "WebInterface.h"
 #include "config.h"
 #include "Categories.h"
+#include "html_content.h"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <time.h>
@@ -9,13 +10,10 @@ WebInterface::WebInterface(Inventory &inventory, CustomProducts &customProducts)
     : _server(80), _inventory(inventory), _customProducts(customProducts) {}
 
 void WebInterface::begin() {
-    if (LittleFS.begin(false)) {
-        _server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
-    } else {
-        _server.on("/", HTTP_GET, [](AsyncWebServerRequest *req) {
-            req->send(503, "text/plain", "Filesystem nicht verfügbar");
-        });
-    }
+    // index.html ist im Firmware-Binary eingebettet – kein LittleFS-Upload nötig
+    _server.on("/", HTTP_GET, [](AsyncWebServerRequest *req) {
+        req->send(200, "text/html; charset=utf-8", INDEX_HTML);
+    });
 
     // ── Inventar ─────────────────────────────────────────────
 

@@ -154,17 +154,19 @@ void setup() {
 
     Serial.printf("[PSRAM] Size: %u  Free: %u\n", ESP.getPsramSize(), ESP.getFreePsram());
 
-    bool dispOk = display.begin();
-    Serial.printf("[Display] begin()=%d\n", dispOk);
-    if (!dispOk) Serial.println("[Display] Init fehlgeschlagen!");
-    display.showBooting("Display OK"); delay(200);
-
+    // Touch VOR Display initialisieren: beide teilen GPIO21 als RST.
+    // touch.begin() pulst RST=LOW→HIGH und würde das Display zurücksetzen,
+    // wenn display.begin() schon gelaufen ist.
 #if BTN_BACK >= 0
     backBtn.begin();
 #endif
+    bool touchOk = touch.begin();
+    if (!touchOk) Serial.println("[Touch] CST816S nicht gefunden!");
 
-    if (!touch.begin()) Serial.println("[Touch] CST816S nicht gefunden!");
-    display.showBooting("Touch OK"); delay(200);
+    bool dispOk = display.begin();
+    Serial.printf("[Display] begin()=%d\n", dispOk);
+    if (!dispOk) Serial.println("[Display] Init fehlgeschlagen!");
+    display.showBooting("Display + Touch OK"); delay(300);
 
     scanner.begin();
     display.showBooting("Scanner OK"); delay(200);
