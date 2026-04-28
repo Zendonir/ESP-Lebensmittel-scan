@@ -9,12 +9,18 @@ static constexpr int16_t HDR = 56;
 DisplayManager::DisplayManager() : _bus(nullptr), _panel(nullptr), _gfx(nullptr) {}
 
 bool DisplayManager::begin() {
+    Serial.printf("[Disp] CS=%d SCK=%d D0=%d D1=%d D2=%d D3=%d RST=%d\n",
+                  LCD_CS, LCD_SCK, LCD_D0, LCD_D1, LCD_D2, LCD_D3, LCD_RST);
     _bus   = new Arduino_ESP32QSPI(LCD_CS, LCD_SCK, LCD_D0, LCD_D1, LCD_D2, LCD_D3);
     _panel = new Arduino_CO5300(_bus, LCD_RST, 0, W, H, 20, 0, 180, 24);
     _gfx   = new Arduino_Canvas(W, H, _panel);
-    if (!_gfx->begin()) return false;
+    Serial.printf("[Disp] canvas ptr=%p\n", (void*)_gfx);
+    bool ok = _gfx->begin();
+    Serial.printf("[Disp] gfx->begin()=%d  psram free after=%u\n", ok, ESP.getFreePsram());
+    if (!ok) return false;
     _gfx->fillScreen(COLOR_BG);
     _gfx->flush();
+    Serial.println("[Disp] flush() done");
     _panel->setBrightness(220);
     return true;
 }

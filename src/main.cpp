@@ -110,7 +110,11 @@ int daysUntilExpiry(const String &ds) {
 void setup() {
     Serial.begin(115200); delay(100);
 
-    if (!display.begin()) Serial.println("[Display] Init fehlgeschlagen!");
+    Serial.printf("[PSRAM] Size: %u  Free: %u\n", ESP.getPsramSize(), ESP.getFreePsram());
+
+    bool dispOk = display.begin();
+    Serial.printf("[Display] begin()=%d\n", dispOk);
+    if (!dispOk) Serial.println("[Display] Init fehlgeschlagen!");
     display.showBooting("Display OK"); delay(200);
 
 #if BTN_BACK >= 0
