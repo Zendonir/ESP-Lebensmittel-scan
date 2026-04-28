@@ -6,20 +6,21 @@ static constexpr int16_t HDR = 56;
 
 // ── Init ──────────────────────────────────────────────────────
 
-DisplayManager::DisplayManager() : _bus(nullptr), _gfx(nullptr) {}
+DisplayManager::DisplayManager() : _bus(nullptr), _panel(nullptr), _gfx(nullptr) {}
 
 bool DisplayManager::begin() {
-    _bus = new Arduino_ESP32QSPI(LCD_CS, LCD_SCK, LCD_D0, LCD_D1, LCD_D2, LCD_D3);
-    // CO5300 with hardware-specific offsets for Waveshare ESP32-S3 1.64" AMOLED
-    _gfx = new Arduino_CO5300(_bus, LCD_RST, 0, W, H, 20, 0, 180, 24);
+    _bus   = new Arduino_ESP32QSPI(LCD_CS, LCD_SCK, LCD_D0, LCD_D1, LCD_D2, LCD_D3);
+    _panel = new Arduino_CO5300(_bus, LCD_RST, 0, W, H, 20, 0, 180, 24);
+    _gfx   = new Arduino_Canvas(W, H, _panel);
     if (!_gfx->begin()) return false;
     _gfx->fillScreen(COLOR_BG);
-    _gfx->setBrightness(220);
+    _gfx->flush();
+    _panel->setBrightness(220);
     return true;
 }
 
 void DisplayManager::setBrightness(uint8_t val) {
-    if (_gfx) _gfx->setBrightness(val);
+    if (_panel) _panel->setBrightness(val);
 }
 
 // ── Text-Helfer ───────────────────────────────────────────────
@@ -175,6 +176,7 @@ void DisplayManager::showBooting(const String &msg) {
     _gfx->drawFastHLine(40, H / 2 + 2, W - 80, COLOR_SURFACE);
     if (!msg.isEmpty())
         textCenter(msg, W / 2, H / 2 + 28, 1, COLOR_SUBTEXT);
+    _gfx->flush();
 }
 
 void DisplayManager::showWifiConnecting(const String &ssid, int attempt) {
@@ -187,6 +189,7 @@ void DisplayManager::showWifiConnecting(const String &ssid, int attempt) {
     _gfx->drawRect(20, 158, barW, 12, COLOR_SURFACE);
     if (filled > 0) _gfx->fillRect(20, 158, filled, 12, COLOR_ACCENT);
     textCenter("Bitte warten...", W / 2, 196, 1, COLOR_SUBTEXT);
+    _gfx->flush();
 }
 
 void DisplayManager::showIdle(int total, int expiring, int expired, int customCount) {
@@ -211,6 +214,7 @@ void DisplayManager::showIdle(int total, int expiring, int expired, int customCo
     drawTouchButton(TBTN_X, IDLE_INV_BTN_Y, TBTN_W, IDLE_BTN_H,
                     "Inventar anzeigen", COLOR_BTN_BACK, COLOR_TEXT);
     textCenter("oder Barcode mit GM861 scannen", W / 2, 434, 1, COLOR_SUBTEXT);
+    _gfx->flush();
 }
 
 void DisplayManager::showScanning() {
@@ -224,6 +228,7 @@ void DisplayManager::showScanning() {
     textCenter("EAN13 • EAN8 • QR • DataMatrix", W / 2, 255, 1, COLOR_SUBTEXT);
     drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H,
                     "Abbrechen", COLOR_SURFACE, COLOR_TEXT);
+    _gfx->flush();
 }
 
 void DisplayManager::showFetching(const String &barcode) {
@@ -236,6 +241,7 @@ void DisplayManager::showFetching(const String &barcode) {
     String d = ""; for (int i = 0; i < (dots % 4); i++) d += " .";
     _gfx->fillRect(0, 190, W, 36, COLOR_BG);
     textCenter(d, W / 2, 200, 2, COLOR_TEXT); dots++;
+    _gfx->flush();
 }
 
 void DisplayManager::showProduct(const ProductInfo &info, int stock) {
@@ -256,6 +262,7 @@ void DisplayManager::showProduct(const ProductInfo &info, int stock) {
 
     drawTouchButton(TBTN_X, TBTN_PRIMARY_Y,   TBTN_W, TBTN_H, "Hinzufuegen", COLOR_BTN_OK, COLOR_TEXT);
     drawTouchButton(TBTN_X, TBTN_SECONDARY_Y, TBTN_W, 40,     "Abbrechen",   COLOR_SURFACE, COLOR_SUBTEXT, 1);
+    _gfx->flush();
 }
 
 // ── Kategorien-Auswahl ────────────────────────────────────────
@@ -281,6 +288,7 @@ void DisplayManager::showCategorySelect() {
         // Kategoriename unten
         textCenter(CATEGORIES[i].name, bx + CAT_BTN_W / 2, by + 74, 1, fg, bg);
     }
+    _gfx->flush();
 }
 
 // ── Produktliste (gefiltert nach Kategorie) ───────────────────
@@ -305,6 +313,7 @@ void DisplayManager::showProductList(const std::vector<CustomProduct> &products,
         textCenter("Im Web-Interface hinzufuegen", W / 2, 260, 1, COLOR_SUBTEXT);
         drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H,
                         "Zurueck", COLOR_SURFACE, COLOR_TEXT);
+        _gfx->flush();
         return;
     }
 
@@ -336,6 +345,7 @@ void DisplayManager::showProductList(const std::vector<CustomProduct> &products,
 
     drawTouchButton(TBTN_X, LIST_BACK_BTN_Y, TBTN_W, 40,
                     "Zurueck", COLOR_SURFACE, COLOR_SUBTEXT, 1);
+    _gfx->flush();
 }
 
 // ── Datumseingabe ─────────────────────────────────────────────
@@ -366,6 +376,7 @@ void DisplayManager::showDateEntry(const DateInput &d, const String &productName
 
     drawTouchButton(TBTN_X, DATE_OK_Y,   TBTN_W, TBTN_H, "Bestaetigen", COLOR_BTN_OK, COLOR_TEXT);
     drawTouchButton(TBTN_X, DATE_BACK_Y, TBTN_W, 40,     "Abbrechen",   COLOR_SURFACE, COLOR_SUBTEXT, 1);
+    _gfx->flush();
 }
 
 // ── Erfolg / Fehler ───────────────────────────────────────────
@@ -382,6 +393,7 @@ void DisplayManager::showSuccess(const String &productName, const String &date) 
     textCenter(pn,           W / 2, 245, 2, COLOR_TEXT);
     textCenter("MHD: "+date, W / 2, 275, 1, COLOR_SUBTEXT);
     drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H, "Weiter", COLOR_BTN_BACK, COLOR_TEXT);
+    _gfx->flush();
 }
 
 void DisplayManager::showError(const String &msg) {
@@ -391,6 +403,7 @@ void DisplayManager::showError(const String &msg) {
     textCenter("!", W / 2, 143, 4, COLOR_BG, COLOR_DANGER);
     textCenter(msg, W / 2, 248, 1, COLOR_TEXT);
     drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H, "OK", COLOR_BTN_BACK, COLOR_TEXT);
+    _gfx->flush();
 }
 
 // ── Inventar-Browser ──────────────────────────────────────────
@@ -422,4 +435,5 @@ void DisplayManager::showInventoryItem(int index, int total, const String &name,
     textCenter("< wischen zum Blaettern >", W / 2, 330, 1, COLOR_SURFACE);
     drawTouchButton(TBTN_X, INV_DEL_Y,  TBTN_W, TBTN_H, "Artikel loeschen", COLOR_DANGER, COLOR_TEXT);
     drawTouchButton(TBTN_X, INV_BACK_Y, TBTN_W, 36,     "Zurueck",          COLOR_SURFACE, COLOR_SUBTEXT, 1);
+    _gfx->flush();
 }

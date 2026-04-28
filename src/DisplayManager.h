@@ -77,7 +77,8 @@ public:
 
 private:
     Arduino_DataBus *_bus;
-    Arduino_OLED    *_gfx;
+    Arduino_CO5300  *_panel;
+    Arduino_Canvas  *_gfx;
 
     void textCenter(const String &s, int16_t cx, int16_t cy, uint8_t sz,
                     uint16_t color, uint16_t bg = COLOR_BG);

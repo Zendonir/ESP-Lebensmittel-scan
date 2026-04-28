@@ -8,17 +8,16 @@
 #define HOSTNAME      "lebensmittel-scanner"
 
 // ============================================================
-//  Display – Waveshare ESP32-S3 1.64" AMOLED (RM67162, QSPI)
-//  Fest auf der Platine verlötet – NICHT ändern
+//  Display – Waveshare ESP32-S3 1.64" AMOLED (CO5300, QSPI)
+//  Pins aus GFX-Library Beispiel: WAVESHARE_ESP32_S3_TOUCH_AMOLED_1_64
 // ============================================================
-#define LCD_CS   10
-#define LCD_SCK  12
+#define LCD_CS    9
+#define LCD_SCK  10
 #define LCD_D0   11
-#define LCD_D1   13
-#define LCD_D2   14
-#define LCD_D3    9
-#define LCD_RST  17
-#define LCD_TE   18
+#define LCD_D1   12
+#define LCD_D2   13
+#define LCD_D3   14
+#define LCD_RST  21
 
 #ifndef DISPLAY_W
   #define DISPLAY_W 280
