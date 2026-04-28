@@ -9,8 +9,9 @@ static constexpr int16_t HDR = 56;
 DisplayManager::DisplayManager() : _bus(nullptr), _gfx(nullptr) {}
 
 bool DisplayManager::begin() {
-    _bus = new Arduino_QSPI(LCD_CS, LCD_SCK, LCD_D0, LCD_D1, LCD_D2, LCD_D3);
-    _gfx = new Arduino_RM67162(_bus, LCD_RST, 0, false, W, H);
+    _bus = new Arduino_ESP32QSPI(LCD_CS, LCD_SCK, LCD_D0, LCD_D1, LCD_D2, LCD_D3);
+    // CO5300 with hardware-specific offsets for Waveshare ESP32-S3 1.64" AMOLED
+    _gfx = new Arduino_CO5300(_bus, LCD_RST, 0, W, H, 20, 0, 180, 24);
     if (!_gfx->begin()) return false;
     _gfx->fillScreen(COLOR_BG);
     _gfx->setBrightness(220);
