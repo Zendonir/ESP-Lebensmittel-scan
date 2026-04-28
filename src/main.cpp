@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <LittleFS.h>
+#include <Preferences.h>
 #include <ArduinoJson.h>
 #include <time.h>
 #include "config.h"
@@ -67,31 +68,26 @@ bool         screenDirty      = true;
 
 void setState(State s) { state = s; stateEnter = millis(); screenDirty = true; }
 
-// ── WiFi-Konfiguration (LittleFS) ────────────────────────────
+// ── WiFi-Konfiguration (NVS / Preferences) ───────────────────
+// Nutzt NVS statt LittleFS → funktioniert ohne uploadfs-Flash
 
 struct WifiCfg { String ssid, password; };
 
 WifiCfg loadWifiCfg() {
-    File f = LittleFS.open(WIFI_CONFIG_FILE, "r");
-    if (f) {
-        JsonDocument doc;
-        if (!deserializeJson(doc, f)) {
-            String s = doc["ssid"] | "";
-            String p = doc["password"] | "";
-            f.close();
-            if (!s.isEmpty()) return { s, p };
-        }
-        f.close();
-    }
-    return { WIFI_SSID, WIFI_PASSWORD };
+    Preferences prefs;
+    prefs.begin("wifi", true);
+    String s = prefs.getString("ssid",     WIFI_SSID);
+    String p = prefs.getString("password", WIFI_PASSWORD);
+    prefs.end();
+    return { s, p };
 }
 
 void saveWifiCfg(const String &ssid, const String &password) {
-    File f = LittleFS.open(WIFI_CONFIG_FILE, "w");
-    if (!f) return;
-    JsonDocument doc;
-    doc["ssid"] = ssid; doc["password"] = password;
-    serializeJson(doc, f); f.close();
+    Preferences prefs;
+    prefs.begin("wifi", false);
+    prefs.putString("ssid",     ssid);
+    prefs.putString("password", password);
+    prefs.end();
 }
 
 void startAP() {

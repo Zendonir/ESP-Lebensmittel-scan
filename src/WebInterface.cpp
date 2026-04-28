@@ -2,6 +2,7 @@
 #include "config.h"
 #include "Categories.h"
 #include <LittleFS.h>
+#include <Preferences.h>
 #include <ArduinoJson.h>
 #include <time.h>
 
@@ -441,10 +442,11 @@ void WebInterface::begin() {
     // ── WiFi-Konfiguration ────────────────────────────────────
 
     _server.on("/api/wifi-config", HTTP_GET, [](AsyncWebServerRequest *req) {
-        File f = LittleFS.open(WIFI_CONFIG_FILE, "r");
-        if (!f) { req->send(200,"application/json","{\"ssid\":\"\"}"); return; }
-        String body = f.readString(); f.close();
-        req->send(200,"application/json",body);
+        Preferences prefs;
+        prefs.begin("wifi", true);
+        String ssid = prefs.getString("ssid", "");
+        prefs.end();
+        req->send(200, "application/json", "{\"ssid\":\"" + ssid + "\"}");
     });
 
     _server.on("/api/wifi-config", HTTP_POST,
@@ -460,8 +462,11 @@ void WebInterface::begin() {
             if (ssid.isEmpty()) {
                 req->send(400,"application/json","{\"error\":\"SSID fehlt\"}"); return;
             }
-            File f = LittleFS.open(WIFI_CONFIG_FILE, "w");
-            if (f) { serializeJson(doc, f); f.close(); }
+            Preferences prefs;
+            prefs.begin("wifi", false);
+            prefs.putString("ssid",     ssid);
+            prefs.putString("password", pw);
+            prefs.end();
             req->send(200,"application/json","{\"ok\":true,\"restart\":true}");
             delay(400);
             ESP.restart();
