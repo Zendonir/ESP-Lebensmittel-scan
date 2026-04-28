@@ -117,6 +117,36 @@ void WebInterface::begin() {
         req->send(ok?200:404,"application/json",ok?"{\"ok\":true}":"{\"error\":\"Nicht gefunden\"}");
     });
 
+    // ── WiFi-Konfiguration ────────────────────────────────────
+
+    _server.on("/api/wifi-config", HTTP_GET, [](AsyncWebServerRequest *req) {
+        File f = LittleFS.open(WIFI_CONFIG_FILE, "r");
+        if (!f) { req->send(200,"application/json","{\"ssid\":\"\"}"); return; }
+        String body = f.readString(); f.close();
+        req->send(200,"application/json",body);
+    });
+
+    _server.on("/api/wifi-config", HTTP_POST,
+        [](AsyncWebServerRequest *req) {},
+        nullptr,
+        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonDocument doc;
+            if (deserializeJson(doc,(const char*)data,len)) {
+                req->send(400,"application/json","{\"error\":\"Ungültiges JSON\"}"); return;
+            }
+            String ssid = doc["ssid"] | "";
+            String pw   = doc["password"] | "";
+            if (ssid.isEmpty()) {
+                req->send(400,"application/json","{\"error\":\"SSID fehlt\"}"); return;
+            }
+            File f = LittleFS.open(WIFI_CONFIG_FILE, "w");
+            if (f) { serializeJson(doc, f); f.close(); }
+            req->send(200,"application/json","{\"ok\":true,\"restart\":true}");
+            delay(400);
+            ESP.restart();
+        }
+    );
+
     _server.onNotFound([](AsyncWebServerRequest *req) { req->send(404,"text/plain","Not found"); });
     _server.begin();
     Serial.println("[Web] Server gestartet auf Port 80");

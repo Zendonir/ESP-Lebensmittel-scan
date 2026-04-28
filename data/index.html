@@ -77,6 +77,7 @@
 <nav>
   <button class="active" onclick="switchTab('inv',this)">📦 Inventar</button>
   <button onclick="switchTab('cp',this)">📋 Vorlagen</button>
+  <button onclick="switchTab('wifi',this)">📶 WiFi</button>
 </nav>
 
 <!-- ═══ TAB 1: INVENTAR ═══════════════════════════════════════ -->
@@ -160,6 +161,32 @@
   </div>
 </div>
 
+<!-- ═══ TAB 3: WIFI ═══════════════════════════════════════════ -->
+<div id="wifi" class="panel">
+  <div style="padding:1.5rem;max-width:480px">
+    <h2 style="margin-bottom:1rem">WLAN konfigurieren</h2>
+    <p style="color:var(--muted);margin-bottom:1.5rem;font-size:.9rem">
+      Zugangsdaten werden auf dem Gerät gespeichert. Nach dem Speichern startet das Gerät neu.
+    </p>
+    <div id="wifiCurrent" style="background:var(--surface);border:1px solid var(--border);
+         border-radius:.75rem;padding:1rem;margin-bottom:1.5rem;font-size:.9rem">
+      Aktuell: <span id="wifiCurrentSsid" style="color:var(--accent)">…</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.75rem">
+      <label style="font-size:.85rem;color:var(--muted)">WLAN-Name (SSID)
+        <input type="text" id="wifiSsid" placeholder="Mein WLAN" maxlength="64"
+               style="display:block;width:100%;margin-top:.3rem">
+      </label>
+      <label style="font-size:.85rem;color:var(--muted)">Passwort
+        <input type="text" id="wifiPw" placeholder="Passwort" maxlength="64"
+               style="display:block;width:100%;margin-top:.3rem">
+      </label>
+      <button class="btn btn-ok" onclick="saveWifi()">Speichern &amp; Neustart</button>
+    </div>
+    <div id="wifiMsg" style="margin-top:.75rem;font-size:.85rem"></div>
+  </div>
+</div>
+
 <script>
 /* ── Kategorie-Farben (passend zu Categories.h) ─────────────── */
 const CAT_COLORS = {
@@ -180,6 +207,37 @@ function switchTab(id, btn) {
   document.getElementById(id).classList.add('active');
   btn.classList.add('active');
   if (id==='cp') loadCP();
+  if (id==='wifi') loadWifi();
+}
+
+async function loadWifi() {
+  try {
+    const r = await fetch('/api/wifi-config');
+    const d = await r.json();
+    document.getElementById('wifiCurrentSsid').textContent = d.ssid || '(nicht konfiguriert)';
+    if (d.ssid) document.getElementById('wifiSsid').value = d.ssid;
+  } catch(e) {}
+}
+
+async function saveWifi() {
+  const ssid = document.getElementById('wifiSsid').value.trim();
+  const pw   = document.getElementById('wifiPw').value;
+  const msg  = document.getElementById('wifiMsg');
+  if (!ssid) { msg.style.color='var(--danger)'; msg.textContent='SSID fehlt!'; return; }
+  msg.style.color='var(--muted)'; msg.textContent='Speichere…';
+  try {
+    const r = await fetch('/api/wifi-config', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ssid, password: pw})
+    });
+    if (r.ok) {
+      msg.style.color='var(--ok)';
+      msg.textContent='Gespeichert! Gerät startet neu…';
+    } else {
+      const d = await r.json();
+      msg.style.color='var(--danger)'; msg.textContent=d.error||'Fehler';
+    }
+  } catch(e) { msg.style.color='var(--danger)'; msg.textContent='Verbindungsfehler'; }
 }
 
 /* ── Helfer ─────────────────────────────────────────────────── */

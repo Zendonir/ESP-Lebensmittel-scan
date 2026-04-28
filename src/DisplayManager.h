@@ -74,6 +74,7 @@ public:
     void showError(const String &msg);
     void showInventoryItem(int index, int total, const String &name,
                            const String &expiry, int qty, int daysLeft);
+    void showAPMode(const String &ssid, const String &password, const String &ip);
 
 private:
     Arduino_DataBus *_bus;

@@ -1,5 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <LittleFS.h>
+#include <ArduinoJson.h>
 #include <time.h>
 #include "config.h"
 #include "BarcodeScanner.h"
@@ -14,6 +16,7 @@
 enum class State {
     BOOTING,
     WIFI_CONNECTING,
+    AP_MODE,
     IDLE,
     SCANNING,
     FETCHING,
@@ -63,6 +66,45 @@ unsigned long stateEnter      = 0;
 bool         screenDirty      = true;
 
 void setState(State s) { state = s; stateEnter = millis(); screenDirty = true; }
+
+// ── WiFi-Konfiguration (LittleFS) ────────────────────────────
+
+struct WifiCfg { String ssid, password; };
+
+WifiCfg loadWifiCfg() {
+    File f = LittleFS.open(WIFI_CONFIG_FILE, "r");
+    if (f) {
+        JsonDocument doc;
+        if (!deserializeJson(doc, f)) {
+            String s = doc["ssid"] | "";
+            String p = doc["password"] | "";
+            f.close();
+            if (!s.isEmpty()) return { s, p };
+        }
+        f.close();
+    }
+    return { WIFI_SSID, WIFI_PASSWORD };
+}
+
+void saveWifiCfg(const String &ssid, const String &password) {
+    File f = LittleFS.open(WIFI_CONFIG_FILE, "w");
+    if (!f) return;
+    JsonDocument doc;
+    doc["ssid"] = ssid; doc["password"] = password;
+    serializeJson(doc, f); f.close();
+}
+
+void startAP() {
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(AP_SSID, AP_PASSWORD);
+    Serial.printf("[WiFi] AP: %s  PW: %s  IP: %s\n",
+                  AP_SSID, AP_PASSWORD,
+                  WiFi.softAPIP().toString().c_str());
+    webInterface = new WebInterface(inventory, customProducts);
+    webInterface->begin();
+    setState(State::AP_MODE);
+}
 
 // ── Hilfs-Funktionen ──────────────────────────────────────────
 
@@ -132,8 +174,13 @@ void setup() {
     customProducts.begin();
 
     setState(State::WIFI_CONNECTING);
-    WiFi.setHostname(HOSTNAME);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    auto wCfg = loadWifiCfg();
+    if (wCfg.ssid.isEmpty()) {
+        startAP(); // Keine Zugangsdaten → sofort AP
+    } else {
+        WiFi.setHostname(HOSTNAME);
+        WiFi.begin(wCfg.ssid.c_str(), wCfg.password.c_str());
+    }
 }
 
 // ── loop() ────────────────────────────────────────────────────
@@ -159,7 +206,11 @@ void loop() {
     // ── WIFI_CONNECTING ──────────────────────────────────────
     case State::WIFI_CONNECTING: {
         static unsigned long lastDraw = 0; static int attempt = 0;
-        if (millis()-lastDraw > 450) { display.showWifiConnecting(WIFI_SSID,++attempt); lastDraw=millis(); }
+        static String connectSsid = WiFi.SSID();
+        if (millis()-lastDraw > 450) {
+            display.showWifiConnecting(connectSsid.isEmpty() ? "..." : connectSsid, ++attempt);
+            lastDraw = millis();
+        }
         if (WiFi.status()==WL_CONNECTED) {
             configTzTime(TZ_STRING, NTP_SERVER, NTP_SERVER2);
             Serial.printf("[WiFi] IP: %s\n", WiFi.localIP().toString().c_str());
@@ -167,7 +218,25 @@ void loop() {
             webInterface->begin();
             setState(State::IDLE);
         }
-        if (millis()-stateEnter > 30000) { Serial.println("[WiFi] Timeout"); setState(State::IDLE); }
+        if (millis()-stateEnter > 20000) { startAP(); }
+        break;
+    }
+
+    // ── AP_MODE ──────────────────────────────────────────────
+    case State::AP_MODE: {
+        if (screenDirty) {
+            display.showAPMode(AP_SSID, AP_PASSWORD, WiFi.softAPIP().toString());
+            screenDirty = false;
+        }
+        if (scanner.available()) {
+            currentBarcode = scanner.getBarcode();
+            setState(State::FETCHING);
+        }
+        if (hit(TBTN_X, IDLE_LIST_BTN_Y, TBTN_W, IDLE_BTN_H) && customProducts.count()>0)
+            setState(State::CATEGORY_SELECT);
+        if (hit(TBTN_X, IDLE_INV_BTN_Y, TBTN_W, IDLE_BTN_H) && inventory.count()>0) {
+            browseIndex=0; setState(State::INVENTORY_BROWSE);
+        }
         break;
     }
 

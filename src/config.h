@@ -1,11 +1,18 @@
 #pragma once
 
 // ============================================================
-//  WiFi – BITTE ANPASSEN
+//  WiFi – BITTE ANPASSEN (oder leer lassen und per AP konfigurieren)
 // ============================================================
-#define WIFI_SSID     "DeinWiFiName"
-#define WIFI_PASSWORD "DeinWiFiPasswort"
+#define WIFI_SSID     ""
+#define WIFI_PASSWORD ""
 #define HOSTNAME      "lebensmittel-scanner"
+
+// ============================================================
+//  WiFi Access Point – wenn kein WLAN konfiguriert / Timeout
+// ============================================================
+#define AP_SSID     "Lebensmittel-Scanner"
+#define AP_PASSWORD "12345678"
+#define WIFI_CONFIG_FILE "/wifi_config.json"
 
 // ============================================================
 //  Display – Waveshare ESP32-S3 1.64" AMOLED (CO5300, QSPI)

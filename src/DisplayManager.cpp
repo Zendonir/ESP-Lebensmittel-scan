@@ -443,3 +443,23 @@ void DisplayManager::showInventoryItem(int index, int total, const String &name,
     drawTouchButton(TBTN_X, INV_BACK_Y, TBTN_W, 36,     "Zurueck",          COLOR_SURFACE, COLOR_SUBTEXT, 1);
     _gfx->flush();
 }
+
+// ── AP-Modus ──────────────────────────────────────────────────
+
+void DisplayManager::showAPMode(const String &ssid, const String &password, const String &ip) {
+    _gfx->fillScreen(COLOR_BG);
+    drawHeader("WiFi Einrichtung", COLOR_WARN);
+    textCenter("Kein WLAN konfiguriert!", W / 2,  82, 1, COLOR_WARN);
+    textCenter("Mit diesem Netz verbinden:", W / 2, 108, 1, COLOR_SUBTEXT);
+    textCenter(ssid,     W / 2, 148, 2, COLOR_ACCENT);
+    textCenter("Passwort:", W / 2, 182, 1, COLOR_SUBTEXT);
+    textCenter(password, W / 2, 214, 2, COLOR_TEXT);
+    _gfx->drawFastHLine(20, 244, W - 40, COLOR_SURFACE);
+    textCenter("Dann Browser oeffnen:", W / 2, 268, 1, COLOR_SUBTEXT);
+    textCenter("http://" + ip, W / 2, 298, 1, COLOR_ACCENT);
+    drawTouchButton(TBTN_X, IDLE_LIST_BTN_Y, TBTN_W, IDLE_BTN_H,
+                    "Aus Liste waehlen", COLOR_BTN_OK, COLOR_TEXT);
+    drawTouchButton(TBTN_X, IDLE_INV_BTN_Y, TBTN_W, IDLE_BTN_H,
+                    "Inventar anzeigen", COLOR_BTN_BACK, COLOR_TEXT);
+    _gfx->flush();
+}
