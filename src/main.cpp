@@ -294,7 +294,7 @@ void loop() {
             screenDirty=false;
         }
         if (hit(TBTN_X,TBTN_PRIMARY_Y,TBTN_W,TBTN_H))   setState(State::ENTER_DATE);
-        if (hit(TBTN_X,TBTN_SECONDARY_Y,TBTN_W,40) || hardBack ||
+        if (hit(TBTN_X,TBTN_SECONDARY_Y,TBTN_W,TBTN_H) || hardBack ||
             gest==Gesture::SWIPE_LEFT || gest==Gesture::SWIPE_RIGHT)
             setState(State::IDLE);
         break;
@@ -304,16 +304,15 @@ void loop() {
     case State::CATEGORY_SELECT: {
         if (screenDirty) { display.showCategorySelect(); screenDirty=false; }
 
-        // Tap in das 2×4 Kachel-Grid
-        if (tapped && ty >= CAT_Y0 && ty < CAT_Y0 + 4*(CAT_BTN_H+CAT_GAP)) {
+        // Tap in das 4×2 Kachel-Grid (Landscape)
+        if (tapped && ty >= CAT_Y0 && ty < CAT_Y0 + 2*(CAT_BTN_H+CAT_GAP)) {
             int col = (tx - CAT_X0) / (CAT_BTN_W + CAT_GAP);
             int row = (ty - CAT_Y0) / (CAT_BTN_H + CAT_GAP);
-            if (col>=0 && col<2 && row>=0 && row<4) {
-                // Prüfen ob Tap wirklich auf Button (nicht im Spalt)
+            if (col>=0 && col<4 && row>=0 && row<2) {
                 int16_t bx = CAT_X0 + col*(CAT_BTN_W+CAT_GAP);
                 int16_t by = CAT_Y0 + row*(CAT_BTN_H+CAT_GAP);
                 if (tx>=bx && tx<bx+CAT_BTN_W && ty>=by && ty<by+CAT_BTN_H) {
-                    selectedCategory = CATEGORIES[row*2+col].name;
+                    selectedCategory = CATEGORIES[row*4+col].name;
                     listOffset = 0;
                     setState(State::PRODUCT_LIST);
                 }
@@ -335,8 +334,8 @@ void loop() {
         }
 
         // Tap auf einen Listen-Eintrag
-        if (tapped && ty >= 56 && ty < 56 + LIST_MAX_VIS*LIST_ITEM_H) {
-            int idx = listOffset + (ty-56)/LIST_ITEM_H;
+        if (tapped && ty >= LIST_ITEMS_Y && ty < LIST_ITEMS_Y + LIST_MAX_VIS*LIST_ITEM_H) {
+            int idx = listOffset + (ty-LIST_ITEMS_Y)/LIST_ITEM_H;
             if (idx < (int)filtered.size()) {
                 const auto &p = filtered[idx];
                 currentProduct = { true, p.barcode, p.name, p.brand, "", "" };
@@ -375,10 +374,9 @@ void loop() {
             else if (col==2){dateInput.year--;   clampDate(dateInput);changed=true;}
         }
         if (changed) display.showDateEntry(dateInput,currentProduct.name);
-        if (hit(TBTN_X,DATE_OK_Y,TBTN_W,TBTN_H)) setState(State::SAVING);
-        if (hit(TBTN_X,DATE_BACK_Y,TBTN_W,40) || hardBack) {
-            // Zurück: je nach Herkunft
-            setState(currentProduct.barcode.isEmpty() ? State::PRODUCT_LIST : State::SHOW_PRODUCT);
+        if (hit(DATE_OK_X, DATE_BTN_Y, DATE_OK_W, DATE_BTN_H)) setState(State::SAVING);
+        if (hit(DATE_BACK_X, DATE_BTN_Y, DATE_BACK_W, DATE_BTN_H) || hardBack) {
+            setState(selectedCategory.isEmpty() ? State::SHOW_PRODUCT : State::PRODUCT_LIST);
         }
         break;
     }
@@ -433,7 +431,7 @@ void loop() {
             browseIndex=min(browseIndex,max(0,(int)inventory.items().size()-1));
             if (inventory.items().empty()) setState(State::IDLE); else screenDirty=true;
         }
-        if (hit(TBTN_X,INV_BACK_Y,TBTN_W,36) || hardBack || gest==Gesture::LONG_PRESS)
+        if (hit(TBTN_X,INV_BACK_Y,TBTN_W,TBTN_H) || hardBack || gest==Gesture::LONG_PRESS)
             setState(State::IDLE);
         break;
     }

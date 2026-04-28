@@ -12,46 +12,52 @@ struct DateInput {
     DateField activeField;
 };
 
-// ── Touch-Button-Konstanten ──────────────────────────────────
+// ── Touch-Button-Konstanten (Landscape 456×280) ──────────────
 
-// Universelle Buttons
-static constexpr int16_t TBTN_X           = 10;
-static constexpr int16_t TBTN_W           = 260;
-static constexpr int16_t TBTN_H           = 52;
-static constexpr int16_t TBTN_PRIMARY_Y   = 348;
-static constexpr int16_t TBTN_SECONDARY_Y = 408;
+// Universelle Buttons (volle Breite, am unteren Rand)
+static constexpr int16_t TBTN_X           = 8;
+static constexpr int16_t TBTN_W           = 440;
+static constexpr int16_t TBTN_H           = 44;
+static constexpr int16_t TBTN_PRIMARY_Y   = 228;   // unterster Button
+static constexpr int16_t TBTN_SECONDARY_Y = 176;   // Button darüber (8px Abstand)
 
 // IDLE-Screen
-static constexpr int16_t IDLE_LIST_BTN_Y = 300;
-static constexpr int16_t IDLE_INV_BTN_Y  = 364;
-static constexpr int16_t IDLE_BTN_H      = 56;
+static constexpr int16_t IDLE_LIST_BTN_Y = 172;
+static constexpr int16_t IDLE_INV_BTN_Y  = 220;
+static constexpr int16_t IDLE_BTN_H      = 40;
 
-// Datumseingabe
-static constexpr int16_t DATE_COL_W    = DISPLAY_W / 3;
-static constexpr int16_t DATE_PLUS_Y0  = 90;
-static constexpr int16_t DATE_PLUS_Y1  = 165;
-static constexpr int16_t DATE_VAL_Y0   = 165;
-static constexpr int16_t DATE_VAL_Y1   = 245;
-static constexpr int16_t DATE_MINUS_Y0 = 245;
-static constexpr int16_t DATE_MINUS_Y1 = 320;
-static constexpr int16_t DATE_OK_Y     = 330;
-static constexpr int16_t DATE_BACK_Y   = 396;
+// Datumseingabe – 3 Spalten à 152 px, große Touch-Flächen
+static constexpr int16_t DATE_COL_W    = DISPLAY_W / 3;  // 152
+static constexpr int16_t DATE_PLUS_Y0  = 58;
+static constexpr int16_t DATE_PLUS_Y1  = 114;
+static constexpr int16_t DATE_VAL_Y0   = 116;
+static constexpr int16_t DATE_VAL_Y1   = 190;
+static constexpr int16_t DATE_MINUS_Y0 = 192;
+static constexpr int16_t DATE_MINUS_Y1 = 238;
+// OK/Abbrechen: nebeneinander am unteren Rand
+static constexpr int16_t DATE_BTN_Y    = 242;
+static constexpr int16_t DATE_BTN_H    = 34;
+static constexpr int16_t DATE_BACK_X   = 8;
+static constexpr int16_t DATE_BACK_W   = 140;
+static constexpr int16_t DATE_OK_X     = 156;
+static constexpr int16_t DATE_OK_W     = 292;
 
-// Kategorien-Grid (2 Spalten × 4 Zeilen)
-static constexpr int16_t CAT_X0      = 8;
-static constexpr int16_t CAT_Y0      = 64;    // nach Header (56px) + 8px
-static constexpr int16_t CAT_BTN_W   = 128;
-static constexpr int16_t CAT_BTN_H   = 88;
+// Kategorien-Grid (4 Spalten × 2 Zeilen)
+static constexpr int16_t CAT_X0      = 4;
+static constexpr int16_t CAT_Y0      = 44;
+static constexpr int16_t CAT_BTN_W   = 106;
+static constexpr int16_t CAT_BTN_H   = 106;
 static constexpr int16_t CAT_GAP     = 8;
 
 // Produktliste
-static constexpr int16_t LIST_ITEM_H     = 50;
-static constexpr int16_t LIST_MAX_VIS    = 7;
-static constexpr int16_t LIST_BACK_BTN_Y = DISPLAY_H - 44;
+static constexpr int16_t LIST_ITEMS_Y    = 40;
+static constexpr int16_t LIST_ITEM_H     = 44;
+static constexpr int16_t LIST_MAX_VIS    = 4;
+static constexpr int16_t LIST_BACK_BTN_Y = 220;
 
 // Inventar-Browser
-static constexpr int16_t INV_DEL_Y    = 355;
-static constexpr int16_t INV_BACK_Y   = 415;
+static constexpr int16_t INV_DEL_Y  = 228;
+static constexpr int16_t INV_BACK_Y = 176;
 
 class DisplayManager {
 public:
