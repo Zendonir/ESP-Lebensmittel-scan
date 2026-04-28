@@ -4,10 +4,6 @@
 #include <time.h>
 
 bool Inventory::begin() {
-    if (!LittleFS.begin(true)) {
-        Serial.println("[Inventory] LittleFS mount failed");
-        return false;
-    }
     return load();
 }
 

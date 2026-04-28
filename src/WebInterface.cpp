@@ -9,7 +9,13 @@ WebInterface::WebInterface(Inventory &inventory, CustomProducts &customProducts)
     : _server(80), _inventory(inventory), _customProducts(customProducts) {}
 
 void WebInterface::begin() {
-    _server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
+    if (LittleFS.begin(false)) {
+        _server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
+    } else {
+        _server.on("/", HTTP_GET, [](AsyncWebServerRequest *req) {
+            req->send(503, "text/plain", "Filesystem nicht verfügbar");
+        });
+    }
 
     // ── Inventar ─────────────────────────────────────────────
 

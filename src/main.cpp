@@ -170,8 +170,15 @@ void setup() {
     display.showBooting("Scanner OK"); delay(200);
 
     display.showBooting("Lade Daten...");
-    if (!inventory.begin()) Serial.println("[Inventory] Fehler!");
-    customProducts.begin();
+    if (!LittleFS.begin(true)) {
+        Serial.println("[FS] LittleFS mount failed – kein persistenter Speicher");
+        display.showBooting("FS-Fehler!");
+        delay(1000);
+    } else {
+        Serial.println("[FS] LittleFS OK");
+        if (!inventory.begin()) Serial.println("[Inventory] Fehler!");
+        customProducts.begin();
+    }
 
     setState(State::WIFI_CONNECTING);
     auto wCfg = loadWifiCfg();
