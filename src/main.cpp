@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <LittleFS.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
@@ -403,23 +404,20 @@ void loop() {
         Serial.printf("[Scan] %s\n", bc.c_str());
 
         if (state == State::POWER_SAVE) {
-            // Aufwecken, Barcode wird nach Rückkehr erneut gescannt
             display.setBrightness(220);
             setState(State::MAIN);
         } else {
-            // Label-Barcode (L00001 … L99999) → Auslagerung
             bool isLabel = (bc.length() == 6 && bc[0] == 'L');
             const InventoryItem *found = isLabel ? inventory.findByLabel(bc) : nullptr;
             if (found) {
                 retrieveItem = *found;
                 setState(State::RETRIEVE);
             } else {
-                // Normaler Produkt-Barcode → Online-Suche
                 currentBarcode = bc;
                 setState(State::FETCHING);
             }
         }
-        return; // Verarbeitung in nächstem loop()-Aufruf
+        return;
     }
 
     // ── Power-Save-Prüfung ───────────────────────────────────
@@ -467,7 +465,6 @@ void loop() {
             display.showAPMode(AP_SSID, AP_PASSWORD, WiFi.softAPIP().toString());
             screenDirty = false;
         }
-        // Zur Produktliste wechseln
         if (hit(TBTN_X, IDLE_LIST_BTN_Y, TBTN_W, IDLE_BTN_H))
             setState(State::MAIN);
         if (hit(TBTN_X, IDLE_INV_BTN_Y, TBTN_W, IDLE_BTN_H) && inventory.count()>0) {
@@ -483,7 +480,6 @@ void loop() {
             String catName = (currentCatIndex < (int)g_categories.size())
                              ? g_categories[currentCatIndex].name : "";
             mainProducts = customProducts.byCategory(catName);
-            // Inventar-Zähler je Kategorie für Tab-Anzeige
             std::vector<int> catCounts;
             catCounts.reserve(g_categories.size());
             for (const auto &cat : g_categories)
@@ -493,7 +489,6 @@ void loop() {
                              catCounts, warnCount, WiFi.status() == WL_CONNECTED);
             screenDirty = false;
         }
-        // Tab-Tap (obere Leiste) – dynamische Breite
         if (tapped && ty < TABS_H) {
             int nCats  = max(1, (int)g_categories.size());
             int newCat = tx / (DISPLAY_W / nCats);
@@ -504,7 +499,6 @@ void loop() {
             }
             break;
         }
-        // Produkt antippen → Datumseingabe (mit defaultDays Auto-MHD)
         int relY = ty - MAIN_LIST_Y;
         if (tapped && relY >= 0 && relY < MAIN_MAX_VIS * MAIN_ITEM_H) {
             int idx = mainOffset + relY / MAIN_ITEM_H;
@@ -513,7 +507,6 @@ void loop() {
                 currentProduct = { true, p.barcode, p.name, p.brand, "", "" };
                 currentBarcode = p.barcode;
                 if (p.defaultDays > 0) {
-                    // MHD automatisch = heute + defaultDays
                     time_t future = time(nullptr) + (time_t)p.defaultDays * 86400;
                     struct tm *ft = localtime(&future);
                     dateInput = { ft->tm_mday, ft->tm_mon+1, ft->tm_year+1900, FIELD_DAY };
@@ -524,11 +517,9 @@ void loop() {
                 break;
             }
         }
-        // "Lager"-Button (unten rechts)
         if (tapped && ty >= MAIN_HINT_Y && tx >= MAIN_INV_X && inventory.count()>0) {
             browseIndex=0; setState(State::INVENTORY_BROWSE); break;
         }
-        // Scrollen
         if (gest==Gesture::SWIPE_UP || gest==Gesture::SWIPE_LEFT) {
             int maxOff = max(0,(int)mainProducts.size()-MAIN_MAX_VIS);
             if (mainOffset<maxOff) { mainOffset++; screenDirty=true; }
@@ -543,7 +534,6 @@ void loop() {
     case State::FETCHING: {
         static unsigned long lastAnim=0;
         if (millis()-lastAnim > 500) { display.showFetching(currentBarcode); lastAnim=millis(); }
-        // Cache-Lookup (offline + schnell)
         ProductInfo cached = foodCache.get(currentBarcode);
         if (cached.found) {
             currentProduct = cached;
@@ -633,14 +623,11 @@ void loop() {
 
     // ── SUCCESS ──────────────────────────────────────────────
     case State::SUCCESS: {
-        // "Nochmal drucken" Button (linke Hälfte)
         int16_t halfW = (TBTN_W - 4) / 2;
         if (hit(TBTN_X, 228, halfW, TBTN_H)) {
-            // Neu drucken: neuen Label-Code generieren + erneut in PRINTING
             setState(State::PRINTING);
             break;
         }
-        // "Weiter" Button (rechte Hälfte) oder Auto-Advance nach 8s
         if (hit(TBTN_X + (TBTN_W + 4) / 2, 228, halfW, TBTN_H) ||
             hardBack || millis()-stateEnter > 8000) {
             setState(State::MAIN);
@@ -665,7 +652,6 @@ void loop() {
             screenDirty = false;
         }
         if (hit(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H)) {
-            // Lagerdauer = -(daysUntilExpiry(addedDate)) da addedDate in Vergangenheit
             int storageDays = max(0, -daysUntilExpiry(retrieveItem.addedDate));
             storageStats.record(retrieveItem, todayStr(), storageDays);
             shoppingList.add(retrieveItem.name, retrieveItem.category);
@@ -709,7 +695,7 @@ void loop() {
 
     // ── POWER_SAVE ───────────────────────────────────────────
     case State::POWER_SAVE: {
-        if (screenDirty) screenDirty = false;  // Display bleibt schwarz
+        if (screenDirty) screenDirty = false;
         if (tapped) {
             lastActivity = millis();
             display.setBrightness(220);
