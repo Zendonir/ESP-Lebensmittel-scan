@@ -6,8 +6,29 @@
 #include <LittleFS.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
-#include <ElegantOTA.h>
+#include <Update.h>
 #include <time.h>
+
+static const char OTA_PAGE_HTML[] = R"HTML(<!DOCTYPE html>
+<html lang="de"><head><meta charset="UTF-8">
+<title>OTA Update</title>
+<style>body{font-family:system-ui;background:#111827;color:#f9fafb;
+display:flex;justify-content:center;padding:3rem;}
+.box{background:#1f2937;padding:2rem;border-radius:.75rem;max-width:420px;width:100%;}
+h2{margin-bottom:1.5rem;}p{color:#9ca3af;font-size:.9rem;margin-bottom:1rem;}
+input[type=file]{display:block;margin:1rem 0;color:#f9fafb;}
+button{background:#3b82f6;color:white;border:none;padding:.65rem 1.5rem;
+border-radius:.5rem;cursor:pointer;width:100%;font-size:1rem;}
+a{color:#3b82f6;font-size:.85rem;display:block;margin-top:1rem;text-align:center;}
+</style></head><body><div class="box">
+<h2>&#x2B06; Firmware-Update</h2>
+<p>.bin-Datei aus dem PlatformIO-Build (.pio/build/…/firmware.bin)</p>
+<form method="POST" action="/ota" enctype="multipart/form-data">
+<input type="file" name="firmware" accept=".bin" required>
+<button type="submit">Firmware flashen</button>
+</form>
+<a href="/">&#x2190; Zur&uuml;ck</a>
+</div></body></html>)HTML";
 
 static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
 <html lang="de">
@@ -95,7 +116,7 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
   <button onclick="switchTab('shop',this)">&#x1F6D2; Einkauf</button>
   <button onclick="switchTab('stats',this)">&#x1F4CA; Statistik</button>
   <button onclick="switchTab('system',this)">&#x1F4BE; System</button>
-  <button onclick="location.href='/update'" style="margin-left:auto">&#x2B06; OTA</button>
+  <button onclick="location.href='/ota'" style="margin-left:auto">&#x2B06; OTA</button>
 </nav>
 <div id="inv" class="panel active">
   <div class="stats">
@@ -1284,12 +1305,49 @@ void WebInterface::begin() {
 
     _server.onNotFound([](AsyncWebServerRequest *req) { req->send(404,"text/plain","Not found"); });
 
-    // OTA-Update unter /update (Benutzer: admin, PW aus NVS)
+    // OTA-Update unter /ota (Basic-Auth: admin / NVS-Passwort)
     {
         Preferences p; p.begin("ota", true);
         String pw = p.getString("password", "lebensmittel");
         p.end();
-        ElegantOTA.begin(&_server, "admin", pw.c_str());
+
+        _server.on("/ota", HTTP_GET, [pw](AsyncWebServerRequest *req) {
+            if (!req->authenticate("admin", pw.c_str()))
+                return req->requestAuthentication();
+            req->send_P(200, "text/html", OTA_PAGE_HTML);
+        });
+
+        _server.on("/ota", HTTP_POST,
+            [pw](AsyncWebServerRequest *req) {
+                if (!req->authenticate("admin", pw.c_str()))
+                    return req->requestAuthentication();
+                bool ok = !Update.hasError();
+                String body = ok
+                    ? String(F("<html><body style='font-family:system-ui;background:#111827;color:#10b981;padding:3rem'>"
+                               "<h2>&#x2713; Update erfolgreich! Neustart in 5&nbsp;s&hellip;</h2>"
+                               "<script>setTimeout(()=>location.href='/',6000)</script></body></html>"))
+                    : (String(F("<html><body style='font-family:system-ui;background:#111827;color:#ef4444;padding:3rem'>"
+                                "<h2>&#x26A0; Fehler: ")) + Update.errorString() + F("</h2></body></html>"));
+                auto *resp = req->beginResponse(200, "text/html", body);
+                resp->addHeader("Connection", "close");
+                req->send(resp);
+                if (ok) { delay(300); ESP.restart(); }
+            },
+            [](AsyncWebServerRequest*, String filename, size_t index,
+               uint8_t *data, size_t len, bool final) {
+                if (!index) {
+                    Serial.printf("[OTA] Start: %s\n", filename.c_str());
+                    Update.begin(UPDATE_SIZE_UNKNOWN);
+                }
+                Update.write(data, len);
+                if (final) {
+                    if (Update.end(true))
+                        Serial.printf("[OTA] OK (%u Bytes)\n", index + len);
+                    else
+                        Update.printError(Serial);
+                }
+            }
+        );
     }
 
     _server.begin();
@@ -1297,5 +1355,4 @@ void WebInterface::begin() {
 }
 
 void WebInterface::loop() {
-    ElegantOTA.loop();
 }
