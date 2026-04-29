@@ -335,7 +335,7 @@ void setup() {
     display.showBooting("Drucker OK"); delay(200);
 
     display.showBooting("Lade Daten...");
-    if (!LittleFS.begin(true)) {
+    if (!LittleFS.begin(true, "/littlefs", 10, "littlefs")) {
         Serial.println("[FS] LittleFS mount failed");
         display.showBooting("FS-Fehler!"); delay(1000);
     } else {
