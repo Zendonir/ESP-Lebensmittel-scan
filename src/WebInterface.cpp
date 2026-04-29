@@ -2,6 +2,7 @@
 #include "config.h"
 #include "CategoryManager.h"
 #include "StorageStats.h"
+#include "ShoppingList.h"
 #include <LittleFS.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
@@ -13,6 +14,11 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#3b82f6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Lager">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon.svg">
 <title>Lebensmittel-Scanner</title>
 <style>
   :root {
@@ -86,6 +92,7 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
   <button onclick="switchTab('cats',this)">&#x1F3F7; Kategorien</button>
   <button onclick="switchTab('wifi',this)">&#x1F4F6; WiFi</button>
   <button onclick="switchTab('mqtt',this)">&#x1F4E1; MQTT</button>
+  <button onclick="switchTab('shop',this)">&#x1F6D2; Einkauf</button>
   <button onclick="switchTab('stats',this)">&#x1F4CA; Statistik</button>
   <button onclick="switchTab('system',this)">&#x1F4BE; System</button>
   <button onclick="location.href='/update'" style="margin-left:auto">&#x2B06; OTA</button>
@@ -274,6 +281,27 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     <div id="tgMsg" style="margin-top:.75rem;font-size:.85rem"></div>
   </div>
 </div>
+<div id="shop" class="panel">
+  <div class="toolbar" style="padding-top:1.25rem">
+    <span style="font-size:.9rem;color:var(--muted)">Wird automatisch bef&uuml;llt wenn Artikel ausgelagert werden.</span>
+    <button class="btn-ghost" onclick="loadShop()">&#x21BB;</button>
+    <button class="btn btn-sm" onclick="clearBought()">Gekaufte l&ouml;schen</button>
+  </div>
+  <div class="table-wrap">
+    <div id="shopLoading">Lade&hellip;</div>
+    <ul id="shopList" style="list-style:none;padding:0 1.5rem 1rem;display:none"></ul>
+    <div id="shopEmpty" class="empty" style="display:none">Einkaufsliste ist leer.</div>
+  </div>
+  <div class="add-form">
+    <h3>Manuell hinzuf&uuml;gen</h3>
+    <div class="form-row" style="margin-top:.75rem">
+      <label>Artikel<input type="text" id="shopName" placeholder="z.B. Hackfleisch" maxlength="60"></label>
+      <label>Kategorie<input type="text" id="shopCat" placeholder="z.B. Fleisch" maxlength="30"></label>
+      <button class="btn btn-ok" onclick="addShopItem()">Hinzuf&uuml;gen</button>
+    </div>
+    <div id="shopMsg" style="margin-top:.75rem;font-size:.85rem"></div>
+  </div>
+</div>
 <div id="stats" class="panel">
   <div class="toolbar" style="padding-top:1.25rem">
     <span id="statsSummary" style="font-size:.9rem;color:var(--muted)"></span>
@@ -333,6 +361,28 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
       <button class="btn btn-ok" onclick="saveOtaPw()">Speichern</button>
     </div>
     <div id="otaMsg" style="margin-top:.75rem;font-size:.85rem"></div>
+    <hr style="border-color:var(--border);margin:1.5rem 0">
+    <h2 style="margin-bottom:1rem">Ger&auml;t &amp; Server-Sync</h2>
+    <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
+      Ger&auml;tename und Raum erscheinen im zentralen Server-Dashboard.
+      Server-URL leer lassen f&uuml;r reinen Standalone-Betrieb.
+    </p>
+    <div style="display:flex;flex-direction:column;gap:.75rem">
+      <label style="font-size:.85rem;color:var(--muted)">Ger&auml;tename
+        <input type="text" id="devName" placeholder="z.B. Gefrierschrank Keller" maxlength="40"
+               style="display:block;width:100%;margin-top:.3rem">
+      </label>
+      <label style="font-size:.85rem;color:var(--muted)">Raum / Standort
+        <input type="text" id="devRoom" placeholder="z.B. Keller" maxlength="30"
+               style="display:block;width:260px;margin-top:.3rem">
+      </label>
+      <label style="font-size:.85rem;color:var(--muted)">Server-URL
+        <input type="text" id="devServer" placeholder="http://192.168.1.100:8000" maxlength="80"
+               style="display:block;width:100%;margin-top:.3rem">
+      </label>
+      <button class="btn btn-ok" style="width:fit-content" onclick="saveDevConfig()">Speichern</button>
+    </div>
+    <div id="devMsg" style="margin-top:.75rem;font-size:.85rem"></div>
   </div>
 </div>
 <script>
@@ -346,8 +396,9 @@ function switchTab(id,btn){
   if(id==='cats')loadCats();
   if(id==='wifi')loadWifi();
   if(id==='mqtt'){loadMqtt();loadTelegram();}
+  if(id==='shop')loadShop();
   if(id==='stats')loadStats();
-  if(id==='system')loadOtaPw();
+  if(id==='system'){loadOtaPw();loadDevConfig();}
 }
 async function loadWifi(){
   try{const r=await fetch('/api/wifi-config');const d=await r.json();
@@ -579,6 +630,67 @@ async function deleteCat(i){
   if(r.ok)loadCats();else alert('Fehler');
 }
 
+// ── Einkaufsliste ─────────────────────────────────────────────
+async function loadShop(){
+  document.getElementById('shopLoading').style.display='block';
+  document.getElementById('shopList').style.display='none';
+  try{
+    const d=await fetch('/api/shopping-list').then(r=>r.json());
+    const items=d.items||[];
+    document.getElementById('shopLoading').style.display='none';
+    if(items.length===0){document.getElementById('shopEmpty').style.display='block';return;}
+    document.getElementById('shopEmpty').style.display='none';
+    const ul=document.getElementById('shopList');ul.innerHTML='';ul.style.display='block';
+    items.forEach((it,i)=>{
+      const li=document.createElement('li');
+      li.style.cssText='display:flex;align-items:center;gap:.75rem;padding:.6rem 0;border-bottom:1px solid var(--border)';
+      li.innerHTML='<input type="checkbox"'+(it.bought?' checked':'')+'onchange="toggleBought('+i+',this)" style="width:18px;height:18px;cursor:pointer">'+
+        '<span style="flex:1;'+(it.bought?'text-decoration:line-through;color:var(--muted)':'')+'">'
+        +esc(it.name)+(it.category?'<span style="font-size:.75rem;color:var(--muted);margin-left:.4rem">'+esc(it.category)+'</span>':'')+'</span>'+
+        '<button class="btn-ghost btn-sm" onclick="deleteShopItem('+i+')" style="padding:.2rem .5rem">&#x2715;</button>';
+      ul.appendChild(li);});
+  }catch(e){document.getElementById('shopLoading').textContent='Fehler: '+e.message;}
+}
+async function toggleBought(i,cb){
+  await fetch('/api/shopping-list/'+i,{method:'PATCH'});
+  loadShop();
+}
+async function deleteShopItem(i){
+  await fetch('/api/shopping-list/'+i,{method:'DELETE'});loadShop();
+}
+async function clearBought(){
+  await fetch('/api/shopping-list/bought',{method:'DELETE'});loadShop();
+}
+async function addShopItem(){
+  const name=document.getElementById('shopName').value.trim();
+  const cat=document.getElementById('shopCat').value.trim();
+  const msg=document.getElementById('shopMsg');
+  if(!name){msg.style.color='var(--danger)';msg.textContent='Name fehlt.';return;}
+  const r=await fetch('/api/shopping-list',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({name,category:cat})});
+  if(r.ok){document.getElementById('shopName').value='';msg.style.color='var(--ok)';
+    msg.textContent='✓ Hinzugefügt.';loadShop();}
+  else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
+}
+
+// ── Gerät & Server-Sync ───────────────────────────────────────
+async function loadDevConfig(){
+  try{const d=await fetch('/api/device-config').then(r=>r.json());
+    document.getElementById('devName').value=d.name||'';
+    document.getElementById('devRoom').value=d.room||'';
+    document.getElementById('devServer').value=d.serverUrl||'';}catch(e){}
+}
+async function saveDevConfig(){
+  const name=document.getElementById('devName').value.trim();
+  const room=document.getElementById('devRoom').value.trim();
+  const serverUrl=document.getElementById('devServer').value.trim();
+  const msg=document.getElementById('devMsg');
+  const r=await fetch('/api/device-config',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({name,room,serverUrl})});
+  if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert. Server-Sync aktiv nach Neustart.';}
+  else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
+}
+
 // ── Statistik ─────────────────────────────────────────────────
 let allStats=[],statSortKey='removedDate',statSortAsc=false;
 async function loadStats(){
@@ -699,18 +811,129 @@ async function clearMqtt(){
 }
 
 loadInv();
+if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js');
 </script>
 </body>
 </html>)RAW";
 
-WebInterface::WebInterface(Inventory &inventory, CustomProducts &customProducts, StorageStats &stats)
-    : _server(80), _inventory(inventory), _customProducts(customProducts), _stats(stats) {}
+WebInterface::WebInterface(Inventory &inventory, CustomProducts &customProducts,
+                           StorageStats &stats, ShoppingList &shopping)
+    : _server(80), _inventory(inventory), _customProducts(customProducts),
+      _stats(stats), _shopping(shopping) {}
 
 void WebInterface::begin() {
-    // index.html ist im Firmware-Binary eingebettet – kein LittleFS-Upload nötig
     _server.on("/", HTTP_GET, [](AsyncWebServerRequest *req) {
         req->send(200, "text/html; charset=utf-8", INDEX_HTML);
     });
+
+    // ── PWA ──────────────────────────────────────────────────
+    _server.on("/manifest.json", HTTP_GET, [](AsyncWebServerRequest *req) {
+        req->send(200, "application/manifest+json", R"({
+"name":"Lebensmittel Scanner","short_name":"Lager",
+"start_url":"/","display":"standalone",
+"background_color":"#111827","theme_color":"#3b82f6",
+"icons":[{"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+})");
+    });
+    _server.on("/icon.svg", HTTP_GET, [](AsyncWebServerRequest *req) {
+        req->send(200, "image/svg+xml",
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>"
+            "<rect width='100' height='100' rx='18' fill='#3b82f6'/>"
+            "<rect x='18' y='38' width='64' height='44' rx='6' fill='white' opacity='.93'/>"
+            "<rect x='28' y='22' width='44' height='22' rx='6' fill='white' opacity='.7'/>"
+            "<rect x='47' y='38' width='6' height='44' fill='#3b82f6' opacity='.4'/>"
+            "<rect x='18' y='59' width='64' height='6' fill='#3b82f6' opacity='.4'/>"
+            "</svg>");
+    });
+    _server.on("/sw.js", HTTP_GET, [](AsyncWebServerRequest *req) {
+        req->send(200, "application/javascript",
+            "const C='lager-v1';\n"
+            "self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(['/'])));self.skipWaiting();});\n"
+            "self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(n=>n!==C).map(n=>caches.delete(n)))))});\n"
+            "self.addEventListener('fetch',e=>{\n"
+            "  if(e.request.method!=='GET'||e.request.url.includes('/api/'))return;\n"
+            "  e.respondWith(fetch(e.request).then(r=>{const rc=r.clone();caches.open(C).then(c=>c.put(e.request,rc));return r;}).catch(()=>caches.match(e.request)));\n"
+            "});\n"
+        );
+    });
+
+    // ── Einkaufsliste ─────────────────────────────────────────
+    _server.on("/api/shopping-list", HTTP_GET, [this](AsyncWebServerRequest *req) {
+        JsonDocument doc;
+        JsonArray arr = doc["items"].to<JsonArray>();
+        for (const auto &it : _shopping.items()) {
+            JsonObject o = arr.add<JsonObject>();
+            o["name"]     = it.name;
+            o["category"] = it.category;
+            o["date"]     = it.addedDate;
+            o["bought"]   = it.bought;
+        }
+        doc["count"] = _shopping.count();
+        String out; serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+    _server.on("/api/shopping-list", HTTP_POST,
+        [](AsyncWebServerRequest *req) {},
+        nullptr,
+        [this](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonDocument doc;
+            if (deserializeJson(doc, (const char*)data, len)) {
+                req->send(400, "application/json", "{\"error\":\"JSON\"}"); return;
+            }
+            String name = doc["name"] | "";
+            String cat  = doc["category"] | "";
+            if (name.isEmpty()) { req->send(400, "application/json", "{\"error\":\"Name fehlt\"}"); return; }
+            bool ok = _shopping.add(name, cat);
+            req->send(ok ? 200 : 500, "application/json", ok ? "{\"ok\":true}" : "{\"error\":\"Fehler\"}");
+        }
+    );
+    _server.on("^\\/api\\/shopping-list\\/bought$", HTTP_DELETE, [this](AsyncWebServerRequest *req) {
+        _shopping.clearBought();
+        req->send(200, "application/json", "{\"ok\":true}");
+    });
+    _server.on("^\\/api\\/shopping-list\\/([0-9]+)$", HTTP_PATCH, [this](AsyncWebServerRequest *req) {
+        int idx = req->pathArg(0).toInt();
+        bool ok = _shopping.markBought(idx);
+        req->send(ok ? 200 : 404, "application/json", ok ? "{\"ok\":true}" : "{\"error\":\"Index\"}");
+    });
+    _server.on("^\\/api\\/shopping-list\\/([0-9]+)$", HTTP_DELETE, [this](AsyncWebServerRequest *req) {
+        int idx = req->pathArg(0).toInt();
+        bool ok = _shopping.remove(idx);
+        req->send(ok ? 200 : 404, "application/json", ok ? "{\"ok\":true}" : "{\"error\":\"Index\"}");
+    });
+
+    // ── Gerät & Server-Sync ───────────────────────────────────
+    _server.on("/api/device-config", HTTP_GET, [](AsyncWebServerRequest *req) {
+        Preferences p; p.begin("sync", true);
+        String name = p.getString("name", "Lebensmittel Scanner");
+        String room = p.getString("room", "");
+        String url  = p.getString("url",  "");
+        p.end();
+        JsonDocument doc;
+        doc["name"]      = name;
+        doc["room"]      = room;
+        doc["serverUrl"] = url;
+        doc["mac"]       = WiFi.macAddress();
+        doc["ip"]        = WiFi.localIP().toString();
+        String out; serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+    _server.on("/api/device-config", HTTP_POST,
+        [](AsyncWebServerRequest *req) {},
+        nullptr,
+        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonDocument doc;
+            if (deserializeJson(doc, (const char*)data, len)) {
+                req->send(400, "application/json", "{\"error\":\"JSON\"}"); return;
+            }
+            Preferences p; p.begin("sync", false);
+            p.putString("name", doc["name"] | "Lebensmittel Scanner");
+            p.putString("room", doc["room"] | "");
+            p.putString("url",  doc["serverUrl"] | "");
+            p.end();
+            req->send(200, "application/json", "{\"ok\":true}");
+        }
+    );
 
     // ── Inventar ─────────────────────────────────────────────
 
