@@ -3,6 +3,7 @@
 #include <LittleFS.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
+#include <PubSubClient.h>
 #include <time.h>
 #include "config.h"
 #include "BarcodeScanner.h"
@@ -110,6 +111,77 @@ void startAP() {
     webInterface->begin();
     setState(State::AP_MODE);
 }
+
+// ── MQTT ──────────────────────────────────────────────────────
+
+struct MqttCfg { String host; uint16_t port = 1883; String prefix = "lebensmittel"; };
+
+WiFiClient        _mqttWifi;
+PubSubClient      _mqtt(_mqttWifi);
+static MqttCfg    _mqttCfg;
+static unsigned long _mqttLastCheck = 0;
+
+MqttCfg loadMqttCfg() {
+    MqttCfg c;
+    Preferences p; p.begin("mqtt", true);
+    c.host   = p.getString("host",   "");
+    c.port   = p.getUShort("port",   1883);
+    c.prefix = p.getString("prefix", "lebensmittel");
+    p.end();
+    return c;
+}
+void saveMqttCfg(const MqttCfg &c) {
+    Preferences p; p.begin("mqtt", false);
+    p.putString("host",   c.host);
+    p.putUShort("port",   c.port);
+    p.putString("prefix", c.prefix);
+    p.end();
+}
+void mqttEnsureConnected() {
+    if (_mqttCfg.host.isEmpty()) return;
+    if (_mqtt.connected()) return;
+    _mqtt.setServer(_mqttCfg.host.c_str(), _mqttCfg.port);
+    _mqtt.connect(HOSTNAME);
+}
+void mqttPublish(const String &subtopic, const String &payload) {
+    mqttEnsureConnected();
+    if (!_mqtt.connected()) return;
+    String topic = _mqttCfg.prefix + "/" + subtopic;
+    _mqtt.publish(topic.c_str(), payload.c_str(), true);
+}
+void mqttPublishItem(const InventoryItem &item) {
+    JsonDocument doc;
+    doc["name"]    = item.name;
+    doc["brand"]   = item.brand;
+    doc["expiry"]  = item.expiryDate;
+    doc["label"]   = item.labelBarcode;
+    doc["category"]= item.category;
+    String out; serializeJson(doc, out);
+    mqttPublish("eingelagert", out);
+}
+void mqttCheckWarnings() {
+    if (_mqttCfg.host.isEmpty()) return;
+    int warn    = inventory.expiringIn(WARNING_DAYS);
+    int expired = inventory.expiredCount();
+    if (warn > 0 || expired > 0) {
+        JsonDocument doc;
+        doc["bald_ablaufend"] = warn;
+        doc["abgelaufen"]     = expired;
+        String out; serializeJson(doc, out);
+        mqttPublish("warnung", out);
+    }
+}
+
+// ── Buzzer-Feedback ───────────────────────────────────────────
+#if defined(BUZZER_PIN) && BUZZER_PIN >= 0
+inline void buzz(uint16_t freq = 2000, uint32_t dur = 80)  { tone(BUZZER_PIN, freq, dur); }
+inline void buzzOk()    { buzz(2200, 80); }
+inline void buzzError() { buzz(600, 300); }
+#else
+inline void buzz(uint16_t = 0, uint32_t = 0) {}
+inline void buzzOk()    {}
+inline void buzzError() {}
+#endif
 
 // ── Hilfs-Funktionen ──────────────────────────────────────────
 
@@ -221,6 +293,16 @@ void setup() {
 // ── loop() ────────────────────────────────────────────────────
 
 void loop() {
+    if (webInterface) webInterface->loop();
+    // MQTT keep-alive + stündliche Ablauf-Warnung
+    if (!_mqttCfg.host.isEmpty()) {
+        _mqtt.loop();
+        if (millis() - _mqttLastCheck > MQTT_CHECK_INTERVAL_MS) {
+            _mqttLastCheck = millis();
+            mqttEnsureConnected();
+            mqttCheckWarnings();
+        }
+    }
     touch.update();
     bool    tapped = touch.wasTapped();
     int16_t tx     = touch.tapX();
@@ -290,6 +372,8 @@ void loop() {
             Serial.printf("[WiFi] IP: %s\n", WiFi.localIP().toString().c_str());
             webInterface = new WebInterface(inventory, customProducts);
             webInterface->begin();
+            _mqttCfg = loadMqttCfg();
+            mqttEnsureConnected();
             setState(State::MAIN);
         }
         if (millis()-stateEnter > 20000) startAP();
@@ -318,7 +402,14 @@ void loop() {
             String catName = (currentCatIndex < (int)g_categories.size())
                              ? g_categories[currentCatIndex].name : "";
             mainProducts = customProducts.byCategory(catName);
-            display.showMain(currentCatIndex, mainProducts, mainOffset);
+            // Inventar-Zähler je Kategorie für Tab-Anzeige
+            std::vector<int> catCounts;
+            catCounts.reserve(g_categories.size());
+            for (const auto &cat : g_categories)
+                catCounts.push_back(inventory.countByCategory(cat.name));
+            int warnCount = inventory.expiringIn(WARNING_DAYS) + inventory.expiredCount();
+            display.showMain(currentCatIndex, mainProducts, mainOffset,
+                             catCounts, warnCount, WiFi.status() == WL_CONNECTED);
             screenDirty = false;
         }
         // Tab-Tap (obere Leiste) – dynamische Breite
@@ -410,14 +501,19 @@ void loop() {
         item.barcode      = currentBarcode;
         item.name         = currentProduct.name;
         item.brand        = currentProduct.brand;
+        item.category     = (currentCatIndex < (int)g_categories.size())
+                            ? g_categories[currentCatIndex].name : "";
         item.expiryDate   = dateInputToStr(dateInput);
         item.addedDate    = todayStr();
         item.quantity     = 1;
         item.labelBarcode = labelCode;
         if (inventory.addItem(item)) {
             lastAddedItem = item;
+            buzzOk();
+            mqttPublishItem(item);
             setState(State::PRINTING);
         } else {
+            buzzError();
             display.showError("Speichern fehlgeschlagen!");
             setState(State::ERROR);
         }
@@ -429,7 +525,6 @@ void loop() {
         if (screenDirty) {
             display.showPrinting();
             screenDirty = false;
-            // Etikett drucken (blockierend ~1-2s)
             printer.printLabel(
                 lastAddedItem.name,
                 lastAddedItem.labelBarcode,
@@ -437,21 +532,33 @@ void loop() {
                 lastAddedItem.expiryDate.isEmpty() ? "" : isoToDisplay(lastAddedItem.expiryDate)
             );
         }
-        // Nach Druck kurz Erfolgsmeldung, dann zurück
         if (millis()-stateEnter > 2200) {
-            display.showSuccess(lastAddedItem.name, dateInputDisplay(dateInput));
+            display.showSuccess(lastAddedItem.name, dateInputDisplay(dateInput), true);
             setState(State::SUCCESS);
         }
         break;
     }
 
     // ── SUCCESS ──────────────────────────────────────────────
-    case State::SUCCESS:
-        if (millis()-stateEnter>2000 || tapped || hardBack) setState(State::MAIN);
+    case State::SUCCESS: {
+        // "Nochmal drucken" Button (linke Hälfte)
+        int16_t halfW = (TBTN_W - 4) / 2;
+        if (hit(TBTN_X, 228, halfW, TBTN_H)) {
+            // Neu drucken: neuen Label-Code generieren + erneut in PRINTING
+            setState(State::PRINTING);
+            break;
+        }
+        // "Weiter" Button (rechte Hälfte) oder Auto-Advance nach 8s
+        if (hit(TBTN_X + (TBTN_W + 4) / 2, 228, halfW, TBTN_H) ||
+            hardBack || millis()-stateEnter > 8000) {
+            setState(State::MAIN);
+        }
         break;
+    }
 
     // ── ERROR ────────────────────────────────────────────────
     case State::ERROR:
+        if (screenDirty) { screenDirty = false; buzzError(); }
         if (tapped || hardBack || millis()-stateEnter>5000) setState(State::MAIN);
         break;
 

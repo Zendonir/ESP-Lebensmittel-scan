@@ -7,6 +7,7 @@ class WebInterface {
 public:
     WebInterface(Inventory &inventory, CustomProducts &customProducts);
     void begin();
+    void loop();   // muss in loop() aufgerufen werden (ElegantOTA)
 
 private:
     AsyncWebServer _server;

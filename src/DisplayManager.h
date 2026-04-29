@@ -73,7 +73,9 @@ public:
     void setBrightness(uint8_t val);
 
     // Hauptscreen: Kategorietabs + Produktliste der aktiven Kategorie
-    void showMain(int catIndex, const std::vector<CustomProduct> &products, int offset);
+    // catInvCounts: Inventar-Anzahl je Kategorie; warnCount: bald ablaufende Artikel
+    void showMain(int catIndex, const std::vector<CustomProduct> &products, int offset,
+                  const std::vector<int> &catInvCounts, int warnCount, bool wifiOk);
 
     void showBooting(const String &msg = "");
     void showWifiConnecting(const String &ssid, int attempt = 0);
@@ -81,7 +83,8 @@ public:
     void showFetching(const String &barcode);
     void showDateEntry(const DateInput &date, const String &productName);
     void showPrinting();
-    void showSuccess(const String &productName, const String &date);
+    // showSuccess: showReprint=true → zeigt "Nochmal drucken"-Button
+    void showSuccess(const String &productName, const String &date, bool showReprint = true);
     void showError(const String &msg);
     void showRetrieve(const String &name, const String &storageDate,
                       const String &expiryDate, int daysLeft);

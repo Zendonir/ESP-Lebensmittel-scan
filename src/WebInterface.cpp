@@ -4,6 +4,7 @@
 #include <LittleFS.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
+#include <ElegantOTA.h>
 #include <time.h>
 
 static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
@@ -83,6 +84,8 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
   <button onclick="switchTab('cp',this)">&#x1F4CB; Vorlagen</button>
   <button onclick="switchTab('cats',this)">&#x1F3F7; Kategorien</button>
   <button onclick="switchTab('wifi',this)">&#x1F4F6; WiFi</button>
+  <button onclick="switchTab('mqtt',this)">&#x1F4E1; MQTT</button>
+  <button onclick="location.href='/update'" style="margin-left:auto">&#x2B06; OTA Update</button>
 </nav>
 <div id="inv" class="panel active">
   <div class="stats">
@@ -215,6 +218,36 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     <div id="wifiMsg" style="margin-top:.75rem;font-size:.85rem"></div>
   </div>
 </div>
+<div id="mqtt" class="panel">
+  <div style="padding:1.5rem;max-width:480px">
+    <h2 style="margin-bottom:1rem">MQTT konfigurieren</h2>
+    <p style="color:var(--muted);margin-bottom:1.5rem;font-size:.9rem">
+      Ereignisse werden an den Broker gesendet:<br>
+      <code style="color:var(--accent)">{prefix}/eingelagert</code> bei jeder Einlagerung<br>
+      <code style="color:var(--accent)">{prefix}/warnung</code> st&uuml;ndlich wenn Artikel ablaufen
+    </p>
+    <div style="display:flex;flex-direction:column;gap:.75rem">
+      <label style="font-size:.85rem;color:var(--muted)">Broker-Host (IP oder Hostname)
+        <input type="text" id="mqttHost" placeholder="192.168.1.100" maxlength="64"
+               style="display:block;width:100%;margin-top:.3rem">
+      </label>
+      <label style="font-size:.85rem;color:var(--muted)">Port
+        <input type="number" id="mqttPort" value="1883" min="1" max="65535"
+               style="display:block;width:120px;margin-top:.3rem">
+      </label>
+      <label style="font-size:.85rem;color:var(--muted)">Topic-Prefix
+        <input type="text" id="mqttPrefix" value="lebensmittel" maxlength="40"
+               style="display:block;width:100%;margin-top:.3rem">
+      </label>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+        <button class="btn btn-ok" onclick="saveMqtt()">Speichern</button>
+        <button class="btn" style="background:var(--surface);color:var(--muted);border:1px solid var(--border)"
+                onclick="clearMqtt()">MQTT deaktivieren</button>
+      </div>
+    </div>
+    <div id="mqttMsg" style="margin-top:.75rem;font-size:.85rem"></div>
+  </div>
+</div>
 <script>
 let catColorMap={};  // name→hex, wird nach loadCats() befüllt
 function catHex(name){return catColorMap[name]||'#333';}
@@ -225,6 +258,7 @@ function switchTab(id,btn){
   if(id==='cp')loadCP();
   if(id==='cats')loadCats();
   if(id==='wifi')loadWifi();
+  if(id==='mqtt')loadMqtt();
 }
 async function loadWifi(){
   try{const r=await fetch('/api/wifi-config');const d=await r.json();
@@ -445,6 +479,31 @@ async function deleteCat(i){
   if(r.ok)loadCats();else alert('Fehler');
 }
 
+async function loadMqtt(){
+  try{const r=await fetch('/api/mqtt-config');const d=await r.json();
+    document.getElementById('mqttHost').value=d.host||'';
+    document.getElementById('mqttPort').value=d.port||1883;
+    document.getElementById('mqttPrefix').value=d.prefix||'lebensmittel';
+  }catch(e){}
+}
+async function saveMqtt(){
+  const host=document.getElementById('mqttHost').value.trim();
+  const port=parseInt(document.getElementById('mqttPort').value)||1883;
+  const prefix=document.getElementById('mqttPrefix').value.trim()||'lebensmittel';
+  const msg=document.getElementById('mqttMsg');
+  msg.style.color='var(--muted)';msg.textContent='Speichere…';
+  try{const r=await fetch('/api/mqtt-config',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({host,port,prefix})});
+    if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert. Wirkung nach nächstem Verbindungsaufbau.';}
+    else{msg.style.color='var(--danger)';msg.textContent='Fehler';}
+  }catch(e){msg.style.color='var(--danger)';msg.textContent='Verbindungsfehler';}
+}
+async function clearMqtt(){
+  if(!confirm('MQTT deaktivieren (Host leeren)?'))return;
+  document.getElementById('mqttHost').value='';
+  await saveMqtt();
+}
+
 loadInv();
 </script>
 </body>
@@ -656,7 +715,51 @@ void WebInterface::begin() {
         }
     );
 
+    // ── MQTT-Konfiguration ────────────────────────────────────
+
+    _server.on("/api/mqtt-config", HTTP_GET, [](AsyncWebServerRequest *req) {
+        Preferences prefs; prefs.begin("mqtt", true);
+        String host   = prefs.getString("host",   "");
+        uint16_t port = prefs.getUShort("port",   1883);
+        String prefix = prefs.getString("prefix", "lebensmittel");
+        prefs.end();
+        JsonDocument doc;
+        doc["host"]   = host;
+        doc["port"]   = port;
+        doc["prefix"] = prefix;
+        String out; serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+
+    _server.on("/api/mqtt-config", HTTP_POST,
+        [](AsyncWebServerRequest *req) {},
+        nullptr,
+        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonDocument doc;
+            if (deserializeJson(doc, (const char*)data, len)) {
+                req->send(400, "application/json", "{\"error\":\"Ungültiges JSON\"}"); return;
+            }
+            String host   = doc["host"]   | "";
+            uint16_t port = doc["port"]   | 1883;
+            String prefix = doc["prefix"] | "lebensmittel";
+            Preferences prefs; prefs.begin("mqtt", false);
+            prefs.putString("host",   host);
+            prefs.putUShort("port",   port);
+            prefs.putString("prefix", prefix);
+            prefs.end();
+            req->send(200, "application/json", "{\"ok\":true}");
+        }
+    );
+
     _server.onNotFound([](AsyncWebServerRequest *req) { req->send(404,"text/plain","Not found"); });
+
+    // OTA-Update unter /update (Benutzer: admin, PW: lebensmittel)
+    ElegantOTA.begin(&_server, "admin", "lebensmittel");
+
     _server.begin();
     Serial.println("[Web] Server gestartet auf Port 80");
+}
+
+void WebInterface::loop() {
+    ElegantOTA.loop();
 }

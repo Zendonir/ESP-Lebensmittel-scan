@@ -27,6 +27,7 @@ bool Inventory::load() {
         item.barcode      = obj["barcode"].as<String>();
         item.name         = obj["name"].as<String>();
         item.brand        = obj["brand"].as<String>();
+        item.category     = obj["category"].as<String>();
         item.expiryDate   = obj["expiry"].as<String>();
         item.addedDate    = obj["added"].as<String>();
         item.quantity     = obj["qty"].as<int>();
@@ -44,13 +45,14 @@ bool Inventory::save() {
     JsonArray arr = doc["items"].to<JsonArray>();
     for (const auto &item : _items) {
         JsonObject obj = arr.add<JsonObject>();
-        obj["barcode"] = item.barcode;
-        obj["name"]    = item.name;
-        obj["brand"]   = item.brand;
-        obj["expiry"]  = item.expiryDate;
-        obj["added"]   = item.addedDate;
-        obj["qty"]     = item.quantity;
-        obj["label"]   = item.labelBarcode;
+        obj["barcode"]   = item.barcode;
+        obj["name"]      = item.name;
+        obj["brand"]     = item.brand;
+        obj["category"]  = item.category;
+        obj["expiry"]    = item.expiryDate;
+        obj["added"]     = item.addedDate;
+        obj["qty"]       = item.quantity;
+        obj["label"]     = item.labelBarcode;
     }
 
     serializeJson(doc, f);
@@ -136,5 +138,12 @@ int Inventory::expiredCount() const {
     for (const auto &item : _items) {
         if (daysUntilExpiry(item.expiryDate) < 0) count += item.quantity;
     }
+    return count;
+}
+
+int Inventory::countByCategory(const String &cat) const {
+    int count = 0;
+    for (const auto &item : _items)
+        if (item.category == cat) count += item.quantity;
     return count;
 }

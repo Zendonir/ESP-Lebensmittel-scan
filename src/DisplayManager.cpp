@@ -163,11 +163,14 @@ void DisplayManager::drawCategoryIcon(uint8_t cat, int16_t cx, int16_t cy) {
 
 void DisplayManager::showMain(int catIndex,
                                const std::vector<CustomProduct> &products,
-                               int offset) {
+                               int offset,
+                               const std::vector<int> &catInvCounts,
+                               int warnCount,
+                               bool wifiOk) {
     _gfx->fillScreen(COLOR_BG);
 
     // ── Kategorie-Tabs (dynamische Breite) ───────────────────
-    int nCats  = max(1, (int)g_categories.size());
+    int nCats    = max(1, (int)g_categories.size());
     int16_t tabW = W / nCats;
     for (int i = 0; i < nCats; i++) {
         int16_t tx = i * tabW;
@@ -175,11 +178,25 @@ void DisplayManager::showMain(int catIndex,
         uint16_t bg = sel ? g_categories[i].bgColor  : COLOR_SURFACE;
         uint16_t fg = sel ? g_categories[i].textColor : COLOR_SUBTEXT;
         _gfx->fillRect(tx, 0, tabW, TABS_H, bg);
+
+        // Kategorie-Name (oben)
         String abbrev = g_categories[i].name;
         if (abbrev.length() > 4) abbrev = abbrev.substring(0, 4) + ".";
-        textCenter(abbrev, tx + tabW / 2, TABS_H / 2, 1, fg, bg);
+        textCenter(abbrev, tx + tabW / 2, 10, 1, fg, bg);
+
+        // Inventar-Zähler (unten, klein)
+        int cnt = (i < (int)catInvCounts.size()) ? catInvCounts[i] : 0;
+        if (cnt > 0) {
+            String cntStr = cnt > 99 ? "99+" : String(cnt);
+            textCenter(cntStr, tx + tabW / 2, 24, 1, sel ? fg : COLOR_TEXT, bg);
+        }
+
         if (i > 0) _gfx->drawFastVLine(tx, 0, TABS_H, COLOR_BG);
     }
+
+    // WiFi-Status-Punkt (oben rechts im Tab-Bereich)
+    uint16_t wifiDot = wifiOk ? COLOR_OK : COLOR_DANGER;
+    _gfx->fillCircle(W - 5, 5, 4, wifiDot);
 
     // ── Produktliste ──────────────────────────────────────────
     if (products.empty()) {
@@ -197,6 +214,11 @@ void DisplayManager::showMain(int catIndex,
             textLeft(name, 10, itemY + 4, 2, COLOR_TEXT, rowBg);
             if (!p.brand.isEmpty())
                 textLeft(brand, 10, itemY + 28, 1, COLOR_SUBTEXT, rowBg);
+            // Standard-MHD-Hinweis rechts
+            if (p.defaultDays > 0) {
+                String d = String(p.defaultDays) + "d";
+                textLeft(d, W - 8 - textWidth(d, 1) - 6, itemY + 6, 1, COLOR_ACCENT, rowBg);
+            }
             _gfx->drawFastHLine(0, itemY + MAIN_ITEM_H - 1, W, COLOR_SURFACE);
         }
         // Scrollbalken
@@ -215,11 +237,17 @@ void DisplayManager::showMain(int catIndex,
     _gfx->fillRect(0, MAIN_HINT_Y, W, H - MAIN_HINT_Y, COLOR_SURFACE);
     textCenter("Barcode scannen oder Produkt antippen",
                MAIN_INV_X / 2, MAIN_HINT_Y + 13, 1, COLOR_SUBTEXT, COLOR_SURFACE);
-    // "Lager"-Button rechts
+
+    // "Lager"-Button rechts — orange wenn Ablauf-Warnungen vorhanden
+    int totalInv = 0;
+    for (int c : catInvCounts) totalInv += c;
+    uint16_t lagerBg = (warnCount > 0) ? COLOR_WARN : COLOR_BTN_BACK;
+    uint16_t lagerFg = (warnCount > 0) ? COLOR_BG   : COLOR_TEXT;
     _gfx->fillRoundRect(MAIN_INV_X, MAIN_HINT_Y + 3, MAIN_INV_W - 4, H - MAIN_HINT_Y - 6,
-                        6, COLOR_BTN_BACK);
-    textCenter("Lager", MAIN_INV_X + (MAIN_INV_W - 4) / 2, MAIN_HINT_Y + 13,
-               1, COLOR_TEXT, COLOR_BTN_BACK);
+                        6, lagerBg);
+    String lagerLabel = totalInv > 0 ? "Lager " + String(totalInv) : "Lager";
+    textCenter(lagerLabel, MAIN_INV_X + (MAIN_INV_W - 4) / 2, MAIN_HINT_Y + 13,
+               1, lagerFg, lagerBg);
 
     _gfx->flush();
 }
@@ -320,17 +348,24 @@ void DisplayManager::showPrinting() {
 
 // ── Erfolg / Fehler ───────────────────────────────────────────
 
-void DisplayManager::showSuccess(const String &productName, const String &date) {
+void DisplayManager::showSuccess(const String &productName, const String &date, bool showReprint) {
     _gfx->fillScreen(COLOR_BG);
     drawHeader("Eingelagert!", COLOR_BTN_OK);
-    _gfx->fillCircle(W / 2, 128, 50, COLOR_OK);
+    _gfx->fillCircle(W / 2, 116, 44, COLOR_OK);
     for (int t = 0; t < 5; t++) {
-        _gfx->drawLine(W/2-28+t, 128, W/2-6+t,  153, COLOR_BG);
-        _gfx->drawLine(W/2-6+t,  153, W/2+28+t, 103, COLOR_BG);
+        _gfx->drawLine(W/2-24+t, 116, W/2-4+t,  137, COLOR_BG);
+        _gfx->drawLine(W/2-4+t,  137, W/2+24+t,  97, COLOR_BG);
     }
     String pn = productName.length() > 28 ? productName.substring(0, 28) : productName;
-    textCenter(pn,           W / 2, 198, 2, COLOR_TEXT);
-    textCenter("MHD: "+date, W / 2, 222, 1, COLOR_SUBTEXT);
+    textCenter(pn,           W / 2, 178, 2, COLOR_TEXT);
+    textCenter("MHD: "+date, W / 2, 202, 1, COLOR_SUBTEXT);
+    if (showReprint) {
+        // Zwei Buttons unten: Nochmal drucken | Weiter
+        drawTouchButton(TBTN_X,            228, (TBTN_W - 4) / 2, TBTN_H,
+                        "Nochmal", COLOR_BTN_BACK, COLOR_TEXT, 1);
+        drawTouchButton(TBTN_X + (TBTN_W + 4) / 2, 228, (TBTN_W - 4) / 2, TBTN_H,
+                        "Weiter",  COLOR_BTN_OK,   COLOR_TEXT);
+    }
     _gfx->flush();
 }
 

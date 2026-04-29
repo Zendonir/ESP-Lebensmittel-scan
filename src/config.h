@@ -115,3 +115,15 @@
 #define COLOR_SURFACE   0x18C3
 #define COLOR_BTN_OK    0x0640
 #define COLOR_BTN_BACK  0x2945
+
+// ============================================================
+//  Optionaler Buzzer (Passiv-Buzzer, -1 = deaktiviert)
+//  Kurzer Piepton bei Einlagerung, tiefer Ton bei Fehler
+// ============================================================
+#define BUZZER_PIN  -1
+
+// ============================================================
+//  MQTT (optional) – wird über Web-Interface konfiguriert
+//  Wenn kein Broker eingestellt ist, bleibt MQTT deaktiviert
+// ============================================================
+#define MQTT_CHECK_INTERVAL_MS  3600000UL  // 1 Stunde

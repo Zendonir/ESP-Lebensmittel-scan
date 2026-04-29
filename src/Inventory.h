@@ -7,6 +7,7 @@ struct InventoryItem {
     String barcode;
     String name;
     String brand;
+    String category;      // Kategorie-Name bei Einlagerung
     String expiryDate;    // "YYYY-MM-DD"
     String addedDate;     // "YYYY-MM-DD"
     int    quantity;
@@ -33,6 +34,7 @@ public:
     // Gibt Anzahl der Artikel zurück die in <= days Tagen ablaufen
     int expiringIn(int days) const;
     int expiredCount() const;
+    int countByCategory(const String &cat) const;
 
 private:
     std::vector<InventoryItem> _items;
