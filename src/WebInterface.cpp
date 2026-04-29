@@ -1,6 +1,6 @@
 #include "WebInterface.h"
 #include "config.h"
-#include "Categories.h"
+#include "CategoryManager.h"
 #include <LittleFS.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
@@ -81,6 +81,7 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
 <nav>
   <button class="active" onclick="switchTab('inv',this)">&#x1F4E6; Inventar</button>
   <button onclick="switchTab('cp',this)">&#x1F4CB; Vorlagen</button>
+  <button onclick="switchTab('cats',this)">&#x1F3F7; Kategorien</button>
   <button onclick="switchTab('wifi',this)">&#x1F4F6; WiFi</button>
 </nav>
 <div id="inv" class="panel active">
@@ -132,7 +133,7 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     <table id="cpTable" style="display:none">
       <thead><tr>
         <th>Kategorie</th><th>Produktname</th>
-        <th>Marke</th><th>Barcode</th><th></th>
+        <th>Marke</th><th>MHD (Tage)</th><th>Barcode</th><th></th>
       </tr></thead>
       <tbody id="cpBody"></tbody>
     </table>
@@ -148,12 +149,46 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
       <label>Marke
         <input type="text" id="cpBrand" placeholder="z.B. Metzger Schmidt" maxlength="40">
       </label>
+      <label>Standard-MHD (Tage) <span style="color:var(--muted)">(0 = manuell)</span>
+        <input type="number" id="cpDefaultDays" placeholder="z.B. 180" min="0" max="3650" value="0" style="width:120px">
+      </label>
       <label>Barcode <span style="color:var(--muted)">(optional)</span>
         <input type="text" id="cpBarcode" placeholder="EAN13 / leer lassen" maxlength="30">
       </label>
       <button class="btn btn-ok" onclick="addCP()">Hinzuf&uuml;gen</button>
     </div>
     <div id="cpMsg" style="margin-top:.75rem;font-size:.85rem"></div>
+  </div>
+</div>
+<div id="cats" class="panel">
+  <div class="toolbar" style="padding-top:1.25rem">
+    <span style="font-size:.9rem;color:var(--muted)">
+      Max. 12 Kategorien &mdash; Reihenfolge bestimmt die Tab-Anzeige am Ger&auml;t.
+    </span>
+    <button class="btn-ghost" onclick="loadCats()">&#x21BB;</button>
+  </div>
+  <div class="table-wrap">
+    <div id="catsLoading">Lade&hellip;</div>
+    <table id="catsTable" style="display:none">
+      <thead><tr><th>Farbe</th><th>Name</th><th></th></tr></thead>
+      <tbody id="catsBody"></tbody>
+    </table>
+    <div id="catsEmpty" class="empty" style="display:none">Keine Kategorien.</div>
+  </div>
+  <div class="add-form">
+    <h3>Neue Kategorie</h3>
+    <div class="form-row">
+      <label>Name <span class="req">*</span>
+        <input type="text" id="catName" placeholder="z.B. Milchprodukte" maxlength="20">
+      </label>
+      <label>Farbe <span class="req">*</span>
+        <div id="colorPicker" style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.3rem"></div>
+        <input type="hidden" id="catBg" value="0">
+        <input type="hidden" id="catFg" value="65535">
+      </label>
+      <button class="btn btn-ok" onclick="addCat()">Hinzuf&uuml;gen</button>
+    </div>
+    <div id="catMsg" style="margin-top:.75rem;font-size:.85rem"></div>
   </div>
 </div>
 <div id="wifi" class="panel">
@@ -181,13 +216,15 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
   </div>
 </div>
 <script>
-const CAT_COLORS={'Fleisch':'#701010','Gefluegel':'#6b3a10','Fisch':'#093a7f',
-  'Gemuese':'#0a4f1a','Obst':'#c45a00','Fertig':'#3d0e6e','Backwaren':'#8a6200','Sonstiges':'#2a3f55'};
+let catColorMap={};  // name→hex, wird nach loadCats() befüllt
+function catHex(name){return catColorMap[name]||'#333';}
 function switchTab(id,btn){
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
   document.getElementById(id).classList.add('active');btn.classList.add('active');
-  if(id==='cp')loadCP();if(id==='wifi')loadWifi();
+  if(id==='cp')loadCP();
+  if(id==='cats')loadCats();
+  if(id==='wifi')loadWifi();
 }
 async function loadWifi(){
   try{const r=await fetch('/api/wifi-config');const d=await r.json();
@@ -210,7 +247,7 @@ function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 function fmtDate(iso){if(!iso||iso.length<10)return'–';const[y,m,d]=iso.split('-');return d+'.'+m+'.'+y;}
 function statusOf(d){return d<0||d<=3?'danger':d<=7?'warn':'ok';}
 function daysLabel(d){return d<0?'Abgelaufen':d===0?'Heute!':d===1?'1 Tag':d+' Tage';}
-function catBadge(cat){const c=CAT_COLORS[cat]||'#333';return'<span class="cat-badge" style="background:'+c+'">'+esc(cat)+'</span>';}
+function catBadge(cat){return'<span class="cat-badge" style="background:'+catHex(cat)+'">'+esc(cat)+'</span>';}
 let allItems=[],sortKey='daysLeft',sortAsc=true;
 async function loadInv(){
   document.getElementById('invLoading').style.display='block';
@@ -270,14 +307,19 @@ async function loadCP(){
   document.getElementById('cpLoading').style.display='block';
   document.getElementById('cpTable').style.display='none';
   document.getElementById('cpEmpty').style.display='none';
-  try{const[cpData,catData]=await Promise.all([
-    fetch('/api/custom-products').then(r=>r.json()),fetch('/api/categories').then(r=>r.json())]);
-    allCP=cpData.products||[];categories=catData||[];buildCategorySelect();renderCP();
+  try{
+    const[cpData,catData]=await Promise.all([
+      fetch('/api/custom-products').then(r=>r.json()),
+      fetch('/api/categories').then(r=>r.json())]);
+    allCP=cpData.products||[];
+    categories=catData.map(c=>c.name||c);
+    catColorMap={};catData.forEach(c=>{if(c.name)catColorMap[c.name]=rgb565toHex(c.bg||0);});
+    buildCategorySelect();renderCP();
   }catch(e){document.getElementById('cpLoading').textContent='Fehler: '+e.message;}
 }
 function buildCategorySelect(){
   const sel=document.getElementById('cpCategory');sel.innerHTML='';
-  categories.forEach(c=>{const opt=document.createElement('option');opt.value=c;opt.textContent=c;sel.appendChild(opt);});
+  categories.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;sel.appendChild(o);});
 }
 function renderCP(){
   document.getElementById('cpLoading').style.display='none';
@@ -290,13 +332,15 @@ function renderCP(){
   const tbody=document.getElementById('cpBody');tbody.innerHTML='';
   categories.forEach(cat=>{if(!bycat[cat]||bycat[cat].length===0)return;
     const hdr=document.createElement('tr');hdr.className='cat-group-header';
-    hdr.innerHTML='<td colspan="5">'+catBadge(cat)+'&nbsp;'+esc(cat)+' ('+bycat[cat].length+')</td>';
+    hdr.innerHTML='<td colspan="6">'+catBadge(cat)+'&nbsp;'+esc(cat)+' ('+bycat[cat].length+')</td>';
     tbody.appendChild(hdr);
     bycat[cat].forEach(p=>{const tr=document.createElement('tr');
+      const days=p.defaultDays>0?'<span class="pill pill-ok">'+p.defaultDays+' Tage</span>':'<span style="color:var(--muted)">manuell</span>';
       tr.innerHTML='<td>'+catBadge(p.category)+'</td><td style="font-weight:500">'+esc(p.name)+'</td>'+
         '<td style="color:var(--muted)">'+esc(p.brand||'–')+'</td>'+
+        '<td>'+days+'</td>'+
         '<td class="mono">'+esc(p.barcode||'–')+'</td>'+
-        '<td><button class="btn btn-danger btn-sm" onclick="deleteCP('+p._idx+')">Löschen</button></td>';
+        '<td><button class="btn btn-danger btn-sm" onclick="deleteCP('+p._idx+')">L&ouml;schen</button></td>';
       tbody.appendChild(tr);});});
 }
 async function addCP(){
@@ -304,14 +348,18 @@ async function addCP(){
   const brand=document.getElementById('cpBrand').value.trim();
   const barcode=document.getElementById('cpBarcode').value.trim();
   const category=document.getElementById('cpCategory').value;
+  const defaultDays=parseInt(document.getElementById('cpDefaultDays').value)||0;
   const msg=document.getElementById('cpMsg');
   if(!name){msg.style.color='var(--danger)';msg.textContent='Name ist Pflichtfeld.';return;}
   const r=await fetch('/api/custom-products',{method:'POST',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify({name,brand,barcode,category})});
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name,brand,barcode,category,defaultDays})});
   const data=await r.json();
-  if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ "'+name+'" ('+category+') hinzugefügt.';
+  if(r.ok){msg.style.color='var(--ok)';
+    msg.textContent='✓ "'+name+'" ('+category+(defaultDays>0?', MHD: '+defaultDays+' Tage':'')+') hinzugefügt.';
     document.getElementById('cpName').value='';document.getElementById('cpBrand').value='';
-    document.getElementById('cpBarcode').value='';loadCP();
+    document.getElementById('cpBarcode').value='';document.getElementById('cpDefaultDays').value='0';
+    loadCP();
   }else{msg.style.color='var(--danger)';msg.textContent='Fehler: '+(data.error||r.status);}
 }
 async function deleteCP(index){
@@ -319,6 +367,84 @@ async function deleteCP(index){
   const r=await fetch('/api/custom-products?index='+index,{method:'DELETE'});
   if(r.ok)loadCP();else alert('Fehler beim Löschen');
 }
+
+// ── Kategorien-Verwaltung ─────────────────────────────────────
+let allCats=[],colorPresets=[];
+async function loadCats(){
+  document.getElementById('catsLoading').style.display='block';
+  document.getElementById('catsTable').style.display='none';
+  try{
+    const[catsData,presetsData]=await Promise.all([
+      fetch('/api/categories').then(r=>r.json()),
+      fetch('/api/color-presets').then(r=>r.json())]);
+    allCats=catsData;colorPresets=presetsData;
+    buildColorPicker();renderCats();
+  }catch(e){document.getElementById('catsLoading').textContent='Fehler: '+e.message;}
+}
+function rgb565toHex(v){
+  const r=(v>>11&0x1F)<<3;const g=(v>>5&0x3F)<<2;const b=(v&0x1F)<<3;
+  return'#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+function buildColorPicker(){
+  const div=document.getElementById('colorPicker');div.innerHTML='';
+  colorPresets.forEach((p,i)=>{
+    const btn=document.createElement('button');
+    btn.type='button';
+    btn.title=p.label;
+    btn.style.cssText='width:28px;height:28px;border-radius:50%;border:3px solid transparent;cursor:pointer;background:'+p.hex;
+    btn.onclick=()=>{
+      div.querySelectorAll('button').forEach(b=>b.style.borderColor='transparent');
+      btn.style.borderColor='#fff';
+      document.getElementById('catBg').value=p.bg;
+      document.getElementById('catFg').value=p.fg;
+    };
+    div.appendChild(btn);
+  });
+  // Ersten Preset vorauswählen
+  if(colorPresets.length>0){
+    div.querySelector('button').style.borderColor='#fff';
+    document.getElementById('catBg').value=colorPresets[0].bg;
+    document.getElementById('catFg').value=colorPresets[0].fg;
+  }
+}
+function renderCats(){
+  document.getElementById('catsLoading').style.display='none';
+  if(allCats.length===0){document.getElementById('catsTable').style.display='none';
+    document.getElementById('catsEmpty').style.display='block';return;}
+  document.getElementById('catsEmpty').style.display='none';
+  document.getElementById('catsTable').style.display='table';
+  const tbody=document.getElementById('catsBody');tbody.innerHTML='';
+  allCats.forEach((c,i)=>{
+    const hex=rgb565toHex(c.bg);
+    const tr=document.createElement('tr');
+    tr.innerHTML='<td><span style="display:inline-block;width:20px;height:20px;border-radius:4px;background:'+hex+'"></span></td>'+
+      '<td style="font-weight:500">'+esc(c.name)+'</td>'+
+      '<td><button class="btn btn-danger btn-sm" onclick="deleteCat('+i+')">L&ouml;schen</button></td>';
+    tbody.appendChild(tr);});
+}
+async function addCat(){
+  const name=document.getElementById('catName').value.trim();
+  const bg=parseInt(document.getElementById('catBg').value)||0;
+  const fg=parseInt(document.getElementById('catFg').value)||65535;
+  const msg=document.getElementById('catMsg');
+  if(!name){msg.style.color='var(--danger)';msg.textContent='Name ist Pflichtfeld.';return;}
+  if(allCats.length>=12){msg.style.color='var(--danger)';msg.textContent='Maximum 12 Kategorien.';return;}
+  const newList=[...allCats,{name,bg,fg}];
+  const r=await fetch('/api/categories',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify(newList)});
+  const data=await r.json();
+  if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ "'+name+'" hinzugefügt.';
+    document.getElementById('catName').value='';loadCats();
+  }else{msg.style.color='var(--danger)';msg.textContent='Fehler: '+(data.error||r.status);}
+}
+async function deleteCat(i){
+  if(!confirm('Kategorie "'+allCats[i].name+'" löschen?\nAlle Vorlagen dieser Kategorie werden unsichtbar!'))return;
+  const newList=allCats.filter((_,idx)=>idx!==i);
+  const r=await fetch('/api/categories',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify(newList)});
+  if(r.ok)loadCats();else alert('Fehler');
+}
+
 loadInv();
 </script>
 </body>
@@ -384,13 +510,66 @@ void WebInterface::begin() {
 
     // ── Kategorien ───────────────────────────────────────────
 
+    // GET: gibt Objekte mit name, bg, fg, hex zurück
     _server.on("/api/categories", HTTP_GET, [](AsyncWebServerRequest *req) {
         JsonDocument doc;
         JsonArray arr = doc.to<JsonArray>();
-        for (int i = 0; i < NUM_CATEGORIES; i++) arr.add(CATEGORIES[i].name);
-        String out; serializeJson(doc,out);
-        req->send(200,"application/json",out);
+        for (const auto &c : g_categories) {
+            JsonObject o = arr.add<JsonObject>();
+            o["name"] = c.name;
+            o["bg"]   = c.bgColor;
+            o["fg"]   = c.textColor;
+        }
+        String out; serializeJson(doc, out);
+        req->send(200, "application/json", out);
     });
+
+    // GET: verfügbare Farbpalette
+    _server.on("/api/color-presets", HTTP_GET, [](AsyncWebServerRequest *req) {
+        JsonDocument doc;
+        JsonArray arr = doc.to<JsonArray>();
+        for (int i = 0; i < NUM_COLOR_PRESETS; i++) {
+            JsonObject o = arr.add<JsonObject>();
+            o["label"] = COLOR_PRESETS[i].label;
+            o["bg"]    = COLOR_PRESETS[i].bg;
+            o["fg"]    = COLOR_PRESETS[i].fg;
+            o["hex"]   = COLOR_PRESETS[i].hex;
+        }
+        String out; serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+
+    // POST: setzt komplette Kategorienliste (max. 8)
+    _server.on("/api/categories", HTTP_POST,
+        [](AsyncWebServerRequest *req) {},
+        nullptr,
+        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonDocument doc;
+            if (deserializeJson(doc, (const char*)data, len)) {
+                req->send(400, "application/json", "{\"error\":\"Ungültiges JSON\"}"); return;
+            }
+            JsonArray arr = doc.as<JsonArray>();
+            if (!arr) {
+                req->send(400, "application/json", "{\"error\":\"Array erwartet\"}"); return;
+            }
+            std::vector<CategoryDef> newCats;
+            for (JsonObject o : arr) {
+                CategoryDef c;
+                c.name      = o["name"].as<String>(); c.name.trim();
+                c.bgColor   = o["bg"].as<uint16_t>();
+                c.textColor = o["fg"].as<uint16_t>();
+                if (!c.name.isEmpty() && (int)newCats.size() < 12)
+                    newCats.push_back(c);
+            }
+            if (newCats.empty()) {
+                req->send(400, "application/json", "{\"error\":\"Min. 1 Kategorie\"}"); return;
+            }
+            g_categories = newCats;
+            bool ok = categoryManager.save();
+            req->send(ok ? 200 : 500, "application/json",
+                      ok ? "{\"ok\":true}" : "{\"error\":\"Speichern fehlgeschlagen\"}");
+        }
+    );
 
     // ── Eigene Produkte ───────────────────────────────────────
 
@@ -399,14 +578,15 @@ void WebInterface::begin() {
         JsonArray arr = doc["products"].to<JsonArray>();
         for (const auto &p : _customProducts.items()) {
             JsonObject obj = arr.add<JsonObject>();
-            obj["name"]     = p.name;
-            obj["brand"]    = p.brand;
-            obj["barcode"]  = p.barcode;
-            obj["category"] = p.category;
+            obj["name"]        = p.name;
+            obj["brand"]       = p.brand;
+            obj["barcode"]     = p.barcode;
+            obj["category"]    = p.category;
+            obj["defaultDays"] = p.defaultDays;
         }
         doc["count"] = _customProducts.count();
-        String out; serializeJson(doc,out);
-        req->send(200,"application/json",out);
+        String out; serializeJson(doc, out);
+        req->send(200, "application/json", out);
     });
 
     _server.on("/api/custom-products", HTTP_POST,
@@ -414,20 +594,23 @@ void WebInterface::begin() {
         nullptr,
         [this](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
             JsonDocument doc;
-            if (deserializeJson(doc,(const char*)data,len)) {
-                req->send(400,"application/json","{\"error\":\"Ungültiges JSON\"}"); return;
+            if (deserializeJson(doc, (const char*)data, len)) {
+                req->send(400, "application/json", "{\"error\":\"Ungültiges JSON\"}"); return;
             }
             CustomProduct p;
-            p.name     = doc["name"].as<String>();     p.name.trim();
-            p.brand    = doc["brand"].as<String>();
-            p.barcode  = doc["barcode"].as<String>();
-            p.category = doc["category"].as<String>();
+            p.name        = doc["name"].as<String>(); p.name.trim();
+            p.brand       = doc["brand"].as<String>();
+            p.barcode     = doc["barcode"].as<String>();
+            p.category    = doc["category"].as<String>();
+            p.defaultDays = doc["defaultDays"] | 0;
             if (p.name.isEmpty()) {
-                req->send(400,"application/json","{\"error\":\"Name erforderlich\"}"); return;
+                req->send(400, "application/json", "{\"error\":\"Name erforderlich\"}"); return;
             }
             if (p.category.isEmpty()) p.category = "Sonstiges";
+            if (p.defaultDays < 0) p.defaultDays = 0;
             bool ok = _customProducts.add(p);
-            req->send(ok?200:500,"application/json",ok?"{\"ok\":true}":"{\"error\":\"Speichern fehlgeschlagen\"}");
+            req->send(ok ? 200 : 500, "application/json",
+                      ok ? "{\"ok\":true}" : "{\"error\":\"Speichern fehlgeschlagen\"}");
         }
     );
 

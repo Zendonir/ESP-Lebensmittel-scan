@@ -18,10 +18,11 @@ bool CustomProducts::load() {
 
     for (JsonObject obj : doc["products"].as<JsonArray>()) {
         CustomProduct p;
-        p.name     = obj["name"].as<String>();
-        p.brand    = obj["brand"].as<String>();
-        p.barcode  = obj["barcode"].as<String>();
-        p.category = obj["category"].as<String>();
+        p.name        = obj["name"].as<String>();
+        p.brand       = obj["brand"].as<String>();
+        p.barcode     = obj["barcode"].as<String>();
+        p.category    = obj["category"].as<String>();
+        p.defaultDays = obj["defaultDays"] | 0;
         if (p.category.isEmpty()) p.category = "Sonstiges";
         if (!p.name.isEmpty()) _items.push_back(p);
     }
@@ -36,10 +37,11 @@ bool CustomProducts::save() {
     JsonArray arr = doc["products"].to<JsonArray>();
     for (const auto &p : _items) {
         JsonObject obj = arr.add<JsonObject>();
-        obj["name"]     = p.name;
-        obj["brand"]    = p.brand;
-        obj["barcode"]  = p.barcode;
-        obj["category"] = p.category;
+        obj["name"]        = p.name;
+        obj["brand"]       = p.brand;
+        obj["barcode"]     = p.barcode;
+        obj["category"]    = p.category;
+        obj["defaultDays"] = p.defaultDays;
     }
     serializeJson(doc, f);
     f.close();

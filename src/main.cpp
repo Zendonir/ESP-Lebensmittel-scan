@@ -13,6 +13,7 @@
 #include "Inventory.h"
 #include "CustomProducts.h"
 #include "Categories.h"
+#include "CategoryManager.h"
 #include "WebInterface.h"
 
 // ── States ────────────────────────────────────────────────────
@@ -201,6 +202,7 @@ void setup() {
         display.showBooting("FS-Fehler!"); delay(1000);
     } else {
         Serial.println("[FS] LittleFS OK");
+        categoryManager.begin();
         if (!inventory.begin())  Serial.println("[Inventory] Fehler!");
         customProducts.begin();
     }
@@ -313,21 +315,24 @@ void loop() {
     case State::MAIN: {
         static std::vector<CustomProduct> mainProducts;
         if (screenDirty) {
-            mainProducts = customProducts.byCategory(CATEGORIES[currentCatIndex].name);
+            String catName = (currentCatIndex < (int)g_categories.size())
+                             ? g_categories[currentCatIndex].name : "";
+            mainProducts = customProducts.byCategory(catName);
             display.showMain(currentCatIndex, mainProducts, mainOffset);
             screenDirty = false;
         }
-        // Tab-Tap (obere Leiste)
+        // Tab-Tap (obere Leiste) – dynamische Breite
         if (tapped && ty < TABS_H) {
-            int newCat = tx / TABS_TAB_W;
-            if (newCat >= 0 && newCat < NUM_CATEGORIES && newCat != currentCatIndex) {
+            int nCats  = max(1, (int)g_categories.size());
+            int newCat = tx / (DISPLAY_W / nCats);
+            if (newCat >= 0 && newCat < nCats && newCat != currentCatIndex) {
                 currentCatIndex = newCat;
                 mainOffset      = 0;
                 screenDirty     = true;
             }
             break;
         }
-        // Produkt antippen → Datumseingabe
+        // Produkt antippen → Datumseingabe (mit defaultDays Auto-MHD)
         int relY = ty - MAIN_LIST_Y;
         if (tapped && relY >= 0 && relY < MAIN_MAX_VIS * MAIN_ITEM_H) {
             int idx = mainOffset + relY / MAIN_ITEM_H;
@@ -335,7 +340,14 @@ void loop() {
                 const auto &p = mainProducts[idx];
                 currentProduct = { true, p.barcode, p.name, p.brand, "", "" };
                 currentBarcode = p.barcode;
-                initDateToday();
+                if (p.defaultDays > 0) {
+                    // MHD automatisch = heute + defaultDays
+                    time_t future = time(nullptr) + (time_t)p.defaultDays * 86400;
+                    struct tm *ft = localtime(&future);
+                    dateInput = { ft->tm_mday, ft->tm_mon+1, ft->tm_year+1900, FIELD_DAY };
+                } else {
+                    initDateToday();
+                }
                 setState(State::ENTER_DATE);
                 break;
             }

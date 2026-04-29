@@ -1,4 +1,5 @@
 #include "DisplayManager.h"
+#include "CategoryManager.h"
 
 static constexpr int16_t W   = DISPLAY_W;   // 456
 static constexpr int16_t H   = DISPLAY_H;   // 280
@@ -165,17 +166,18 @@ void DisplayManager::showMain(int catIndex,
                                int offset) {
     _gfx->fillScreen(COLOR_BG);
 
-    // ── Kategorie-Tabs ────────────────────────────────────────
-    for (int i = 0; i < NUM_CATEGORIES; i++) {
-        int16_t tx = i * TABS_TAB_W;
+    // ── Kategorie-Tabs (dynamische Breite) ───────────────────
+    int nCats  = max(1, (int)g_categories.size());
+    int16_t tabW = W / nCats;
+    for (int i = 0; i < nCats; i++) {
+        int16_t tx = i * tabW;
         bool sel = (i == catIndex);
-        uint16_t bg = sel ? CATEGORIES[i].bgColor : COLOR_SURFACE;
-        uint16_t fg = sel ? CATEGORIES[i].textColor : COLOR_SUBTEXT;
-        _gfx->fillRect(tx, 0, TABS_TAB_W, TABS_H, bg);
-        // kurzer Kategorienname (4 Zeichen)
-        String abbrev = String(CATEGORIES[i].name);
+        uint16_t bg = sel ? g_categories[i].bgColor  : COLOR_SURFACE;
+        uint16_t fg = sel ? g_categories[i].textColor : COLOR_SUBTEXT;
+        _gfx->fillRect(tx, 0, tabW, TABS_H, bg);
+        String abbrev = g_categories[i].name;
         if (abbrev.length() > 4) abbrev = abbrev.substring(0, 4) + ".";
-        textCenter(abbrev, tx + TABS_TAB_W / 2, TABS_H / 2, 1, fg, bg);
+        textCenter(abbrev, tx + tabW / 2, TABS_H / 2, 1, fg, bg);
         if (i > 0) _gfx->drawFastVLine(tx, 0, TABS_H, COLOR_BG);
     }
 
@@ -199,12 +201,13 @@ void DisplayManager::showMain(int catIndex,
         }
         // Scrollbalken
         if ((int)products.size() > MAIN_MAX_VIS) {
-            int total = products.size();
-            int barH  = MAIN_MAX_VIS * MAIN_ITEM_H;
-            int markH = max(8, barH * MAIN_MAX_VIS / total);
-            int markY = MAIN_LIST_Y + (barH - markH) * offset / max(1, total - MAIN_MAX_VIS);
+            int total  = products.size();
+            int barH   = MAIN_MAX_VIS * MAIN_ITEM_H;
+            int markH  = max(8, barH * MAIN_MAX_VIS / total);
+            int markY  = MAIN_LIST_Y + (barH - markH) * offset / max(1, total - MAIN_MAX_VIS);
+            uint16_t sc = (catIndex < (int)g_categories.size()) ? g_categories[catIndex].bgColor : COLOR_ACCENT;
             _gfx->fillRect(W - 4, MAIN_LIST_Y, 4, barH, COLOR_SURFACE);
-            _gfx->fillRect(W - 4, markY, 4, markH, CATEGORIES[catIndex].bgColor);
+            _gfx->fillRect(W - 4, markY, 4, markH, sc);
         }
     }
 
