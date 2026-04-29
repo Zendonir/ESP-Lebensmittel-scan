@@ -37,6 +37,7 @@ public:
 
 private:
     uint8_t _sda, _scl, _int, _rst;
+    bool    _initialized = false;
     bool    _wasDown = false;
     bool    _tapped  = false;
     int16_t _x = 0, _y = 0;

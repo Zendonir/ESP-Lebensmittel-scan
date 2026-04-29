@@ -12,46 +12,59 @@ struct DateInput {
     DateField activeField;
 };
 
-// ── Touch-Button-Konstanten ──────────────────────────────────
+// ── Hauptscreen (Kategorietabs + Produktliste) ───────────────
+static constexpr int16_t TABS_H        = 34;
+static constexpr int16_t TABS_TAB_W    = DISPLAY_W / 8;    // 57px
+static constexpr int16_t MAIN_LIST_Y   = TABS_H;
+static constexpr int16_t MAIN_ITEM_H   = 44;
+static constexpr int16_t MAIN_MAX_VIS  = 5;                 // 5×44=220px → y=34..254
+static constexpr int16_t MAIN_HINT_Y   = MAIN_LIST_Y + MAIN_MAX_VIS * MAIN_ITEM_H; // 254
+static constexpr int16_t MAIN_INV_X    = DISPLAY_W - 112;  // Inventar-Button rechts
+static constexpr int16_t MAIN_INV_W    = 112;
 
-// Universelle Buttons
-static constexpr int16_t TBTN_X           = 10;
-static constexpr int16_t TBTN_W           = 260;
-static constexpr int16_t TBTN_H           = 52;
-static constexpr int16_t TBTN_PRIMARY_Y   = 348;
-static constexpr int16_t TBTN_SECONDARY_Y = 408;
+// ── Universelle Buttons (landscape 456×280) ──────────────────
+static constexpr int16_t TBTN_X           = 8;
+static constexpr int16_t TBTN_W           = 440;
+static constexpr int16_t TBTN_H           = 44;
+static constexpr int16_t TBTN_PRIMARY_Y   = 228;
+static constexpr int16_t TBTN_SECONDARY_Y = 176;
 
-// IDLE-Screen
-static constexpr int16_t IDLE_LIST_BTN_Y = 300;
-static constexpr int16_t IDLE_INV_BTN_Y  = 364;
-static constexpr int16_t IDLE_BTN_H      = 56;
+// ── IDLE-Buttons (AP-Mode) ───────────────────────────────────
+static constexpr int16_t IDLE_LIST_BTN_Y = 172;
+static constexpr int16_t IDLE_INV_BTN_Y  = 220;
+static constexpr int16_t IDLE_BTN_H      = 40;
 
-// Datumseingabe
-static constexpr int16_t DATE_COL_W    = DISPLAY_W / 3;
-static constexpr int16_t DATE_PLUS_Y0  = 90;
-static constexpr int16_t DATE_PLUS_Y1  = 165;
-static constexpr int16_t DATE_VAL_Y0   = 165;
-static constexpr int16_t DATE_VAL_Y1   = 245;
-static constexpr int16_t DATE_MINUS_Y0 = 245;
-static constexpr int16_t DATE_MINUS_Y1 = 320;
-static constexpr int16_t DATE_OK_Y     = 330;
-static constexpr int16_t DATE_BACK_Y   = 396;
+// ── Datumseingabe ────────────────────────────────────────────
+static constexpr int16_t DATE_COL_W    = DISPLAY_W / 3;    // 152
+static constexpr int16_t DATE_PLUS_Y0  = 58;
+static constexpr int16_t DATE_PLUS_Y1  = 114;
+static constexpr int16_t DATE_VAL_Y0   = 116;
+static constexpr int16_t DATE_VAL_Y1   = 190;
+static constexpr int16_t DATE_MINUS_Y0 = 192;
+static constexpr int16_t DATE_MINUS_Y1 = 238;
+static constexpr int16_t DATE_BTN_Y    = 242;
+static constexpr int16_t DATE_BTN_H    = 34;
+static constexpr int16_t DATE_BACK_X   = 8;
+static constexpr int16_t DATE_BACK_W   = 140;
+static constexpr int16_t DATE_OK_X     = 156;
+static constexpr int16_t DATE_OK_W     = 292;
 
-// Kategorien-Grid (2 Spalten × 4 Zeilen)
-static constexpr int16_t CAT_X0      = 8;
-static constexpr int16_t CAT_Y0      = 64;    // nach Header (56px) + 8px
-static constexpr int16_t CAT_BTN_W   = 128;
-static constexpr int16_t CAT_BTN_H   = 88;
+// ── Kategorien-Grid (für den alten showCategorySelect – nicht mehr Hauptscreen) ─
+static constexpr int16_t CAT_X0      = 4;
+static constexpr int16_t CAT_Y0      = 44;
+static constexpr int16_t CAT_BTN_W   = 106;
+static constexpr int16_t CAT_BTN_H   = 106;
 static constexpr int16_t CAT_GAP     = 8;
 
-// Produktliste
-static constexpr int16_t LIST_ITEM_H     = 50;
-static constexpr int16_t LIST_MAX_VIS    = 7;
-static constexpr int16_t LIST_BACK_BTN_Y = DISPLAY_H - 44;
+// ── Produktliste ─────────────────────────────────────────────
+static constexpr int16_t LIST_ITEMS_Y    = 40;
+static constexpr int16_t LIST_ITEM_H     = 44;
+static constexpr int16_t LIST_MAX_VIS    = 4;
+static constexpr int16_t LIST_BACK_BTN_Y = 220;
 
-// Inventar-Browser
-static constexpr int16_t INV_DEL_Y    = 355;
-static constexpr int16_t INV_BACK_Y   = 415;
+// ── Inventar-Browser ─────────────────────────────────────────
+static constexpr int16_t INV_DEL_Y  = 228;
+static constexpr int16_t INV_BACK_Y = 176;
 
 class DisplayManager {
 public:
@@ -59,19 +72,22 @@ public:
     bool begin();
     void setBrightness(uint8_t val);
 
+    // Hauptscreen: Kategorietabs + Produktliste der aktiven Kategorie
+    // catInvCounts: Inventar-Anzahl je Kategorie; warnCount: bald ablaufende Artikel
+    void showMain(int catIndex, const std::vector<CustomProduct> &products, int offset,
+                  const std::vector<int> &catInvCounts, int warnCount, bool wifiOk);
+
     void showBooting(const String &msg = "");
     void showWifiConnecting(const String &ssid, int attempt = 0);
-    void showIdle(int totalItems, int expiringItems, int expiredItems,
-                  int customCount = 0);
     void showScanning();
     void showFetching(const String &barcode);
-    void showProduct(const ProductInfo &info, int stock);
-    void showCategorySelect();
-    void showProductList(const std::vector<CustomProduct> &products,
-                         int offset, const String &category);
     void showDateEntry(const DateInput &date, const String &productName);
-    void showSuccess(const String &productName, const String &date);
+    void showPrinting();
+    // showSuccess: showReprint=true → zeigt "Nochmal drucken"-Button
+    void showSuccess(const String &productName, const String &date, bool showReprint = true);
     void showError(const String &msg);
+    void showRetrieve(const String &name, const String &storageDate,
+                      const String &expiryDate, int daysLeft);
     void showInventoryItem(int index, int total, const String &name,
                            const String &expiry, int qty, int daysLeft);
     void showAPMode(const String &ssid, const String &password, const String &ip);

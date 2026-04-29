@@ -1,36 +1,47 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <LittleFS.h>
+#include <Preferences.h>
 #include <ArduinoJson.h>
+#include <PubSubClient.h>
 #include <time.h>
 #include "config.h"
 #include "BarcodeScanner.h"
 #include "DisplayManager.h"
 #include "TouchController.h"
+#include "ThermalPrinter.h"
 #include "FoodAPI.h"
+#include "FoodCache.h"
 #include "Inventory.h"
 #include "CustomProducts.h"
 #include "Categories.h"
+#include "CategoryManager.h"
+#include "StorageStats.h"
 #include "WebInterface.h"
+#include <HTTPClient.h>
+
+// ── States ────────────────────────────────────────────────────
 
 enum class State {
     BOOTING,
     WIFI_CONNECTING,
     AP_MODE,
-    IDLE,
-    SCANNING,
-    FETCHING,
-    SHOW_PRODUCT,
-    CATEGORY_SELECT,   // Schritt 1: Kategorie wählen
-    PRODUCT_LIST,      // Schritt 2: Produkt aus gefilterter Liste wählen
-    ENTER_DATE,
-    SAVING,
-    SUCCESS,
+    MAIN,             // Hauptscreen: Kategorietabs + Produktliste
+    FETCHING,         // Barcode-Lookup (Open Food Facts)
+    ENTER_DATE,       // Haltbarkeitsdatum eingeben
+    SAVING,           // In Inventar speichern + Label-Code generieren
+    PRINTING,         // Etikett drucken
+    SUCCESS,          // Eingelagert-Bestätigung
     ERROR,
-    INVENTORY_BROWSE
+    RETRIEVE,         // Label-Barcode gescannt → Auslagerungs-Bestätigung
+    INVENTORY_BROWSE, // Inventar durchblättern
+    POWER_SAVE,       // Display aus, Scanner schläft
 };
 
+// ── Globale Objekte ───────────────────────────────────────────
+
 BarcodeScanner scanner(Serial1, BARCODE_RX_PIN, BARCODE_TX_PIN, BARCODE_BAUD);
+ThermalPrinter printer(Serial2, PRINTER_TX_PIN, PRINTER_RX_PIN, PRINTER_BAUD);
 DisplayManager display;
 TouchController touch(TOUCH_SDA, TOUCH_SCL, TOUCH_INT, TOUCH_RST);
 FoodAPI        foodAPI;
@@ -55,43 +66,42 @@ public:
 } backBtn(BTN_BACK);
 #endif
 
-State        state           = State::BOOTING;
-ProductInfo  currentProduct;
-DateInput    dateInput;
-String       currentBarcode;
-String       selectedCategory = "";
-int          browseIndex      = 0;
-int          listOffset       = 0;
+// ── Zustandsvariablen ─────────────────────────────────────────
+
+State         state          = State::BOOTING;
+ProductInfo   currentProduct;
+DateInput     dateInput;
+String        currentBarcode;
+InventoryItem retrieveItem;   // Artikel bei Auslagerungs-Scan
+InventoryItem lastAddedItem;  // Für Drucker nach SAVING
+int           currentCatIndex = 0;  // Aktive Kategorie im Hauptscreen
+int           mainOffset      = 0;  // Scroll-Offset Hauptliste
+int           browseIndex     = 0;
 unsigned long stateEnter      = 0;
-bool         screenDirty      = true;
+bool          screenDirty     = true;
+unsigned long lastActivity    = 0;
 
 void setState(State s) { state = s; stateEnter = millis(); screenDirty = true; }
 
-// ── WiFi-Konfiguration (LittleFS) ────────────────────────────
+// ── WiFi-Konfiguration (NVS) ──────────────────────────────────
 
 struct WifiCfg { String ssid, password; };
 
 WifiCfg loadWifiCfg() {
-    File f = LittleFS.open(WIFI_CONFIG_FILE, "r");
-    if (f) {
-        JsonDocument doc;
-        if (!deserializeJson(doc, f)) {
-            String s = doc["ssid"] | "";
-            String p = doc["password"] | "";
-            f.close();
-            if (!s.isEmpty()) return { s, p };
-        }
-        f.close();
-    }
-    return { WIFI_SSID, WIFI_PASSWORD };
+    Preferences prefs;
+    prefs.begin("wifi", true);
+    String s = prefs.getString("ssid",     WIFI_SSID);
+    String p = prefs.getString("password", WIFI_PASSWORD);
+    prefs.end();
+    return { s, p };
 }
 
 void saveWifiCfg(const String &ssid, const String &password) {
-    File f = LittleFS.open(WIFI_CONFIG_FILE, "w");
-    if (!f) return;
-    JsonDocument doc;
-    doc["ssid"] = ssid; doc["password"] = password;
-    serializeJson(doc, f); f.close();
+    Preferences prefs;
+    prefs.begin("wifi", false);
+    prefs.putString("ssid",     ssid);
+    prefs.putString("password", password);
+    prefs.end();
 }
 
 void startAP() {
@@ -99,12 +109,142 @@ void startAP() {
     WiFi.mode(WIFI_AP);
     WiFi.softAP(AP_SSID, AP_PASSWORD);
     Serial.printf("[WiFi] AP: %s  PW: %s  IP: %s\n",
-                  AP_SSID, AP_PASSWORD,
-                  WiFi.softAPIP().toString().c_str());
-    webInterface = new WebInterface(inventory, customProducts);
+                  AP_SSID, AP_PASSWORD, WiFi.softAPIP().toString().c_str());
+    webInterface = new WebInterface(inventory, customProducts, storageStats);
     webInterface->begin();
     setState(State::AP_MODE);
 }
+
+// ── MQTT ──────────────────────────────────────────────────────
+
+struct MqttCfg { String host; uint16_t port = 1883; String prefix = "lebensmittel"; };
+
+WiFiClient        _mqttWifi;
+PubSubClient      _mqtt(_mqttWifi);
+static MqttCfg    _mqttCfg;
+static unsigned long _mqttLastCheck = 0;
+
+MqttCfg loadMqttCfg() {
+    MqttCfg c;
+    Preferences p; p.begin("mqtt", true);
+    c.host   = p.getString("host",   "");
+    c.port   = p.getUShort("port",   1883);
+    c.prefix = p.getString("prefix", "lebensmittel");
+    p.end();
+    return c;
+}
+void saveMqttCfg(const MqttCfg &c) {
+    Preferences p; p.begin("mqtt", false);
+    p.putString("host",   c.host);
+    p.putUShort("port",   c.port);
+    p.putString("prefix", c.prefix);
+    p.end();
+}
+void mqttEnsureConnected() {
+    if (_mqttCfg.host.isEmpty()) return;
+    if (_mqtt.connected()) return;
+    _mqtt.setServer(_mqttCfg.host.c_str(), _mqttCfg.port);
+    _mqtt.connect(HOSTNAME);
+}
+void mqttPublish(const String &subtopic, const String &payload) {
+    mqttEnsureConnected();
+    if (!_mqtt.connected()) return;
+    String topic = _mqttCfg.prefix + "/" + subtopic;
+    _mqtt.publish(topic.c_str(), payload.c_str(), true);
+}
+void mqttPublishItem(const InventoryItem &item) {
+    JsonDocument doc;
+    doc["name"]     = item.name;
+    doc["brand"]    = item.brand;
+    doc["expiry"]   = item.expiryDate;
+    doc["label"]    = item.labelBarcode;
+    doc["category"] = item.category;
+    String out; serializeJson(doc, out);
+    mqttPublish("eingelagert", out);
+}
+void mqttPublishRetrieve(const InventoryItem &item, int storageDays) {
+    JsonDocument doc;
+    doc["name"]        = item.name;
+    doc["category"]    = item.category;
+    doc["storageDays"] = storageDays;
+    String out; serializeJson(doc, out);
+    mqttPublish("ausgelagert", out);
+}
+void mqttCheckWarnings() {
+    if (_mqttCfg.host.isEmpty()) return;
+    int warn    = inventory.expiringIn(WARNING_DAYS);
+    int expired = inventory.expiredCount();
+    if (warn > 0 || expired > 0) {
+        JsonDocument doc;
+        doc["bald_ablaufend"] = warn;
+        doc["abgelaufen"]     = expired;
+        String out; serializeJson(doc, out);
+        mqttPublish("warnung", out);
+    }
+}
+static bool _haDiscoverySent = false;
+void mqttSendHADiscovery() {
+    if (_mqttCfg.host.isEmpty() || !_mqtt.connected() || _haDiscoverySent) return;
+    String dev = "{\"identifiers\":[\"lager_scanner\"],\"name\":\"Lebensmittel Scanner\",\"model\":\"ESP32-S3\"}";
+    auto sendDisc = [&](const char *id, const char *name, const char *stateTopic, const char *valTpl) {
+        String topic = "homeassistant/sensor/lager_scanner/";
+        topic += id; topic += "/config";
+        JsonDocument d;
+        d["name"]                    = name;
+        d["state_topic"]             = String(_mqttCfg.prefix) + "/" + stateTopic;
+        d["value_template"]          = valTpl;
+        d["json_attributes_topic"]   = String(_mqttCfg.prefix) + "/" + stateTopic;
+        d["unique_id"]               = String("lager_") + id;
+        JsonDocument devDoc; deserializeJson(devDoc, dev);
+        d["device"]                  = devDoc;
+        String out; serializeJson(d, out);
+        _mqtt.publish(topic.c_str(), out.c_str(), true);
+    };
+    sendDisc("eingelagert", "Eingelagert",  "eingelagert", "{{ value_json.name }}");
+    sendDisc("ausgelagert", "Ausgelagert",  "ausgelagert", "{{ value_json.name }}");
+    sendDisc("warnung",     "Ablaufwarnung","warnung",      "{{ value_json.bald_ablaufend }}");
+    _haDiscoverySent = true;
+}
+
+// ── Telegram ─────────────────────────────────────────────────
+
+struct TelegramCfg { String token, chatId; };
+static TelegramCfg _telegramCfg;
+
+TelegramCfg loadTelegramCfg() {
+    TelegramCfg c;
+    Preferences p; p.begin("telegram", true);
+    c.token  = p.getString("token",  "");
+    c.chatId = p.getString("chatid", "");
+    p.end();
+    return c;
+}
+void telegramSend(const String &text) {
+    if (_telegramCfg.token.isEmpty() || _telegramCfg.chatId.isEmpty()) return;
+    WiFiClientSecure client; client.setInsecure();
+    HTTPClient https;
+    String url = "https://api.telegram.org/bot" + _telegramCfg.token + "/sendMessage";
+    if (!https.begin(client, url)) return;
+    https.addHeader("Content-Type", "application/json");
+    JsonDocument doc;
+    doc["chat_id"]    = _telegramCfg.chatId;
+    doc["text"]       = text;
+    doc["parse_mode"] = "HTML";
+    String body; serializeJson(doc, body);
+    https.POST(body);
+    https.end();
+}
+
+// ── Buzzer-Feedback ───────────────────────────────────────────
+#if defined(BUZZER_PIN) && BUZZER_PIN >= 0
+inline void buzz(uint16_t freq = 2000, uint32_t dur = 80)  { tone(BUZZER_PIN, freq, dur); }
+inline void buzzOk()    { buzz(2200, 80); }
+inline void buzzError() { buzz(600, 300); }
+#else
+inline void buzz(uint16_t = 0, uint32_t = 0) {}
+inline void buzzOk()    {}
+inline void buzzError() {}
+#endif
 
 // ── Hilfs-Funktionen ──────────────────────────────────────────
 
@@ -114,30 +254,38 @@ String todayStr() {
     snprintf(buf, sizeof(buf), "%04d-%02d-%02d", t->tm_year+1900, t->tm_mon+1, t->tm_mday);
     return buf;
 }
+
+// "YYYY-MM-DD" → "DD.MM.YYYY" für Anzeige und Etikett
+String isoToDisplay(const String &iso) {
+    if (iso.length() < 10) return iso;
+    return iso.substring(8,10) + "." + iso.substring(5,7) + "." + iso.substring(0,4);
+}
+
 String dateInputToStr(const DateInput &d) {
     char buf[12]; snprintf(buf, sizeof(buf), "%04d-%02d-%02d", d.year, d.month, d.day); return buf;
 }
 String dateInputDisplay(const DateInput &d) {
     char buf[12]; snprintf(buf, sizeof(buf), "%02d.%02d.%04d", d.day, d.month, d.year); return buf;
 }
+
 void initDateToday() {
     time_t now = time(nullptr); struct tm *t = localtime(&now);
     dateInput = { t->tm_mday, t->tm_mon+1, t->tm_year+1900, FIELD_DAY };
 }
+
 int daysInMonth(int m, int y) {
     const int d[]={31,28,31,30,31,30,31,31,30,31,30,31};
     if (m==2 && ((y%4==0&&y%100!=0)||y%400==0)) return 29;
     return d[m-1];
 }
+
 void clampDate(DateInput &d) {
     if (d.month<1)  d.month=12; if (d.month>12) d.month=1;
     if (d.day<1)    d.day=daysInMonth(d.month,d.year);
     if (d.day>daysInMonth(d.month,d.year)) d.day=1;
     if (d.year<2024) d.year=2024; if (d.year>2099) d.year=2099;
 }
-int stockForBarcode(const String &bc) {
-    int n=0; for (const auto &it : inventory.items()) if (it.barcode==bc) n+=it.quantity; return n;
-}
+
 int daysUntilExpiry(const String &ds) {
     if (ds.length()<10) return 9999;
     struct tm tm={};
@@ -147,36 +295,60 @@ int daysUntilExpiry(const String &ds) {
     return (int)(difftime(mktime(&tm),time(nullptr))/86400.0);
 }
 
+// Erzeugt eindeutigen Etikett-Barcode "L00001" aus NVS-Zähler
+String generateLabelCode() {
+    Preferences prefs;
+    prefs.begin("lager", false);
+    uint32_t n = prefs.getUInt("cnt", 0) + 1;
+    prefs.putUInt("cnt", n);
+    prefs.end();
+    char buf[10];
+    snprintf(buf, sizeof(buf), "L%05u", n);
+    return buf;
+}
+
 // ── setup() ───────────────────────────────────────────────────
 
 void setup() {
     Serial.begin(115200); delay(100);
-
     Serial.printf("[PSRAM] Size: %u  Free: %u\n", ESP.getPsramSize(), ESP.getFreePsram());
-
-    bool dispOk = display.begin();
-    Serial.printf("[Display] begin()=%d\n", dispOk);
-    if (!dispOk) Serial.println("[Display] Init fehlgeschlagen!");
-    display.showBooting("Display OK"); delay(200);
 
 #if BTN_BACK >= 0
     backBtn.begin();
 #endif
 
-    if (!touch.begin()) Serial.println("[Touch] CST816S nicht gefunden!");
-    display.showBooting("Touch OK"); delay(200);
+    // Touch VOR Display (teilen GPIO21 als RST)
+    bool touchOk = touch.begin();
+    if (!touchOk) Serial.println("[Touch] CST816S nicht gefunden!");
+
+    bool dispOk = display.begin();
+    Serial.printf("[Display] begin()=%d\n", dispOk);
+    display.showBooting("Display + Touch OK"); delay(300);
 
     scanner.begin();
     display.showBooting("Scanner OK"); delay(200);
 
-    display.showBooting("Lade Daten...");
-    if (!inventory.begin()) Serial.println("[Inventory] Fehler!");
-    customProducts.begin();
+    printer.begin();
+    display.showBooting("Drucker OK"); delay(200);
 
+    display.showBooting("Lade Daten...");
+    if (!LittleFS.begin(true)) {
+        Serial.println("[FS] LittleFS mount failed");
+        display.showBooting("FS-Fehler!"); delay(1000);
+    } else {
+        Serial.println("[FS] LittleFS OK");
+        categoryManager.begin();
+        if (!inventory.begin())  Serial.println("[Inventory] Fehler!");
+        customProducts.begin();
+        foodCache.begin();
+        storageStats.begin();
+    }
+
+    lastActivity = millis();
     setState(State::WIFI_CONNECTING);
     auto wCfg = loadWifiCfg();
     if (wCfg.ssid.isEmpty()) {
-        startAP(); // Keine Zugangsdaten → sofort AP
+        startAP();
     } else {
         WiFi.setHostname(HOSTNAME);
         WiFi.begin(wCfg.ssid.c_str(), wCfg.password.c_str());
@@ -186,11 +358,30 @@ void setup() {
 // ── loop() ────────────────────────────────────────────────────
 
 void loop() {
+    if (webInterface) webInterface->loop();
+    // MQTT keep-alive + stündliche Ablauf-Warnung
+    if (!_mqttCfg.host.isEmpty()) {
+        _mqtt.loop();
+        if (!_mqtt.connected()) _haDiscoverySent = false;
+        if (millis() - _mqttLastCheck > MQTT_CHECK_INTERVAL_MS) {
+            _mqttLastCheck = millis();
+            mqttEnsureConnected();
+            mqttSendHADiscovery();
+            mqttCheckWarnings();
+            // Telegram stündliche Warnung
+            int warn = inventory.expiringIn(WARNING_DAYS) + inventory.expiredCount();
+            if (warn > 0)
+                telegramSend("<b>⚠️ Ablauf-Warnung:</b> " + String(warn) +
+                             " Artikel laufen bald ab oder sind abgelaufen!");
+        }
+    }
     touch.update();
     bool    tapped = touch.wasTapped();
     int16_t tx     = touch.tapX();
     int16_t ty     = touch.tapY();
     Gesture gest   = touch.lastGesture();
+
+    if (tapped) lastActivity = millis();
 
     auto hit = [&](int16_t bx, int16_t by, int16_t bw, int16_t bh) {
         return tapped && tx>=bx && tx<bx+bw && ty>=by && ty<by+bh;
@@ -199,8 +390,45 @@ void loop() {
     bool hardBack = false;
 #if BTN_BACK >= 0
     hardBack = backBtn.pressed();
+    if (hardBack) lastActivity = millis();
 #endif
 
+    // ── Barcode-Scanner: immer aktiv ─────────────────────────
+    if (scanner.available()) {
+        String bc = scanner.getBarcode();
+        lastActivity = millis();
+        Serial.printf("[Scan] %s\n", bc.c_str());
+
+        if (state == State::POWER_SAVE) {
+            // Aufwecken, Barcode wird nach Rückkehr erneut gescannt
+            display.setBrightness(220);
+            setState(State::MAIN);
+        } else {
+            // Label-Barcode (L00001 … L99999) → Auslagerung
+            bool isLabel = (bc.length() == 6 && bc[0] == 'L');
+            const InventoryItem *found = isLabel ? inventory.findByLabel(bc) : nullptr;
+            if (found) {
+                retrieveItem = *found;
+                setState(State::RETRIEVE);
+            } else {
+                // Normaler Produkt-Barcode → Online-Suche
+                currentBarcode = bc;
+                setState(State::FETCHING);
+            }
+        }
+        return; // Verarbeitung in nächstem loop()-Aufruf
+    }
+
+    // ── Power-Save-Prüfung ───────────────────────────────────
+    if (state != State::POWER_SAVE &&
+        state != State::BOOTING   &&
+        state != State::WIFI_CONNECTING &&
+        millis() - lastActivity > POWER_SAVE_MS) {
+        display.setBrightness(0);
+        setState(State::POWER_SAVE);
+    }
+
+    // ── State-Machine ─────────────────────────────────────────
     switch (state) {
 
     // ── WIFI_CONNECTING ──────────────────────────────────────
@@ -214,11 +442,15 @@ void loop() {
         if (WiFi.status()==WL_CONNECTED) {
             configTzTime(TZ_STRING, NTP_SERVER, NTP_SERVER2);
             Serial.printf("[WiFi] IP: %s\n", WiFi.localIP().toString().c_str());
-            webInterface = new WebInterface(inventory, customProducts);
+            webInterface = new WebInterface(inventory, customProducts, storageStats);
             webInterface->begin();
-            setState(State::IDLE);
+            _mqttCfg      = loadMqttCfg();
+            _telegramCfg  = loadTelegramCfg();
+            mqttEnsureConnected();
+            mqttSendHADiscovery();
+            setState(State::MAIN);
         }
-        if (millis()-stateEnter > 20000) { startAP(); }
+        if (millis()-stateEnter > 20000) startAP();
         break;
     }
 
@@ -228,45 +460,75 @@ void loop() {
             display.showAPMode(AP_SSID, AP_PASSWORD, WiFi.softAPIP().toString());
             screenDirty = false;
         }
-        if (scanner.available()) {
-            currentBarcode = scanner.getBarcode();
-            setState(State::FETCHING);
-        }
-        if (hit(TBTN_X, IDLE_LIST_BTN_Y, TBTN_W, IDLE_BTN_H) && customProducts.count()>0)
-            setState(State::CATEGORY_SELECT);
+        // Zur Produktliste wechseln
+        if (hit(TBTN_X, IDLE_LIST_BTN_Y, TBTN_W, IDLE_BTN_H))
+            setState(State::MAIN);
         if (hit(TBTN_X, IDLE_INV_BTN_Y, TBTN_W, IDLE_BTN_H) && inventory.count()>0) {
             browseIndex=0; setState(State::INVENTORY_BROWSE);
         }
         break;
     }
 
-    // ── IDLE ─────────────────────────────────────────────────
-    case State::IDLE: {
+    // ── MAIN ─────────────────────────────────────────────────
+    case State::MAIN: {
+        static std::vector<CustomProduct> mainProducts;
         if (screenDirty) {
-            display.showIdle(inventory.count(), inventory.expiringIn(WARNING_DAYS),
-                             inventory.expiredCount(), customProducts.count());
+            String catName = (currentCatIndex < (int)g_categories.size())
+                             ? g_categories[currentCatIndex].name : "";
+            mainProducts = customProducts.byCategory(catName);
+            // Inventar-Zähler je Kategorie für Tab-Anzeige
+            std::vector<int> catCounts;
+            catCounts.reserve(g_categories.size());
+            for (const auto &cat : g_categories)
+                catCounts.push_back(inventory.countByCategory(cat.name));
+            int warnCount = inventory.expiringIn(WARNING_DAYS) + inventory.expiredCount();
+            display.showMain(currentCatIndex, mainProducts, mainOffset,
+                             catCounts, warnCount, WiFi.status() == WL_CONNECTED);
             screenDirty = false;
         }
-        if (scanner.available()) {
-            currentBarcode = scanner.getBarcode();
-            Serial.printf("[Scan] %s\n", currentBarcode.c_str());
-            setState(State::FETCHING); break;
+        // Tab-Tap (obere Leiste) – dynamische Breite
+        if (tapped && ty < TABS_H) {
+            int nCats  = max(1, (int)g_categories.size());
+            int newCat = tx / (DISPLAY_W / nCats);
+            if (newCat >= 0 && newCat < nCats && newCat != currentCatIndex) {
+                currentCatIndex = newCat;
+                mainOffset      = 0;
+                screenDirty     = true;
+            }
+            break;
         }
-        if (hit(TBTN_X, IDLE_LIST_BTN_Y, TBTN_W, IDLE_BTN_H) && customProducts.count()>0)
-            setState(State::CATEGORY_SELECT);
-        if (hit(TBTN_X, IDLE_INV_BTN_Y, TBTN_W, IDLE_BTN_H) && inventory.count()>0) {
-            browseIndex=0; setState(State::INVENTORY_BROWSE);
+        // Produkt antippen → Datumseingabe (mit defaultDays Auto-MHD)
+        int relY = ty - MAIN_LIST_Y;
+        if (tapped && relY >= 0 && relY < MAIN_MAX_VIS * MAIN_ITEM_H) {
+            int idx = mainOffset + relY / MAIN_ITEM_H;
+            if (idx < (int)mainProducts.size()) {
+                const auto &p = mainProducts[idx];
+                currentProduct = { true, p.barcode, p.name, p.brand, "", "" };
+                currentBarcode = p.barcode;
+                if (p.defaultDays > 0) {
+                    // MHD automatisch = heute + defaultDays
+                    time_t future = time(nullptr) + (time_t)p.defaultDays * 86400;
+                    struct tm *ft = localtime(&future);
+                    dateInput = { ft->tm_mday, ft->tm_mon+1, ft->tm_year+1900, FIELD_DAY };
+                } else {
+                    initDateToday();
+                }
+                setState(State::ENTER_DATE);
+                break;
+            }
         }
-        break;
-    }
-
-    // ── SCANNING ─────────────────────────────────────────────
-    case State::SCANNING: {
-        if (screenDirty) { display.showScanning(); screenDirty=false; }
-        if (scanner.available()) { currentBarcode=scanner.getBarcode(); setState(State::FETCHING); }
-        if (hit(TBTN_X,TBTN_PRIMARY_Y,TBTN_W,TBTN_H) || hardBack ||
-            gest==Gesture::SWIPE_LEFT || gest==Gesture::SWIPE_RIGHT)
-        { scanner.flush(); setState(State::IDLE); }
+        // "Lager"-Button (unten rechts)
+        if (tapped && ty >= MAIN_HINT_Y && tx >= MAIN_INV_X && inventory.count()>0) {
+            browseIndex=0; setState(State::INVENTORY_BROWSE); break;
+        }
+        // Scrollen
+        if (gest==Gesture::SWIPE_UP || gest==Gesture::SWIPE_LEFT) {
+            int maxOff = max(0,(int)mainProducts.size()-MAIN_MAX_VIS);
+            if (mainOffset<maxOff) { mainOffset++; screenDirty=true; }
+        }
+        if (gest==Gesture::SWIPE_DOWN || gest==Gesture::SWIPE_RIGHT) {
+            if (mainOffset>0) { mainOffset--; screenDirty=true; }
+        }
         break;
     }
 
@@ -274,164 +536,179 @@ void loop() {
     case State::FETCHING: {
         static unsigned long lastAnim=0;
         if (millis()-lastAnim > 500) { display.showFetching(currentBarcode); lastAnim=millis(); }
-        currentProduct = (WiFi.status()==WL_CONNECTED)
-            ? foodAPI.lookup(currentBarcode)
-            : ProductInfo{false,currentBarcode,"Unbekannt ("+currentBarcode+")"};
+        // Cache-Lookup (offline + schnell)
+        ProductInfo cached = foodCache.get(currentBarcode);
+        if (cached.found) {
+            currentProduct = cached;
+        } else if (WiFi.status()==WL_CONNECTED) {
+            currentProduct = foodAPI.lookup(currentBarcode);
+            if (currentProduct.found) foodCache.put(currentProduct);
+        } else {
+            currentProduct = { false, currentBarcode, "Unbekannt (" + currentBarcode + ")" };
+        }
         initDateToday();
-        setState(State::SHOW_PRODUCT);
-        break;
-    }
-
-    // ── SHOW_PRODUCT ─────────────────────────────────────────
-    case State::SHOW_PRODUCT: {
-        if (screenDirty) {
-            display.showProduct(currentProduct, stockForBarcode(currentProduct.barcode));
-            screenDirty=false;
-        }
-        if (hit(TBTN_X,TBTN_PRIMARY_Y,TBTN_W,TBTN_H))   setState(State::ENTER_DATE);
-        if (hit(TBTN_X,TBTN_SECONDARY_Y,TBTN_W,40) || hardBack ||
-            gest==Gesture::SWIPE_LEFT || gest==Gesture::SWIPE_RIGHT)
-            setState(State::IDLE);
-        break;
-    }
-
-    // ── CATEGORY_SELECT ──────────────────────────────────────
-    case State::CATEGORY_SELECT: {
-        if (screenDirty) { display.showCategorySelect(); screenDirty=false; }
-
-        // Tap in das 2×4 Kachel-Grid
-        if (tapped && ty >= CAT_Y0 && ty < CAT_Y0 + 4*(CAT_BTN_H+CAT_GAP)) {
-            int col = (tx - CAT_X0) / (CAT_BTN_W + CAT_GAP);
-            int row = (ty - CAT_Y0) / (CAT_BTN_H + CAT_GAP);
-            if (col>=0 && col<2 && row>=0 && row<4) {
-                // Prüfen ob Tap wirklich auf Button (nicht im Spalt)
-                int16_t bx = CAT_X0 + col*(CAT_BTN_W+CAT_GAP);
-                int16_t by = CAT_Y0 + row*(CAT_BTN_H+CAT_GAP);
-                if (tx>=bx && tx<bx+CAT_BTN_W && ty>=by && ty<by+CAT_BTN_H) {
-                    selectedCategory = CATEGORIES[row*2+col].name;
-                    listOffset = 0;
-                    setState(State::PRODUCT_LIST);
-                }
-            }
-        }
-        if (hardBack || gest==Gesture::SWIPE_RIGHT || gest==Gesture::SWIPE_LEFT)
-            setState(State::IDLE);
-        break;
-    }
-
-    // ── PRODUCT_LIST ─────────────────────────────────────────
-    case State::PRODUCT_LIST: {
-        // Gefilterte Liste nur bei Bedarf neu aufbauen
-        static std::vector<CustomProduct> filtered;
-        if (screenDirty) {
-            filtered = customProducts.byCategory(selectedCategory);
-            display.showProductList(filtered, listOffset, selectedCategory);
-            screenDirty = false;
-        }
-
-        // Tap auf einen Listen-Eintrag
-        if (tapped && ty >= 56 && ty < 56 + LIST_MAX_VIS*LIST_ITEM_H) {
-            int idx = listOffset + (ty-56)/LIST_ITEM_H;
-            if (idx < (int)filtered.size()) {
-                const auto &p = filtered[idx];
-                currentProduct = { true, p.barcode, p.name, p.brand, "", "" };
-                currentBarcode = p.barcode;
-                initDateToday();
-                setState(State::ENTER_DATE); break;
-            }
-        }
-        // Wischen zum Scrollen
-        if (gest==Gesture::SWIPE_UP || gest==Gesture::SWIPE_LEFT) {
-            int maxOff = max(0,(int)filtered.size()-LIST_MAX_VIS);
-            if (listOffset<maxOff) { listOffset++; screenDirty=true; }
-        }
-        if (gest==Gesture::SWIPE_DOWN || gest==Gesture::SWIPE_RIGHT) {
-            if (listOffset>0) { listOffset--; screenDirty=true; }
-        }
-        if (hit(TBTN_X,LIST_BACK_BTN_Y,TBTN_W,40) || hardBack)
-            setState(State::CATEGORY_SELECT);
+        setState(State::ENTER_DATE);
         break;
     }
 
     // ── ENTER_DATE ───────────────────────────────────────────
     case State::ENTER_DATE: {
-        if (screenDirty) { display.showDateEntry(dateInput,currentProduct.name); screenDirty=false; }
+        if (screenDirty) { display.showDateEntry(dateInput, currentProduct.name); screenDirty=false; }
         bool changed=false;
         if (tapped && ty>=DATE_PLUS_Y0 && ty<DATE_PLUS_Y1) {
             int col=tx/DATE_COL_W;
             if      (col==0){dateInput.day++;   clampDate(dateInput);changed=true;}
-            else if (col==1){dateInput.month++;  clampDate(dateInput);changed=true;}
-            else if (col==2){dateInput.year++;   clampDate(dateInput);changed=true;}
+            else if (col==1){dateInput.month++; clampDate(dateInput);changed=true;}
+            else if (col==2){dateInput.year++;  clampDate(dateInput);changed=true;}
         }
         if (tapped && ty>=DATE_MINUS_Y0 && ty<DATE_MINUS_Y1) {
             int col=tx/DATE_COL_W;
             if      (col==0){dateInput.day--;   clampDate(dateInput);changed=true;}
-            else if (col==1){dateInput.month--;  clampDate(dateInput);changed=true;}
-            else if (col==2){dateInput.year--;   clampDate(dateInput);changed=true;}
+            else if (col==1){dateInput.month--; clampDate(dateInput);changed=true;}
+            else if (col==2){dateInput.year--;  clampDate(dateInput);changed=true;}
         }
-        if (changed) display.showDateEntry(dateInput,currentProduct.name);
-        if (hit(TBTN_X,DATE_OK_Y,TBTN_W,TBTN_H)) setState(State::SAVING);
-        if (hit(TBTN_X,DATE_BACK_Y,TBTN_W,40) || hardBack) {
-            // Zurück: je nach Herkunft
-            setState(currentProduct.barcode.isEmpty() ? State::PRODUCT_LIST : State::SHOW_PRODUCT);
-        }
+        if (changed) display.showDateEntry(dateInput, currentProduct.name);
+        if (hit(DATE_OK_X, DATE_BTN_Y, DATE_OK_W, DATE_BTN_H))
+            setState(State::SAVING);
+        if (hit(DATE_BACK_X, DATE_BTN_Y, DATE_BACK_W, DATE_BTN_H) || hardBack)
+            setState(State::MAIN);
         break;
     }
 
     // ── SAVING ───────────────────────────────────────────────
     case State::SAVING: {
+        String labelCode = generateLabelCode();
         InventoryItem item;
-        item.barcode    = currentProduct.barcode;
-        item.name       = currentProduct.name;
-        item.brand      = currentProduct.brand;
-        item.expiryDate = dateInputToStr(dateInput);
-        item.addedDate  = todayStr();
-        item.quantity   = 1;
+        item.barcode      = currentBarcode;
+        item.name         = currentProduct.name;
+        item.brand        = currentProduct.brand;
+        item.category     = (currentCatIndex < (int)g_categories.size())
+                            ? g_categories[currentCatIndex].name : "";
+        item.expiryDate   = dateInputToStr(dateInput);
+        item.addedDate    = todayStr();
+        item.quantity     = 1;
+        item.labelBarcode = labelCode;
         if (inventory.addItem(item)) {
-            display.showSuccess(item.name, dateInputDisplay(dateInput));
-            setState(State::SUCCESS);
+            lastAddedItem = item;
+            buzzOk();
+            mqttPublishItem(item);
+            telegramSend("<b>✅ Eingelagert:</b> " + item.name +
+                         "\nMHD: " + isoToDisplay(item.expiryDate) +
+                         "\nLabel: " + item.labelBarcode);
+            setState(State::PRINTING);
         } else {
+            buzzError();
             display.showError("Speichern fehlgeschlagen!");
             setState(State::ERROR);
         }
         break;
     }
 
-    // ── SUCCESS ──────────────────────────────────────────────
-    case State::SUCCESS:
-        if (millis()-stateEnter>2500 || tapped || hardBack) setState(State::IDLE);
+    // ── PRINTING ─────────────────────────────────────────────
+    case State::PRINTING: {
+        if (screenDirty) {
+            display.showPrinting();
+            screenDirty = false;
+            printer.printLabel(
+                lastAddedItem.name,
+                lastAddedItem.labelBarcode,
+                isoToDisplay(lastAddedItem.addedDate),
+                lastAddedItem.expiryDate.isEmpty() ? "" : isoToDisplay(lastAddedItem.expiryDate)
+            );
+        }
+        if (millis()-stateEnter > 2200) {
+            display.showSuccess(lastAddedItem.name, dateInputDisplay(dateInput), true);
+            setState(State::SUCCESS);
+        }
         break;
+    }
+
+    // ── SUCCESS ──────────────────────────────────────────────
+    case State::SUCCESS: {
+        // "Nochmal drucken" Button (linke Hälfte)
+        int16_t halfW = (TBTN_W - 4) / 2;
+        if (hit(TBTN_X, 228, halfW, TBTN_H)) {
+            // Neu drucken: neuen Label-Code generieren + erneut in PRINTING
+            setState(State::PRINTING);
+            break;
+        }
+        // "Weiter" Button (rechte Hälfte) oder Auto-Advance nach 8s
+        if (hit(TBTN_X + (TBTN_W + 4) / 2, 228, halfW, TBTN_H) ||
+            hardBack || millis()-stateEnter > 8000) {
+            setState(State::MAIN);
+        }
+        break;
+    }
 
     // ── ERROR ────────────────────────────────────────────────
     case State::ERROR:
-        if (tapped || hardBack || millis()-stateEnter>5000) setState(State::IDLE);
+        if (screenDirty) { screenDirty = false; buzzError(); }
+        if (tapped || hardBack || millis()-stateEnter>5000) setState(State::MAIN);
         break;
+
+    // ── RETRIEVE ─────────────────────────────────────────────
+    case State::RETRIEVE: {
+        if (screenDirty) {
+            int days = daysUntilExpiry(retrieveItem.expiryDate);
+            display.showRetrieve(retrieveItem.name,
+                                  isoToDisplay(retrieveItem.addedDate),
+                                  isoToDisplay(retrieveItem.expiryDate),
+                                  days);
+            screenDirty = false;
+        }
+        if (hit(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H)) {
+            // Lagerdauer = -(daysUntilExpiry(addedDate)) da addedDate in Vergangenheit
+            int storageDays = max(0, -daysUntilExpiry(retrieveItem.addedDate));
+            storageStats.record(retrieveItem, todayStr(), storageDays);
+            mqttPublishRetrieve(retrieveItem, storageDays);
+            telegramSend("<b>\xF0\x9F\x93\xA4 Ausgelagert:</b> " + retrieveItem.name +
+                         "\nLagerdauer: " + String(storageDays) + " Tage");
+            inventory.removeByLabel(retrieveItem.labelBarcode);
+            setState(State::MAIN);
+        }
+        if (hit(TBTN_X, TBTN_SECONDARY_Y, TBTN_W, TBTN_H) || hardBack)
+            setState(State::MAIN);
+        break;
+    }
 
     // ── INVENTORY_BROWSE ─────────────────────────────────────
     case State::INVENTORY_BROWSE: {
         const auto &items = inventory.items();
-        if (items.empty()) { setState(State::IDLE); break; }
+        if (items.empty()) { setState(State::MAIN); break; }
         if (browseIndex>=(int)items.size()) browseIndex=items.size()-1;
         if (screenDirty) {
             const auto &it=items[browseIndex];
-            display.showInventoryItem(browseIndex,items.size(),
-                                      it.name,it.expiryDate,
-                                      it.quantity,daysUntilExpiry(it.expiryDate));
+            display.showInventoryItem(browseIndex, items.size(),
+                                      it.name, it.expiryDate,
+                                      it.quantity, daysUntilExpiry(it.expiryDate));
             screenDirty=false;
         }
         if (gest==Gesture::SWIPE_UP   || gest==Gesture::SWIPE_LEFT)
             { browseIndex=(browseIndex+1)%items.size(); screenDirty=true; }
         if (gest==Gesture::SWIPE_DOWN || gest==Gesture::SWIPE_RIGHT)
             { browseIndex=(browseIndex-1+items.size())%items.size(); screenDirty=true; }
-        if (hit(TBTN_X,INV_DEL_Y,TBTN_W,TBTN_H)) {
-            inventory.removeItem(items[browseIndex].barcode,items[browseIndex].expiryDate);
-            browseIndex=min(browseIndex,max(0,(int)inventory.items().size()-1));
-            if (inventory.items().empty()) setState(State::IDLE); else screenDirty=true;
+        if (hit(TBTN_X, INV_DEL_Y, TBTN_W, TBTN_H)) {
+            inventory.removeItem(items[browseIndex].barcode, items[browseIndex].expiryDate);
+            browseIndex=min(browseIndex, max(0,(int)inventory.items().size()-1));
+            if (inventory.items().empty()) setState(State::MAIN); else screenDirty=true;
         }
-        if (hit(TBTN_X,INV_BACK_Y,TBTN_W,36) || hardBack || gest==Gesture::LONG_PRESS)
-            setState(State::IDLE);
+        if (hit(TBTN_X, INV_BACK_Y, TBTN_W, TBTN_H) || hardBack || gest==Gesture::LONG_PRESS)
+            setState(State::MAIN);
         break;
     }
+
+    // ── POWER_SAVE ───────────────────────────────────────────
+    case State::POWER_SAVE: {
+        if (screenDirty) screenDirty = false;  // Display bleibt schwarz
+        if (tapped) {
+            lastActivity = millis();
+            display.setBrightness(220);
+            setState(State::MAIN);
+        }
+        break;
+    }
+
+    case State::BOOTING: break;
 
     } // switch
 }

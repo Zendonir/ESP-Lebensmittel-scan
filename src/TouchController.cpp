@@ -19,12 +19,13 @@ bool TouchController::begin() {
 
     // Verbindungstest
     Wire.beginTransmission(I2C_ADDR);
-    bool ok = (Wire.endTransmission() == 0);
-    if (!ok) Serial.printf("[Touch] CST816S nicht gefunden (I2C 0x%02X)\n", I2C_ADDR);
-    return ok;
+    _initialized = (Wire.endTransmission() == 0);
+    if (!_initialized) Serial.printf("[Touch] CST816S nicht gefunden (I2C 0x%02X)\n", I2C_ADDR);
+    return _initialized;
 }
 
 void TouchController::update() {
+    if (!_initialized) return;
     _tapped  = false;
     _gesture = Gesture::NONE;
 

@@ -59,6 +59,20 @@
 #define BARCODE_BAUD  9600
 
 // ============================================================
+//  RS232/TTL Mini-Thermodrucker (Hardware Serial2, ESC/POS)
+//  ESP32 TX (GPIO17) → Drucker RX
+//  ESP32 RX (GPIO18) → Drucker TX
+// ============================================================
+#define PRINTER_TX_PIN   17
+#define PRINTER_RX_PIN   18
+#define PRINTER_BAUD   9600
+
+// ============================================================
+//  Stromsparmodus – Inaktivität in ms (10 Minuten)
+// ============================================================
+#define POWER_SAVE_MS  600000UL
+
+// ============================================================
 //  Open Food Facts API
 // ============================================================
 #define OFF_HOST        "world.openfoodfacts.org"
@@ -69,8 +83,13 @@
 // ============================================================
 #define INVENTORY_FILE       "/inventory.json"
 #define CUSTOM_PRODUCTS_FILE "/custom_products.json"
+#define CATEGORIES_FILE      "/categories.json"
+#define STORAGE_STATS_FILE   "/storage_stats.json"
+#define OFF_CACHE_FILE       "/off_cache.json"
 #define MAX_ITEMS            500
 #define MAX_CUSTOM_PRODUCTS  100
+#define MAX_STATS_ENTRIES    200
+#define MAX_CACHE_ENTRIES     50
 
 // ============================================================
 //  Ablaufwarnungen (Tage)
@@ -100,3 +119,15 @@
 #define COLOR_SURFACE   0x18C3
 #define COLOR_BTN_OK    0x0640
 #define COLOR_BTN_BACK  0x2945
+
+// ============================================================
+//  Optionaler Buzzer (Passiv-Buzzer, -1 = deaktiviert)
+//  Kurzer Piepton bei Einlagerung, tiefer Ton bei Fehler
+// ============================================================
+#define BUZZER_PIN  -1
+
+// ============================================================
+//  MQTT (optional) – wird über Web-Interface konfiguriert
+//  Wenn kein Broker eingestellt ist, bleibt MQTT deaktiviert
+// ============================================================
+#define MQTT_CHECK_INTERVAL_MS  3600000UL  // 1 Stunde

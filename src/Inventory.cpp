@@ -4,10 +4,6 @@
 #include <time.h>
 
 bool Inventory::begin() {
-    if (!LittleFS.begin(true)) {
-        Serial.println("[Inventory] LittleFS mount failed");
-        return false;
-    }
     return load();
 }
 
@@ -28,12 +24,14 @@ bool Inventory::load() {
 
     for (JsonObject obj : doc["items"].as<JsonArray>()) {
         InventoryItem item;
-        item.barcode    = obj["barcode"].as<String>();
-        item.name       = obj["name"].as<String>();
-        item.brand      = obj["brand"].as<String>();
-        item.expiryDate = obj["expiry"].as<String>();
-        item.addedDate  = obj["added"].as<String>();
-        item.quantity   = obj["qty"].as<int>();
+        item.barcode      = obj["barcode"].as<String>();
+        item.name         = obj["name"].as<String>();
+        item.brand        = obj["brand"].as<String>();
+        item.category     = obj["category"].as<String>();
+        item.expiryDate   = obj["expiry"].as<String>();
+        item.addedDate    = obj["added"].as<String>();
+        item.quantity     = obj["qty"].as<int>();
+        item.labelBarcode = obj["label"].as<String>();
         _items.push_back(item);
     }
     return true;
@@ -47,12 +45,14 @@ bool Inventory::save() {
     JsonArray arr = doc["items"].to<JsonArray>();
     for (const auto &item : _items) {
         JsonObject obj = arr.add<JsonObject>();
-        obj["barcode"] = item.barcode;
-        obj["name"]    = item.name;
-        obj["brand"]   = item.brand;
-        obj["expiry"]  = item.expiryDate;
-        obj["added"]   = item.addedDate;
-        obj["qty"]     = item.quantity;
+        obj["barcode"]   = item.barcode;
+        obj["name"]      = item.name;
+        obj["brand"]     = item.brand;
+        obj["category"]  = item.category;
+        obj["expiry"]    = item.expiryDate;
+        obj["added"]     = item.addedDate;
+        obj["qty"]       = item.quantity;
+        obj["label"]     = item.labelBarcode;
     }
 
     serializeJson(doc, f);
@@ -81,6 +81,22 @@ bool Inventory::removeItem(const String &barcode, const String &expiryDate) {
         }
     }
     return false;
+}
+
+bool Inventory::removeByLabel(const String &labelBarcode) {
+    for (auto it = _items.begin(); it != _items.end(); ++it) {
+        if (it->labelBarcode == labelBarcode) {
+            _items.erase(it);
+            return save();
+        }
+    }
+    return false;
+}
+
+const InventoryItem *Inventory::findByLabel(const String &labelBarcode) const {
+    for (const auto &item : _items)
+        if (item.labelBarcode == labelBarcode) return &item;
+    return nullptr;
 }
 
 bool Inventory::incrementItem(const String &barcode, const String &expiryDate) {
@@ -122,5 +138,12 @@ int Inventory::expiredCount() const {
     for (const auto &item : _items) {
         if (daysUntilExpiry(item.expiryDate) < 0) count += item.quantity;
     }
+    return count;
+}
+
+int Inventory::countByCategory(const String &cat) const {
+    int count = 0;
+    for (const auto &item : _items)
+        if (item.category == cat) count += item.quantity;
     return count;
 }

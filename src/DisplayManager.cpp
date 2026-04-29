@@ -1,8 +1,9 @@
 #include "DisplayManager.h"
+#include "CategoryManager.h"
 
-static constexpr int16_t W   = DISPLAY_W;
-static constexpr int16_t H   = DISPLAY_H;
-static constexpr int16_t HDR = 56;
+static constexpr int16_t W   = DISPLAY_W;   // 456
+static constexpr int16_t H   = DISPLAY_H;   // 280
+static constexpr int16_t HDR = 40;
 
 // ── Init ──────────────────────────────────────────────────────
 
@@ -59,7 +60,7 @@ void DisplayManager::drawHeader(const String &title, uint16_t bg) {
 void DisplayManager::drawTouchButton(int16_t x, int16_t y, int16_t w, int16_t h,
                                       const String &label, uint16_t bg, uint16_t fg,
                                       uint8_t sz) {
-    _gfx->fillRoundRect(x, y, w, h, 12, bg);
+    _gfx->fillRoundRect(x, y, w, h, 10, bg);
     textCenter(label, x + w / 2, y + h / 2, sz, fg, bg);
 }
 
@@ -69,20 +70,20 @@ void DisplayManager::drawPlusMinusColumn(int col, int value, bool isYear) {
     int16_t colW = DATE_COL_W - 6;
 
     _gfx->fillRoundRect(colX, DATE_PLUS_Y0, colW, DATE_PLUS_Y1 - DATE_PLUS_Y0, 8, COLOR_SURFACE);
-    textCenter("+", cx, DATE_PLUS_Y0 + (DATE_PLUS_Y1 - DATE_PLUS_Y0) / 2, 3, COLOR_OK, COLOR_SURFACE);
+    textCenter("+", cx, DATE_PLUS_Y0 + (DATE_PLUS_Y1 - DATE_PLUS_Y0) / 2, 4, COLOR_OK, COLOR_SURFACE);
 
     _gfx->fillRect(colX, DATE_VAL_Y0, colW, DATE_VAL_Y1 - DATE_VAL_Y0, COLOR_BG);
     char buf[6];
-    if (isYear) snprintf(buf, sizeof(buf), "%d", value);
+    if (isYear) snprintf(buf, sizeof(buf), "%d",  value);
     else        snprintf(buf, sizeof(buf), "%02d", value);
-    textCenter(buf, cx, DATE_VAL_Y0 + (DATE_VAL_Y1 - DATE_VAL_Y0) / 2, 3, COLOR_TEXT, COLOR_BG);
+    textCenter(buf, cx, DATE_VAL_Y0 + (DATE_VAL_Y1 - DATE_VAL_Y0) / 2, 4, COLOR_TEXT, COLOR_BG);
 
     _gfx->fillRoundRect(colX, DATE_MINUS_Y0, colW, DATE_MINUS_Y1 - DATE_MINUS_Y0, 8, COLOR_SURFACE);
-    textCenter("-", cx, DATE_MINUS_Y0 + (DATE_MINUS_Y1 - DATE_MINUS_Y0) / 2, 3, COLOR_DANGER, COLOR_SURFACE);
+    textCenter("-", cx, DATE_MINUS_Y0 + (DATE_MINUS_Y1 - DATE_MINUS_Y0) / 2, 4, COLOR_DANGER, COLOR_SURFACE);
 
     if (col < 2)
         _gfx->drawFastVLine((col + 1) * DATE_COL_W, DATE_PLUS_Y0,
-                             DATE_MINUS_Y1 - DATE_PLUS_Y0, COLOR_BG);
+                             DATE_MINUS_Y1 - DATE_PLUS_Y0, COLOR_SURFACE);
 }
 
 String DisplayManager::daysLabel(int days) {
@@ -92,265 +93,215 @@ String DisplayManager::daysLabel(int days) {
     return String(days) + " Tage";
 }
 
-// ── Kategorie-Icons (gezeichnet mit Primitiven) ───────────────
+// ── Kategorie-Icons ───────────────────────────────────────────
 
 void DisplayManager::drawCategoryIcon(uint8_t cat, int16_t cx, int16_t cy) {
     switch (cat) {
-
-    case 0: // Fleisch – Steak mit Knochen
-        _gfx->fillRoundRect(cx - 19, cy - 9, 38, 20, 6, 0xD00A);  // Fleisch
-        _gfx->fillRect(cx + 13, cy - 18, 5, 36, 0xEF5B);          // Knochen-Schaft
-        _gfx->fillCircle(cx + 15, cy - 20, 6, 0xEF5B);             // Knochen oben
-        _gfx->fillCircle(cx + 15, cy + 20, 6, 0xEF5B);             // Knochen unten
+    case 0:
+        _gfx->fillRoundRect(cx-19,cy-9,38,20,6,0xD00A);
+        _gfx->fillRect(cx+13,cy-18,5,36,0xEF5B);
+        _gfx->fillCircle(cx+15,cy-20,6,0xEF5B);
+        _gfx->fillCircle(cx+15,cy+20,6,0xEF5B);
         break;
-
-    case 1: // Geflügel – Hähnchenschenkel
-        _gfx->fillCircle(cx - 2, cy - 9, 17, 0xD580);              // Fleisch-Kugel
-        _gfx->fillRoundRect(cx - 4, cy + 8, 8, 18, 4, 0xEF7B);    // Knochen
-        _gfx->fillCircle(cx, cy + 27, 6, 0xD580);                  // Knochen-Ende
+    case 1:
+        _gfx->fillCircle(cx-2,cy-9,17,0xD580);
+        _gfx->fillRoundRect(cx-4,cy+8,8,18,4,0xEF7B);
+        _gfx->fillCircle(cx,cy+27,6,0xD580);
         break;
-
-    case 2: // Fisch
-        _gfx->fillEllipse(cx - 4, cy, 20, 12, 0x07DF);            // Körper
-        _gfx->fillTriangle(cx + 15, cy - 12, cx + 15, cy + 12,
-                            cx + 27, cy, 0x07DF);                  // Schwanzflosse
-        _gfx->fillCircle(cx - 13, cy - 4, 3, 0xFFFF);             // Auge
-        // Rückenflossen-Andeutung
-        _gfx->fillTriangle(cx - 6, cy - 12, cx + 4, cy - 12,
-                            cx - 1, cy - 19, 0x07BF);
+    case 2:
+        _gfx->fillEllipse(cx-4,cy,20,12,0x07DF);
+        _gfx->fillTriangle(cx+15,cy-12,cx+15,cy+12,cx+27,cy,0x07DF);
+        _gfx->fillCircle(cx-13,cy-4,3,0xFFFF);
+        _gfx->fillTriangle(cx-6,cy-12,cx+4,cy-12,cx-1,cy-19,0x07BF);
         break;
-
-    case 3: // Gemüse – Brokkoli
-        _gfx->fillCircle(cx - 8, cy - 6, 11, 0x07E0);             // Kopf links
-        _gfx->fillCircle(cx + 8, cy - 6, 11, 0x07E0);             // Kopf rechts
-        _gfx->fillCircle(cx,     cy - 15, 11, 0x4FE0);            // Kopf Mitte
-        _gfx->fillRect(cx - 3, cy + 6, 6, 14, 0x5B00);            // Stiel
+    case 3:
+        _gfx->fillCircle(cx-8,cy-6,11,0x07E0);
+        _gfx->fillCircle(cx+8,cy-6,11,0x07E0);
+        _gfx->fillCircle(cx,cy-15,11,0x4FE0);
+        _gfx->fillRect(cx-3,cy+6,6,14,0x5B00);
         break;
-
-    case 4: // Obst – Apfel + Orange
-        _gfx->fillCircle(cx - 7, cy + 5, 13, 0xF800);             // roter Apfel
-        _gfx->fillCircle(cx + 9, cy + 1, 11, 0xFD40);             // Orange
-        _gfx->fillRect(cx - 5, cy - 17, 2, 8, 0x0460);            // Apfel-Stiel
-        _gfx->fillEllipse(cx - 1, cy - 16, 5, 3, 0x04A0);         // Blatt
+    case 4:
+        _gfx->fillCircle(cx-7,cy+5,13,0xF800);
+        _gfx->fillCircle(cx+9,cy+1,11,0xFD40);
+        _gfx->fillRect(cx-5,cy-17,2,8,0x0460);
+        _gfx->fillEllipse(cx-1,cy-16,5,3,0x04A0);
         break;
-
-    case 5: // Fertiggerichte – Teller mit Besteck
-        _gfx->drawCircle(cx, cy, 19, 0xFFFF);
-        _gfx->drawCircle(cx, cy, 13, 0xFFFF);
-        // Gabel (links)
-        _gfx->fillRect(cx - 11, cy - 16, 2, 30, 0xFFFF);
-        _gfx->fillRect(cx - 13, cy - 16, 2, 10, 0xFFFF);
-        _gfx->fillRect(cx - 9,  cy - 16, 2, 10, 0xFFFF);
-        // Messer (rechts)
-        _gfx->fillRect(cx + 9, cy - 16, 2, 30, 0xFFFF);
-        _gfx->fillRoundRect(cx + 9, cy - 16, 5, 14, 2, 0xD6DB);
+    case 5:
+        _gfx->drawCircle(cx,cy,19,0xFFFF);
+        _gfx->drawCircle(cx,cy,13,0xFFFF);
+        _gfx->fillRect(cx-11,cy-16,2,30,0xFFFF);
+        _gfx->fillRect(cx-13,cy-16,2,10,0xFFFF);
+        _gfx->fillRect(cx-9,cy-16,2,10,0xFFFF);
+        _gfx->fillRect(cx+9,cy-16,2,30,0xFFFF);
+        _gfx->fillRoundRect(cx+9,cy-16,5,14,2,0xD6DB);
         break;
-
-    case 6: // Backwaren – Brotlaib
-        _gfx->fillRoundRect(cx - 19, cy - 2, 38, 16, 6, 0x8320);  // Laib
-        _gfx->fillCircle(cx - 8, cy - 5, 12, 0xA400);             // gerundete Oberseite links
-        _gfx->fillCircle(cx + 8, cy - 5, 12, 0xA400);             // gerundete Oberseite rechts
-        _gfx->drawLine(cx, cy - 15, cx, cy + 10, 0x6240);         // Kerbe
+    case 6:
+        _gfx->fillRoundRect(cx-19,cy-2,38,16,6,0x8320);
+        _gfx->fillCircle(cx-8,cy-5,12,0xA400);
+        _gfx->fillCircle(cx+8,cy-5,12,0xA400);
+        _gfx->drawLine(cx,cy-15,cx,cy+10,0x6240);
         break;
-
-    case 7: // Sonstiges – Schneeflocke (passend zum Gefrierschrank)
-    {
-        uint16_t sc = 0xB7FF;
-        // 3 Hauptachsen (je 2px breit)
-        for (int t = 0; t <= 1; t++) {
-            _gfx->drawLine(cx + t, cy - 21, cx + t, cy + 21, sc);
-            _gfx->drawLine(cx - 18 + t, cy - 11, cx + 18 + t, cy + 11, sc);
-            _gfx->drawLine(cx - 18 + t, cy + 11, cx + 18 + t, cy - 11, sc);
+    case 7: {
+        uint16_t sc=0xB7FF;
+        for(int t=0;t<=1;t++){
+            _gfx->drawLine(cx+t,cy-21,cx+t,cy+21,sc);
+            _gfx->drawLine(cx-18+t,cy-11,cx+18+t,cy+11,sc);
+            _gfx->drawLine(cx-18+t,cy+11,cx+18+t,cy-11,sc);
         }
-        // Äste an der vertikalen Achse
-        _gfx->drawLine(cx - 6, cy - 15, cx,     cy - 21, sc);
-        _gfx->drawLine(cx + 6, cy - 15, cx,     cy - 21, sc);
-        _gfx->drawLine(cx - 6, cy + 15, cx,     cy + 21, sc);
-        _gfx->drawLine(cx + 6, cy + 15, cx,     cy + 21, sc);
-        _gfx->fillCircle(cx, cy, 4, sc);
+        _gfx->drawLine(cx-6,cy-15,cx,cy-21,sc);
+        _gfx->drawLine(cx+6,cy-15,cx,cy-21,sc);
+        _gfx->drawLine(cx-6,cy+15,cx,cy+21,sc);
+        _gfx->drawLine(cx+6,cy+15,cx,cy+21,sc);
+        _gfx->fillCircle(cx,cy,4,sc);
         break;
     }
     }
 }
 
-// ── Bildschirme ───────────────────────────────────────────────
+// ── Hauptscreen ───────────────────────────────────────────────
+// Kategorietabs (oben) + Produktliste der aktiven Kategorie
+
+void DisplayManager::showMain(int catIndex,
+                               const std::vector<CustomProduct> &products,
+                               int offset,
+                               const std::vector<int> &catInvCounts,
+                               int warnCount,
+                               bool wifiOk) {
+    _gfx->fillScreen(COLOR_BG);
+
+    // ── Kategorie-Tabs (dynamische Breite) ───────────────────
+    int nCats    = max(1, (int)g_categories.size());
+    int16_t tabW = W / nCats;
+    for (int i = 0; i < nCats; i++) {
+        int16_t tx = i * tabW;
+        bool sel = (i == catIndex);
+        uint16_t bg = sel ? g_categories[i].bgColor  : COLOR_SURFACE;
+        uint16_t fg = sel ? g_categories[i].textColor : COLOR_SUBTEXT;
+        _gfx->fillRect(tx, 0, tabW, TABS_H, bg);
+
+        // Kategorie-Name (oben)
+        String abbrev = g_categories[i].name;
+        if (abbrev.length() > 4) abbrev = abbrev.substring(0, 4) + ".";
+        textCenter(abbrev, tx + tabW / 2, 10, 1, fg, bg);
+
+        // Inventar-Zähler (unten, klein)
+        int cnt = (i < (int)catInvCounts.size()) ? catInvCounts[i] : 0;
+        if (cnt > 0) {
+            String cntStr = cnt > 99 ? "99+" : String(cnt);
+            textCenter(cntStr, tx + tabW / 2, 24, 1, sel ? fg : COLOR_TEXT, bg);
+        }
+
+        if (i > 0) _gfx->drawFastVLine(tx, 0, TABS_H, COLOR_BG);
+    }
+
+    // WiFi-Status-Punkt (oben rechts im Tab-Bereich)
+    uint16_t wifiDot = wifiOk ? COLOR_OK : COLOR_DANGER;
+    _gfx->fillCircle(W - 5, 5, 4, wifiDot);
+
+    // ── Produktliste ──────────────────────────────────────────
+    if (products.empty()) {
+        textCenter("Keine Produkte",               W / 2, MAIN_LIST_Y + 90,  1, COLOR_SUBTEXT);
+        textCenter("Im Web-Interface hinzufuegen", W / 2, MAIN_LIST_Y + 114, 1, COLOR_SUBTEXT);
+    } else {
+        int visible = min((int)MAIN_MAX_VIS, (int)products.size() - offset);
+        for (int i = 0; i < visible; i++) {
+            const auto &p  = products[offset + i];
+            int16_t itemY  = MAIN_LIST_Y + i * MAIN_ITEM_H;
+            uint16_t rowBg = (i % 2 == 0) ? COLOR_BG : COLOR_SURFACE;
+            _gfx->fillRect(0, itemY, W, MAIN_ITEM_H, rowBg);
+            String name  = p.name.length()  > 26 ? p.name.substring(0, 26)  : p.name;
+            String brand = p.brand.length() > 40 ? p.brand.substring(0, 40) : p.brand;
+            textLeft(name, 10, itemY + 4, 2, COLOR_TEXT, rowBg);
+            if (!p.brand.isEmpty())
+                textLeft(brand, 10, itemY + 28, 1, COLOR_SUBTEXT, rowBg);
+            // Standard-MHD-Hinweis rechts
+            if (p.defaultDays > 0) {
+                String d = String(p.defaultDays) + "d";
+                textLeft(d, W - 8 - textWidth(d, 1) - 6, itemY + 6, 1, COLOR_ACCENT, rowBg);
+            }
+            _gfx->drawFastHLine(0, itemY + MAIN_ITEM_H - 1, W, COLOR_SURFACE);
+        }
+        // Scrollbalken
+        if ((int)products.size() > MAIN_MAX_VIS) {
+            int total  = products.size();
+            int barH   = MAIN_MAX_VIS * MAIN_ITEM_H;
+            int markH  = max(8, barH * MAIN_MAX_VIS / total);
+            int markY  = MAIN_LIST_Y + (barH - markH) * offset / max(1, total - MAIN_MAX_VIS);
+            uint16_t sc = (catIndex < (int)g_categories.size()) ? g_categories[catIndex].bgColor : COLOR_ACCENT;
+            _gfx->fillRect(W - 4, MAIN_LIST_Y, 4, barH, COLOR_SURFACE);
+            _gfx->fillRect(W - 4, markY, 4, markH, sc);
+        }
+    }
+
+    // ── Statusleiste unten ───────────────────────────────────
+    _gfx->fillRect(0, MAIN_HINT_Y, W, H - MAIN_HINT_Y, COLOR_SURFACE);
+    textCenter("Barcode scannen oder Produkt antippen",
+               MAIN_INV_X / 2, MAIN_HINT_Y + 13, 1, COLOR_SUBTEXT, COLOR_SURFACE);
+
+    // "Lager"-Button rechts — orange wenn Ablauf-Warnungen vorhanden
+    int totalInv = 0;
+    for (int c : catInvCounts) totalInv += c;
+    uint16_t lagerBg = (warnCount > 0) ? COLOR_WARN : COLOR_BTN_BACK;
+    uint16_t lagerFg = (warnCount > 0) ? COLOR_BG   : COLOR_TEXT;
+    _gfx->fillRoundRect(MAIN_INV_X, MAIN_HINT_Y + 3, MAIN_INV_W - 4, H - MAIN_HINT_Y - 6,
+                        6, lagerBg);
+    String lagerLabel = totalInv > 0 ? "Lager " + String(totalInv) : "Lager";
+    textCenter(lagerLabel, MAIN_INV_X + (MAIN_INV_W - 4) / 2, MAIN_HINT_Y + 13,
+               1, lagerFg, lagerBg);
+
+    _gfx->flush();
+}
+
+// ── Booting / WiFi ────────────────────────────────────────────
 
 void DisplayManager::showBooting(const String &msg) {
     _gfx->fillScreen(COLOR_BG);
-    textCenter("Lebensmittel", W / 2, H / 2 - 50, 2, COLOR_ACCENT);
-    textCenter("Scanner",      W / 2, H / 2 - 26, 2, COLOR_ACCENT);
-    _gfx->drawFastHLine(40, H / 2 + 2, W - 80, COLOR_SURFACE);
+    textCenter("Lebensmittel", W / 2, H / 2 - 22, 2, COLOR_ACCENT);
+    textCenter("Scanner",      W / 2, H / 2 +  4, 2, COLOR_ACCENT);
+    _gfx->drawFastHLine(80, H / 2 + 22, W - 160, COLOR_SURFACE);
     if (!msg.isEmpty())
-        textCenter(msg, W / 2, H / 2 + 28, 1, COLOR_SUBTEXT);
+        textCenter(msg, W / 2, H / 2 + 42, 1, COLOR_SUBTEXT);
     _gfx->flush();
 }
 
 void DisplayManager::showWifiConnecting(const String &ssid, int attempt) {
     _gfx->fillScreen(COLOR_BG);
     drawHeader("WLAN Verbindung");
-    textCenter("Verbinde mit:",  W / 2,  90, 1, COLOR_SUBTEXT);
-    textCenter(ssid,             W / 2, 120, 2, COLOR_ACCENT);
-    int barW   = W - 40;
+    textCenter("Verbinde mit:", W / 2,  76, 1, COLOR_SUBTEXT);
+    textCenter(ssid,            W / 2, 108, 2, COLOR_ACCENT);
+    int barW   = W - 80;
     int filled = min(barW, (attempt % 20) * (barW / 20));
-    _gfx->drawRect(20, 158, barW, 12, COLOR_SURFACE);
-    if (filled > 0) _gfx->fillRect(20, 158, filled, 12, COLOR_ACCENT);
-    textCenter("Bitte warten...", W / 2, 196, 1, COLOR_SUBTEXT);
+    _gfx->drawRect(40, 136, barW, 10, COLOR_SURFACE);
+    if (filled > 0) _gfx->fillRect(40, 136, filled, 10, COLOR_ACCENT);
+    textCenter("Bitte warten...", W / 2, 164, 1, COLOR_SUBTEXT);
     _gfx->flush();
 }
 
-void DisplayManager::showIdle(int total, int expiring, int expired, int customCount) {
-    _gfx->fillScreen(COLOR_BG);
-    drawHeader("Bereit");
-
-    struct { const char *l; int v; uint16_t c; int16_t y; } tiles[] = {
-        { "Gesamt",      total,    COLOR_TEXT,   88  },
-        { "Bald weg",    expiring, COLOR_WARN,   168 },
-        { "Abgelaufen",  expired,  COLOR_DANGER, 248 },
-    };
-    for (auto &t : tiles) {
-        _gfx->fillRoundRect(16, t.y - 32, W - 32, 62, 10, COLOR_SURFACE);
-        textCenter(t.l,         W / 2, t.y - 16, 1, COLOR_SUBTEXT, COLOR_SURFACE);
-        textCenter(String(t.v), W / 2, t.y + 14, 3,
-                   t.v > 0 ? t.c : COLOR_TEXT, COLOR_SURFACE);
-    }
-
-    drawTouchButton(TBTN_X, IDLE_LIST_BTN_Y, TBTN_W, IDLE_BTN_H,
-                    customCount > 0 ? "Aus Liste waehlen" : "Liste (leer)",
-                    customCount > 0 ? COLOR_BTN_OK : COLOR_SURFACE, COLOR_TEXT);
-    drawTouchButton(TBTN_X, IDLE_INV_BTN_Y, TBTN_W, IDLE_BTN_H,
-                    "Inventar anzeigen", COLOR_BTN_BACK, COLOR_TEXT);
-    textCenter("oder Barcode mit GM861 scannen", W / 2, 434, 1, COLOR_SUBTEXT);
-    _gfx->flush();
-}
+// ── Scanning / Fetching ───────────────────────────────────────
 
 void DisplayManager::showScanning() {
     _gfx->fillScreen(COLOR_BG);
     drawHeader("Bitte scannen");
-    int bx = 30, by = 80, bw = W - 60, bh = 110;
+    int bx = 20, by = 48, bw = W - 40, bh = 106;
     for (int x = 0; x < bw; x += 7)
         _gfx->fillRect(bx + x, by, (x % 14 < 7) ? 4 : 2, bh, COLOR_TEXT);
-    _gfx->fillRect(bx, by + bh + 6, bw, 2, COLOR_SUBTEXT);
-    textCenter("GM861 vor den Scanner halten",   W / 2, 235, 1, COLOR_SUBTEXT);
-    textCenter("EAN13 • EAN8 • QR • DataMatrix", W / 2, 255, 1, COLOR_SUBTEXT);
-    drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H,
-                    "Abbrechen", COLOR_SURFACE, COLOR_TEXT);
+    _gfx->fillRect(bx, by + bh + 4, bw, 2, COLOR_SUBTEXT);
+    textCenter("GM861 vor den Scanner halten",   W / 2, 172, 1, COLOR_SUBTEXT);
+    textCenter("EAN13  EAN8  QR  DataMatrix", W / 2, 192, 1, COLOR_SUBTEXT);
+    drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H, "Abbrechen", COLOR_SURFACE, COLOR_TEXT);
     _gfx->flush();
 }
 
 void DisplayManager::showFetching(const String &barcode) {
     _gfx->fillScreen(COLOR_BG);
     drawHeader("Suche Produkt...");
-    textCenter("Open Food Facts", W / 2, 100, 1, COLOR_SUBTEXT);
-    String b = barcode.length() > 18 ? barcode.substring(0, 18) : barcode;
-    textCenter(b, W / 2, 140, 2, COLOR_ACCENT);
+    textCenter("Open Food Facts", W / 2,  80, 1, COLOR_SUBTEXT);
+    String b = barcode.length() > 24 ? barcode.substring(0, 24) : barcode;
+    textCenter(b, W / 2, 116, 2, COLOR_ACCENT);
     static uint8_t dots = 0;
     String d = ""; for (int i = 0; i < (dots % 4); i++) d += " .";
-    _gfx->fillRect(0, 190, W, 36, COLOR_BG);
-    textCenter(d, W / 2, 200, 2, COLOR_TEXT); dots++;
-    _gfx->flush();
-}
-
-void DisplayManager::showProduct(const ProductInfo &info, int stock) {
-    _gfx->fillScreen(COLOR_BG);
-    _gfx->fillRect(0, 0, W, HDR + 28, COLOR_HEADER);
-    textCenter("Produkt gefunden", W / 2, 14, 1, COLOR_SUBTEXT, COLOR_HEADER);
-    String n = info.name.isEmpty() ? ("ID: " + info.barcode) : info.name;
-    if (n.length() > 22) n = n.substring(0, 22);
-    textCenter(n, W / 2, 50, 2, COLOR_TEXT, COLOR_HEADER);
-
-    int16_t y = HDR + 38;
-    _gfx->drawFastHLine(10, y, W - 20, COLOR_SURFACE); y += 12;
-    if (!info.brand.isEmpty())    { textLeft("Marke:   " + info.brand,    10, y, 1, COLOR_SUBTEXT); y += 20; }
-    if (!info.quantity.isEmpty()) { textLeft("Inhalt:  " + info.quantity, 10, y, 1, COLOR_SUBTEXT); y += 20; }
-    if (!info.category.isEmpty()) { textLeft("Kat.:    " + info.category, 10, y, 1, COLOR_SUBTEXT); y += 20; }
-    textLeft("Im Lager: " + String(stock) + " Stk.", 10, y, 1,
-             stock > 0 ? COLOR_WARN : COLOR_SUBTEXT);
-
-    drawTouchButton(TBTN_X, TBTN_PRIMARY_Y,   TBTN_W, TBTN_H, "Hinzufuegen", COLOR_BTN_OK, COLOR_TEXT);
-    drawTouchButton(TBTN_X, TBTN_SECONDARY_Y, TBTN_W, 40,     "Abbrechen",   COLOR_SURFACE, COLOR_SUBTEXT, 1);
-    _gfx->flush();
-}
-
-// ── Kategorien-Auswahl ────────────────────────────────────────
-
-void DisplayManager::showCategorySelect() {
-    _gfx->fillScreen(COLOR_BG);
-    drawHeader("Kategorie waehlen");
-
-    for (int i = 0; i < NUM_CATEGORIES; i++) {
-        int col = i % 2;
-        int row = i / 2;
-        int16_t bx = CAT_X0 + col * (CAT_BTN_W + CAT_GAP);
-        int16_t by = CAT_Y0 + row * (CAT_BTN_H + CAT_GAP);
-
-        uint16_t bg  = CATEGORIES[i].bgColor;
-        uint16_t fg  = CATEGORIES[i].textColor;
-
-        _gfx->fillRoundRect(bx, by, CAT_BTN_W, CAT_BTN_H, 10, bg);
-
-        // Icon im oberen Bereich (Mittelpunkt bei by+34)
-        drawCategoryIcon(i, bx + CAT_BTN_W / 2, by + 34);
-
-        // Kategoriename unten
-        textCenter(CATEGORIES[i].name, bx + CAT_BTN_W / 2, by + 74, 1, fg, bg);
-    }
-    _gfx->flush();
-}
-
-// ── Produktliste (gefiltert nach Kategorie) ───────────────────
-
-void DisplayManager::showProductList(const std::vector<CustomProduct> &products,
-                                      int offset, const String &category) {
-    _gfx->fillScreen(COLOR_BG);
-
-    // Header in Kategoriefarbe
-    uint16_t catColor = COLOR_HEADER;
-    for (int i = 0; i < NUM_CATEGORIES; i++) {
-        if (String(CATEGORIES[i].name) == category) {
-            catColor = CATEGORIES[i].bgColor; break;
-        }
-    }
-    _gfx->fillRect(0, 0, W, HDR, catColor);
-    textCenter(category, W / 2, HDR / 2, 2, 0xFFFF, catColor);
-
-    if (products.empty()) {
-        textCenter("Keine Produkte in", W / 2, 180, 1, COLOR_SUBTEXT);
-        textCenter("\"" + category + "\"", W / 2, 210, 2, COLOR_TEXT);
-        textCenter("Im Web-Interface hinzufuegen", W / 2, 260, 1, COLOR_SUBTEXT);
-        drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H,
-                        "Zurueck", COLOR_SURFACE, COLOR_TEXT);
-        _gfx->flush();
-        return;
-    }
-
-    int visible = min((int)LIST_MAX_VIS, (int)products.size() - offset);
-    for (int i = 0; i < visible; i++) {
-        const auto &p  = products[offset + i];
-        int16_t itemY  = HDR + i * LIST_ITEM_H;
-        uint16_t rowBg = (i % 2 == 0) ? COLOR_BG : COLOR_SURFACE;
-
-        _gfx->fillRect(0, itemY, W, LIST_ITEM_H, rowBg);
-        String name  = p.name.length()  > 20 ? p.name.substring(0, 20)  : p.name;
-        String brand = p.brand.length() > 30 ? p.brand.substring(0, 30) : p.brand;
-        textLeft(name, 10, itemY + 5, 2, COLOR_TEXT, rowBg);
-        if (!p.brand.isEmpty())
-            textLeft(brand, 10, itemY + 29, 1, COLOR_SUBTEXT, rowBg);
-        _gfx->drawFastHLine(0, itemY + LIST_ITEM_H - 1, W, COLOR_SURFACE);
-    }
-
-    // Scrollbalken
-    if ((int)products.size() > LIST_MAX_VIS) {
-        int total = products.size();
-        int barH  = LIST_MAX_VIS * LIST_ITEM_H;
-        int markH = max(8, barH * LIST_MAX_VIS / total);
-        int markY = HDR + (barH - markH) * offset / max(1, total - LIST_MAX_VIS);
-        _gfx->fillRect(W - 4, HDR, 4, barH, COLOR_SURFACE);
-        _gfx->fillRect(W - 4, markY, 4, markH, catColor);
-        textCenter("< wischen >", W / 2 - 2, LIST_BACK_BTN_Y - 18, 1, COLOR_SURFACE);
-    }
-
-    drawTouchButton(TBTN_X, LIST_BACK_BTN_Y, TBTN_W, 40,
-                    "Zurueck", COLOR_SURFACE, COLOR_SUBTEXT, 1);
+    _gfx->fillRect(0, 144, W, 30, COLOR_BG);
+    textCenter(d, W / 2, 156, 2, COLOR_TEXT); dots++;
     _gfx->flush();
 }
 
@@ -358,57 +309,96 @@ void DisplayManager::showProductList(const std::vector<CustomProduct> &products,
 
 void DisplayManager::showDateEntry(const DateInput &d, const String &productName) {
     _gfx->fillScreen(COLOR_BG);
-    _gfx->fillRect(0, 0, W, HDR + 26, COLOR_HEADER);
+    _gfx->fillRect(0, 0, W, 54, COLOR_HEADER);
     textCenter("Haltbarkeitsdatum", W / 2, 14, 1, COLOR_SUBTEXT, COLOR_HEADER);
-    String pn = productName.length() > 22 ? productName.substring(0, 22) : productName;
-    textCenter(pn, W / 2, 48, 2, COLOR_TEXT, COLOR_HEADER);
+    String pn = productName.length() > 28 ? productName.substring(0, 28) : productName;
+    textCenter(pn, W / 2, 40, 2, COLOR_TEXT, COLOR_HEADER);
 
     const char *labels[] = { "Tag", "Mon", "Jahr" };
     for (int i = 0; i < 3; i++)
-        textCenter(labels[i], i * DATE_COL_W + DATE_COL_W / 2, 82, 1, COLOR_SUBTEXT);
+        textCenter(labels[i], i * DATE_COL_W + DATE_COL_W / 2, 58, 1, COLOR_SUBTEXT);
 
     drawPlusMinusColumn(0, d.day,   false);
     drawPlusMinusColumn(1, d.month, false);
     drawPlusMinusColumn(2, d.year,  true);
 
-    for (int i = 1; i < 3; i++)
-        _gfx->drawFastVLine(i * DATE_COL_W, DATE_PLUS_Y0,
-                             DATE_MINUS_Y1 - DATE_PLUS_Y0, COLOR_BG);
+    drawTouchButton(DATE_BACK_X, DATE_BTN_Y, DATE_BACK_W, DATE_BTN_H,
+                    "Abbrechen", COLOR_SURFACE, COLOR_SUBTEXT, 1);
+    drawTouchButton(DATE_OK_X, DATE_BTN_Y, DATE_OK_W, DATE_BTN_H,
+                    "Bestaetigen", COLOR_BTN_OK, COLOR_TEXT, 2);
+    _gfx->flush();
+}
 
-    char preview[12];
-    snprintf(preview, sizeof(preview), "%02d.%02d.%04d", d.day, d.month, d.year);
-    _gfx->fillRoundRect(20, DATE_MINUS_Y1 + 6, W - 40, 36, 8, COLOR_SURFACE);
-    textCenter(preview, W / 2, DATE_MINUS_Y1 + 24, 2, COLOR_ACCENT, COLOR_SURFACE);
+// ── Drucken ───────────────────────────────────────────────────
 
-    drawTouchButton(TBTN_X, DATE_OK_Y,   TBTN_W, TBTN_H, "Bestaetigen", COLOR_BTN_OK, COLOR_TEXT);
-    drawTouchButton(TBTN_X, DATE_BACK_Y, TBTN_W, 40,     "Abbrechen",   COLOR_SURFACE, COLOR_SUBTEXT, 1);
+void DisplayManager::showPrinting() {
+    _gfx->fillScreen(COLOR_BG);
+    drawHeader("Drucke Etikett...", COLOR_ACCENT);
+    // Drucker-Icon (einfaches Rechteck + Papier)
+    int16_t px = W / 2 - 36, py = 70;
+    _gfx->fillRoundRect(px, py,      72, 50, 6, COLOR_SURFACE);   // Gehäuse
+    _gfx->fillRect     (px + 8, py - 20, 56, 26, COLOR_SUBTEXT); // Papiereinzug
+    _gfx->fillRect     (px + 14, py + 26, 44, 32, 0xFFFF);        // Papier-Ausgabe
+    // Drucklinien auf dem Papier
+    for (int l = 0; l < 3; l++)
+        _gfx->fillRect(px + 18, py + 30 + l * 9, 36, 4, COLOR_SURFACE);
+    textCenter("Bitte warten...", W / 2, 158, 1, COLOR_SUBTEXT);
     _gfx->flush();
 }
 
 // ── Erfolg / Fehler ───────────────────────────────────────────
 
-void DisplayManager::showSuccess(const String &productName, const String &date) {
+void DisplayManager::showSuccess(const String &productName, const String &date, bool showReprint) {
     _gfx->fillScreen(COLOR_BG);
-    drawHeader("Hinzugefuegt!", COLOR_BTN_OK);
-    _gfx->fillCircle(W / 2, 155, 55, COLOR_OK);
+    drawHeader("Eingelagert!", COLOR_BTN_OK);
+    _gfx->fillCircle(W / 2, 116, 44, COLOR_OK);
     for (int t = 0; t < 5; t++) {
-        _gfx->drawLine(W/2 - 28 + t, 155, W/2 - 8 + t, 175, COLOR_BG);
-        _gfx->drawLine(W/2 - 8 + t, 175, W/2 + 26 + t, 125, COLOR_BG);
+        _gfx->drawLine(W/2-24+t, 116, W/2-4+t,  137, COLOR_BG);
+        _gfx->drawLine(W/2-4+t,  137, W/2+24+t,  97, COLOR_BG);
     }
-    String pn = productName.length() > 22 ? productName.substring(0, 22) : productName;
-    textCenter(pn,           W / 2, 245, 2, COLOR_TEXT);
-    textCenter("MHD: "+date, W / 2, 275, 1, COLOR_SUBTEXT);
-    drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H, "Weiter", COLOR_BTN_BACK, COLOR_TEXT);
+    String pn = productName.length() > 28 ? productName.substring(0, 28) : productName;
+    textCenter(pn,           W / 2, 178, 2, COLOR_TEXT);
+    textCenter("MHD: "+date, W / 2, 202, 1, COLOR_SUBTEXT);
+    if (showReprint) {
+        // Zwei Buttons unten: Nochmal drucken | Weiter
+        drawTouchButton(TBTN_X,            228, (TBTN_W - 4) / 2, TBTN_H,
+                        "Nochmal", COLOR_BTN_BACK, COLOR_TEXT, 1);
+        drawTouchButton(TBTN_X + (TBTN_W + 4) / 2, 228, (TBTN_W - 4) / 2, TBTN_H,
+                        "Weiter",  COLOR_BTN_OK,   COLOR_TEXT);
+    }
     _gfx->flush();
 }
 
 void DisplayManager::showError(const String &msg) {
     _gfx->fillScreen(COLOR_BG);
     drawHeader("Fehler", COLOR_DANGER);
-    _gfx->fillCircle(W / 2, 155, 50, COLOR_DANGER);
-    textCenter("!", W / 2, 143, 4, COLOR_BG, COLOR_DANGER);
-    textCenter(msg, W / 2, 248, 1, COLOR_TEXT);
+    _gfx->fillCircle(W / 2, 128, 46, COLOR_DANGER);
+    textCenter("!", W / 2, 116, 4, COLOR_BG, COLOR_DANGER);
+    textCenter(msg, W / 2, 196, 1, COLOR_TEXT);
     drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H, "OK", COLOR_BTN_BACK, COLOR_TEXT);
+    _gfx->flush();
+}
+
+// ── Auslagerung (Label-Barcode gescannt) ──────────────────────
+
+void DisplayManager::showRetrieve(const String &name, const String &storageDate,
+                                   const String &expiryDate, int daysLeft) {
+    _gfx->fillScreen(COLOR_BG);
+    drawHeader("Auslagerung", COLOR_ACCENT);
+    String n = name.length() > 28 ? name.substring(0, 28) : name;
+    textCenter(n, W / 2, 72, 2, COLOR_TEXT);
+    textCenter("Eingelagert: " + storageDate, W / 2, 106, 1, COLOR_SUBTEXT);
+    textCenter("MHD: " + expiryDate,          W / 2, 126, 1, COLOR_SUBTEXT);
+    uint16_t sc = (daysLeft < 0)             ? COLOR_DANGER
+                : (daysLeft <= DANGER_DAYS)  ? COLOR_DANGER
+                : (daysLeft <= WARNING_DAYS) ? COLOR_WARN
+                :                              COLOR_OK;
+    textCenter(daysLabel(daysLeft), W / 2, 164, 3, sc);
+    if (daysLeft >= 0) textCenter("verbleibend", W / 2, 196, 1, COLOR_SUBTEXT);
+    drawTouchButton(TBTN_X, TBTN_SECONDARY_Y, TBTN_W, TBTN_H,
+                    "Behalten", COLOR_SURFACE, COLOR_SUBTEXT, 1);
+    drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H,
+                    "Auslagern", COLOR_BTN_OK, COLOR_TEXT);
     _gfx->flush();
 }
 
@@ -420,27 +410,26 @@ void DisplayManager::showInventoryItem(int index, int total, const String &name,
     uint16_t sc = (daysLeft < 0 || daysLeft <= DANGER_DAYS) ? COLOR_DANGER
                 : (daysLeft <= WARNING_DAYS)                  ? COLOR_WARN
                 :                                               COLOR_OK;
-    _gfx->fillRect(0, 0, W, 8, sc);
-    _gfx->fillRect(0, 8, W, HDR - 8, COLOR_HEADER);
-    textCenter(String(index + 1) + " / " + String(total), W / 2, HDR / 2 + 4, 2, 0xFFFF, COLOR_HEADER);
+    _gfx->fillRect(0, 0, W, 6, sc);
+    _gfx->fillRect(0, 6, W, HDR - 6, COLOR_HEADER);
+    textCenter(String(index + 1) + " / " + String(total), W / 2, HDR / 2 + 3, 2, 0xFFFF, COLOR_HEADER);
 
-    int16_t y = HDR + 16;
-    String n = name.length() > 22 ? name.substring(0, 22) : name;
-    textLeft(n, 10, y, 2, COLOR_TEXT);
-    if (name.length() > 22) { textLeft(name.substring(22, 44), 10, y + 24, 2, COLOR_TEXT); y += 50; }
-    else y += 26;
-
-    y += 8;
+    int16_t y = HDR + 14;
+    String n = name.length() > 26 ? name.substring(0, 26) : name;
+    textLeft(n, 10, y, 2, COLOR_TEXT); y += 28;
+    if (name.length() > 26) {
+        textLeft(name.substring(26, 52), 10, y, 2, COLOR_TEXT); y += 28;
+    }
+    y += 6;
     textLeft("MHD:   " + expiry,                10, y,      1, COLOR_SUBTEXT);
-    textLeft("Menge: " + String(qty) + " Stk.", 10, y + 20, 1, COLOR_SUBTEXT);
-    _gfx->drawFastHLine(10, y + 44, W - 20, COLOR_SURFACE);
+    textLeft("Menge: " + String(qty) + " Stk.", 10, y + 22, 1, COLOR_SUBTEXT);
 
-    textCenter(daysLabel(daysLeft), W / 2, 258, 3, sc);
-    if (daysLeft >= 0) textCenter("verbleibend", W / 2, 298, 1, COLOR_SUBTEXT);
+    textCenter(daysLabel(daysLeft), W * 3 / 4, 122, 3, sc);
+    if (daysLeft >= 0) textCenter("verbleibend", W * 3 / 4, 154, 1, COLOR_SUBTEXT);
 
-    textCenter("< wischen zum Blaettern >", W / 2, 330, 1, COLOR_SURFACE);
-    drawTouchButton(TBTN_X, INV_DEL_Y,  TBTN_W, TBTN_H, "Artikel loeschen", COLOR_DANGER, COLOR_TEXT);
-    drawTouchButton(TBTN_X, INV_BACK_Y, TBTN_W, 36,     "Zurueck",          COLOR_SURFACE, COLOR_SUBTEXT, 1);
+    textCenter("< wischen >", W / 2, 162, 1, COLOR_SURFACE);
+    drawTouchButton(TBTN_X, INV_BACK_Y, TBTN_W, TBTN_H, "Zurueck",          COLOR_SURFACE, COLOR_SUBTEXT, 1);
+    drawTouchButton(TBTN_X, INV_DEL_Y,  TBTN_W, TBTN_H, "Artikel loeschen", COLOR_DANGER,  COLOR_TEXT);
     _gfx->flush();
 }
 
@@ -449,16 +438,15 @@ void DisplayManager::showInventoryItem(int index, int total, const String &name,
 void DisplayManager::showAPMode(const String &ssid, const String &password, const String &ip) {
     _gfx->fillScreen(COLOR_BG);
     drawHeader("WiFi Einrichtung", COLOR_WARN);
-    textCenter("Kein WLAN konfiguriert!", W / 2,  82, 1, COLOR_WARN);
-    textCenter("Mit diesem Netz verbinden:", W / 2, 108, 1, COLOR_SUBTEXT);
-    textCenter(ssid,     W / 2, 148, 2, COLOR_ACCENT);
-    textCenter("Passwort:", W / 2, 182, 1, COLOR_SUBTEXT);
-    textCenter(password, W / 2, 214, 2, COLOR_TEXT);
-    _gfx->drawFastHLine(20, 244, W - 40, COLOR_SURFACE);
-    textCenter("Dann Browser oeffnen:", W / 2, 268, 1, COLOR_SUBTEXT);
-    textCenter("http://" + ip, W / 2, 298, 1, COLOR_ACCENT);
+    textCenter("Kein WLAN konfiguriert!",    W / 2,  60, 1, COLOR_WARN);
+    textCenter("Netz:",                      W / 2,  80, 1, COLOR_SUBTEXT);
+    textCenter(ssid,                         W / 2, 106, 2, COLOR_ACCENT);
+    textCenter("PW:",                        W / 2, 128, 1, COLOR_SUBTEXT);
+    textCenter(password,                     W / 2, 152, 2, COLOR_TEXT);
+    _gfx->drawFastHLine(20, 170, W - 40, COLOR_SURFACE);
+    textCenter("Browser: http://" + ip,      W / 2, 188, 1, COLOR_ACCENT);
     drawTouchButton(TBTN_X, IDLE_LIST_BTN_Y, TBTN_W, IDLE_BTN_H,
-                    "Aus Liste waehlen", COLOR_BTN_OK, COLOR_TEXT);
+                    "Zur Produktliste", COLOR_BTN_OK, COLOR_TEXT);
     drawTouchButton(TBTN_X, IDLE_INV_BTN_Y, TBTN_W, IDLE_BTN_H,
                     "Inventar anzeigen", COLOR_BTN_BACK, COLOR_TEXT);
     _gfx->flush();
