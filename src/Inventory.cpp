@@ -24,12 +24,13 @@ bool Inventory::load() {
 
     for (JsonObject obj : doc["items"].as<JsonArray>()) {
         InventoryItem item;
-        item.barcode    = obj["barcode"].as<String>();
-        item.name       = obj["name"].as<String>();
-        item.brand      = obj["brand"].as<String>();
-        item.expiryDate = obj["expiry"].as<String>();
-        item.addedDate  = obj["added"].as<String>();
-        item.quantity   = obj["qty"].as<int>();
+        item.barcode      = obj["barcode"].as<String>();
+        item.name         = obj["name"].as<String>();
+        item.brand        = obj["brand"].as<String>();
+        item.expiryDate   = obj["expiry"].as<String>();
+        item.addedDate    = obj["added"].as<String>();
+        item.quantity     = obj["qty"].as<int>();
+        item.labelBarcode = obj["label"].as<String>();
         _items.push_back(item);
     }
     return true;
@@ -49,6 +50,7 @@ bool Inventory::save() {
         obj["expiry"]  = item.expiryDate;
         obj["added"]   = item.addedDate;
         obj["qty"]     = item.quantity;
+        obj["label"]   = item.labelBarcode;
     }
 
     serializeJson(doc, f);
@@ -77,6 +79,22 @@ bool Inventory::removeItem(const String &barcode, const String &expiryDate) {
         }
     }
     return false;
+}
+
+bool Inventory::removeByLabel(const String &labelBarcode) {
+    for (auto it = _items.begin(); it != _items.end(); ++it) {
+        if (it->labelBarcode == labelBarcode) {
+            _items.erase(it);
+            return save();
+        }
+    }
+    return false;
+}
+
+const InventoryItem *Inventory::findByLabel(const String &labelBarcode) const {
+    for (const auto &item : _items)
+        if (item.labelBarcode == labelBarcode) return &item;
+    return nullptr;
 }
 
 bool Inventory::incrementItem(const String &barcode, const String &expiryDate) {

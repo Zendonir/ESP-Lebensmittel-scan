@@ -59,6 +59,20 @@
 #define BARCODE_BAUD  9600
 
 // ============================================================
+//  RS232/TTL Mini-Thermodrucker (Hardware Serial2, ESC/POS)
+//  ESP32 TX (GPIO17) → Drucker RX
+//  ESP32 RX (GPIO18) → Drucker TX
+// ============================================================
+#define PRINTER_TX_PIN   17
+#define PRINTER_RX_PIN   18
+#define PRINTER_BAUD   9600
+
+// ============================================================
+//  Stromsparmodus – Inaktivität in ms (10 Minuten)
+// ============================================================
+#define POWER_SAVE_MS  600000UL
+
+// ============================================================
 //  Open Food Facts API
 // ============================================================
 #define OFF_HOST        "world.openfoodfacts.org"
