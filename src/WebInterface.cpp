@@ -1,6 +1,7 @@
 #include "WebInterface.h"
 #include "config.h"
 #include "CategoryManager.h"
+#include "StorageStats.h"
 #include <LittleFS.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
@@ -85,7 +86,9 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
   <button onclick="switchTab('cats',this)">&#x1F3F7; Kategorien</button>
   <button onclick="switchTab('wifi',this)">&#x1F4F6; WiFi</button>
   <button onclick="switchTab('mqtt',this)">&#x1F4E1; MQTT</button>
-  <button onclick="location.href='/update'" style="margin-left:auto">&#x2B06; OTA Update</button>
+  <button onclick="switchTab('stats',this)">&#x1F4CA; Statistik</button>
+  <button onclick="switchTab('system',this)">&#x1F4BE; System</button>
+  <button onclick="location.href='/update'" style="margin-left:auto">&#x2B06; OTA</button>
 </nav>
 <div id="inv" class="panel active">
   <div class="stats">
@@ -99,10 +102,13 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
   <div class="toolbar">
     <input type="search" id="searchInput" placeholder="Produkt suchen&hellip;" oninput="renderInv()">
     <select id="filterSelect" onchange="renderInv()">
-      <option value="all">Alle</option>
+      <option value="all">Alle Status</option>
       <option value="expiring">Bald ablaufend</option>
       <option value="expired">Abgelaufen</option>
       <option value="ok">OK</option>
+    </select>
+    <select id="catFilterSelect" onchange="renderInv()">
+      <option value="all">Alle Kategorien</option>
     </select>
     <button class="btn-ghost" onclick="loadInv()">&#x21BB;</button>
     <button class="btn btn-sm" onclick="exportCSV()">CSV</button>
@@ -246,6 +252,87 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
       </div>
     </div>
     <div id="mqttMsg" style="margin-top:.75rem;font-size:.85rem"></div>
+    <hr style="border-color:var(--border);margin:1.5rem 0">
+    <h2 style="margin-bottom:1rem">Telegram-Bot</h2>
+    <p style="color:var(--muted);margin-bottom:1rem;font-size:.9rem">
+      Benachrichtigung bei Einlagerung, Auslagerung und st&uuml;ndlichen Warnungen.
+    </p>
+    <div style="display:flex;flex-direction:column;gap:.75rem">
+      <label style="font-size:.85rem;color:var(--muted)">Bot-Token
+        <input type="text" id="tgToken" placeholder="1234567890:ABC..." maxlength="80"
+               style="display:block;width:100%;margin-top:.3rem">
+      </label>
+      <label style="font-size:.85rem;color:var(--muted)">Chat-ID
+        <input type="text" id="tgChatId" placeholder="-100123456789" maxlength="30"
+               style="display:block;width:240px;margin-top:.3rem">
+      </label>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+        <button class="btn btn-ok" onclick="saveTelegram()">Speichern</button>
+        <button class="btn-ghost" onclick="clearTelegram()">Deaktivieren</button>
+      </div>
+    </div>
+    <div id="tgMsg" style="margin-top:.75rem;font-size:.85rem"></div>
+  </div>
+</div>
+<div id="stats" class="panel">
+  <div class="toolbar" style="padding-top:1.25rem">
+    <span id="statsSummary" style="font-size:.9rem;color:var(--muted)"></span>
+    <button class="btn-ghost" onclick="loadStats()">&#x21BB;</button>
+    <button class="btn btn-sm" onclick="exportStats()">CSV</button>
+  </div>
+  <div class="table-wrap">
+    <div id="statsLoading">Lade&hellip;</div>
+    <table id="statsTable" style="display:none">
+      <thead><tr>
+        <th onclick="sortStats('name')" style="cursor:pointer">Produkt &#x2195;</th>
+        <th>Kategorie</th>
+        <th onclick="sortStats('addedDate')" style="cursor:pointer">Eingelagert &#x2195;</th>
+        <th onclick="sortStats('removedDate')" style="cursor:pointer">Ausgelagert &#x2195;</th>
+        <th onclick="sortStats('storageDays')" style="cursor:pointer">Lagerdauer &#x2195;</th>
+      </tr></thead>
+      <tbody id="statsBody"></tbody>
+    </table>
+    <div id="statsEmpty" class="empty" style="display:none">Noch keine Auslagerungen aufgezeichnet.</div>
+  </div>
+</div>
+<div id="system" class="panel">
+  <div style="padding:1.5rem;max-width:580px">
+    <h2 style="margin-bottom:1rem">Backup &amp; Restore</h2>
+    <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
+      JSON-Dateien k&ouml;nnen heruntergeladen und sp&auml;ter wieder hochgeladen werden.
+    </p>
+    <div class="add-form" style="margin-bottom:1rem">
+      <h3>Inventar</h3>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.75rem">
+        <a class="btn" href="/api/backup/inventory" download="inventar.json">&#x2B07; Herunterladen</a>
+        <label class="btn btn-ok" style="cursor:pointer">&#x2B06; Hochladen
+          <input type="file" accept=".json" style="display:none" onchange="uploadBackup('inventory',this)">
+        </label>
+      </div>
+    </div>
+    <div class="add-form" style="margin-bottom:1rem">
+      <h3>Vorlagen</h3>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.75rem">
+        <a class="btn" href="/api/backup/products" download="vorlagen.json">&#x2B07; Herunterladen</a>
+        <label class="btn btn-ok" style="cursor:pointer">&#x2B06; Hochladen
+          <input type="file" accept=".json" style="display:none" onchange="uploadBackup('products',this)">
+        </label>
+      </div>
+    </div>
+    <div id="backupMsg" style="font-size:.85rem;margin-bottom:1.5rem"></div>
+    <hr style="border-color:var(--border);margin:1.5rem 0">
+    <h2 style="margin-bottom:1rem">OTA-Passwort</h2>
+    <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
+      Benutzer: <code style="color:var(--accent)">admin</code>. &Auml;nderung wirkt nach Neustart.
+    </p>
+    <div style="display:flex;gap:.75rem;align-items:flex-end;flex-wrap:wrap">
+      <label style="font-size:.85rem;color:var(--muted)">Neues Passwort
+        <input type="password" id="otaPw" maxlength="32"
+               style="display:block;width:220px;margin-top:.3rem">
+      </label>
+      <button class="btn btn-ok" onclick="saveOtaPw()">Speichern</button>
+    </div>
+    <div id="otaMsg" style="margin-top:.75rem;font-size:.85rem"></div>
   </div>
 </div>
 <script>
@@ -258,7 +345,9 @@ function switchTab(id,btn){
   if(id==='cp')loadCP();
   if(id==='cats')loadCats();
   if(id==='wifi')loadWifi();
-  if(id==='mqtt')loadMqtt();
+  if(id==='mqtt'){loadMqtt();loadTelegram();}
+  if(id==='stats')loadStats();
+  if(id==='system')loadOtaPw();
 }
 async function loadWifi(){
   try{const r=await fetch('/api/wifi-config');const d=await r.json();
@@ -287,20 +376,31 @@ async function loadInv(){
   document.getElementById('invLoading').style.display='block';
   document.getElementById('invTable').style.display='none';
   document.getElementById('invEmpty').style.display='none';
-  try{const[inv,stats]=await Promise.all([
-    fetch('/api/inventory').then(r=>r.json()),fetch('/api/stats').then(r=>r.json())]);
+  try{const[inv,stats,cats]=await Promise.all([
+    fetch('/api/inventory').then(r=>r.json()),
+    fetch('/api/stats').then(r=>r.json()),
+    fetch('/api/categories').then(r=>r.json())]);
     allItems=inv.items||[];
     document.getElementById('statTotal').textContent=stats.total!=null?stats.total:'–';
     document.getElementById('statExpiring').textContent=stats.expiring!=null?stats.expiring:'–';
     document.getElementById('statExpired').textContent=stats.expired!=null?stats.expired:'–';
+    // Kategorie-Filter befüllen
+    const csel=document.getElementById('catFilterSelect');
+    const prev=csel.value;
+    csel.innerHTML='<option value="all">Alle Kategorien</option>';
+    cats.forEach(c=>{const o=document.createElement('option');o.value=c.name||c;o.textContent=c.name||c;csel.appendChild(o);});
+    if(prev&&prev!='all')csel.value=prev;
     renderInv();}catch(e){document.getElementById('invLoading').textContent='Fehler: '+e.message;}
 }
 function renderInv(){
   const q=document.getElementById('searchInput').value.toLowerCase();
   const f=document.getElementById('filterSelect').value;
+  const cf=document.getElementById('catFilterSelect').value;
   let items=allItems.filter(it=>{
     const ms=!q||it.name.toLowerCase().includes(q)||(it.brand||'').toLowerCase().includes(q)||it.barcode.includes(q);
-    if(!ms)return false;const s=statusOf(it.daysLeft);
+    if(!ms)return false;
+    if(cf&&cf!=='all'&&it.category!==cf)return false;
+    const s=statusOf(it.daysLeft);
     if(f==='expiring')return s==='warn';if(f==='expired')return it.daysLeft<0;
     if(f==='ok')return s==='ok';return true;});
   items.sort((a,b)=>{let va=a[sortKey]!=null?a[sortKey]:'',vb=b[sortKey]!=null?b[sortKey]:'';
@@ -479,6 +579,100 @@ async function deleteCat(i){
   if(r.ok)loadCats();else alert('Fehler');
 }
 
+// ── Statistik ─────────────────────────────────────────────────
+let allStats=[],statSortKey='removedDate',statSortAsc=false;
+async function loadStats(){
+  document.getElementById('statsLoading').style.display='block';
+  document.getElementById('statsTable').style.display='none';
+  try{
+    const d=await fetch('/api/storage-stats').then(r=>r.json());
+    allStats=d.stats||[];
+    // Zusammenfassung
+    const avg=allStats.length?Math.round(allStats.reduce((s,x)=>s+x.storageDays,0)/allStats.length):0;
+    document.getElementById('statsSummary').textContent=allStats.length+' Auslagerungen, Ø '+avg+' Tage';
+    renderStats();
+  }catch(e){document.getElementById('statsLoading').textContent='Fehler: '+e.message;}
+}
+function renderStats(){
+  document.getElementById('statsLoading').style.display='none';
+  if(allStats.length===0){document.getElementById('statsTable').style.display='none';
+    document.getElementById('statsEmpty').style.display='block';return;}
+  document.getElementById('statsEmpty').style.display='none';
+  document.getElementById('statsTable').style.display='table';
+  let items=[...allStats];
+  items.sort((a,b)=>{let va=a[statSortKey]??'',vb=b[statSortKey]??'';
+    if(typeof va==='string'){va=va.toLowerCase();vb=vb.toLowerCase();}
+    return statSortAsc?(va<vb?-1:va>vb?1:0):(va>vb?-1:va<vb?1:0);});
+  const tbody=document.getElementById('statsBody');tbody.innerHTML='';
+  items.forEach(s=>{const tr=document.createElement('tr');
+    tr.innerHTML='<td style="font-weight:500">'+esc(s.name)+'</td>'+
+      '<td>'+catBadge(s.category)+'</td>'+
+      '<td class="mono">'+esc(s.addedDate||'–')+'</td>'+
+      '<td class="mono">'+esc(s.removedDate||'–')+'</td>'+
+      '<td><span class="pill pill-ok">'+s.storageDays+' Tage</span></td>';
+    tbody.appendChild(tr);});
+}
+function sortStats(k){if(statSortKey===k)statSortAsc=!statSortAsc;else{statSortKey=k;statSortAsc=true;}renderStats();}
+function exportStats(){
+  const rows=[['Produkt','Kategorie','Eingelagert','Ausgelagert','Lagerdauer (Tage)']];
+  allStats.forEach(s=>rows.push([s.name,s.category||'',s.addedDate||'',s.removedDate||'',s.storageDays]));
+  const csv=rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='lagerdauer_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
+}
+
+// ── Backup / Restore ─────────────────────────────────────────
+async function uploadBackup(type,input){
+  const file=input.files[0];if(!file)return;
+  const msg=document.getElementById('backupMsg');
+  msg.style.color='var(--muted)';msg.textContent='Lade hoch…';
+  try{
+    const text=await file.text();
+    const r=await fetch('/api/backup/'+type,{method:'POST',
+      headers:{'Content-Type':'application/json'},body:text});
+    if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Wiederhergestellt!';}
+    else{msg.style.color='var(--danger)';msg.textContent='Fehler beim Hochladen';}
+  }catch(e){msg.style.color='var(--danger)';msg.textContent='Verbindungsfehler';}
+  input.value='';
+}
+
+// ── OTA-Passwort ─────────────────────────────────────────────
+async function loadOtaPw(){
+  try{const d=await fetch('/api/ota-config').then(r=>r.json());
+    document.getElementById('otaPw').value=d.password||'';}catch(e){}
+}
+async function saveOtaPw(){
+  const pw=document.getElementById('otaPw').value;
+  const msg=document.getElementById('otaMsg');
+  if(!pw){msg.style.color='var(--danger)';msg.textContent='Passwort darf nicht leer sein.';return;}
+  const r=await fetch('/api/ota-config',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+  if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert. Wirkung nach Neustart.';}
+  else{msg.style.color='var(--danger)';msg.textContent='Fehler';}
+}
+
+// ── Telegram ─────────────────────────────────────────────────
+async function loadTelegram(){
+  try{const d=await fetch('/api/telegram-config').then(r=>r.json());
+    document.getElementById('tgToken').value=d.token||'';
+    document.getElementById('tgChatId').value=d.chatId||'';}catch(e){}
+}
+async function saveTelegram(){
+  const token=document.getElementById('tgToken').value.trim();
+  const chatId=document.getElementById('tgChatId').value.trim();
+  const msg=document.getElementById('tgMsg');
+  msg.style.color='var(--muted)';msg.textContent='Speichere…';
+  const r=await fetch('/api/telegram-config',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({token,chatId})});
+  if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert.';}
+  else{msg.style.color='var(--danger)';msg.textContent='Fehler';}
+}
+async function clearTelegram(){
+  document.getElementById('tgToken').value='';document.getElementById('tgChatId').value='';
+  await saveTelegram();
+}
+
 async function loadMqtt(){
   try{const r=await fetch('/api/mqtt-config');const d=await r.json();
     document.getElementById('mqttHost').value=d.host||'';
@@ -509,8 +703,8 @@ loadInv();
 </body>
 </html>)RAW";
 
-WebInterface::WebInterface(Inventory &inventory, CustomProducts &customProducts)
-    : _server(80), _inventory(inventory), _customProducts(customProducts) {}
+WebInterface::WebInterface(Inventory &inventory, CustomProducts &customProducts, StorageStats &stats)
+    : _server(80), _inventory(inventory), _customProducts(customProducts), _stats(stats) {}
 
 void WebInterface::begin() {
     // index.html ist im Firmware-Binary eingebettet – kein LittleFS-Upload nötig
@@ -530,12 +724,13 @@ void WebInterface::begin() {
         time_t now = time(nullptr);
         for (const auto &it : items) {
             JsonObject obj = arr.add<JsonObject>();
-            obj["barcode"] = it.barcode;
-            obj["name"]    = it.name;
-            obj["brand"]   = it.brand;
-            obj["expiry"]  = it.expiryDate;
-            obj["added"]   = it.addedDate;
-            obj["qty"]     = it.quantity;
+            obj["barcode"]  = it.barcode;
+            obj["name"]     = it.name;
+            obj["brand"]    = it.brand;
+            obj["category"] = it.category;
+            obj["expiry"]   = it.expiryDate;
+            obj["added"]    = it.addedDate;
+            obj["qty"]      = it.quantity;
             if (it.expiryDate.length() >= 10) {
                 struct tm tm = {};
                 tm.tm_year = it.expiryDate.substring(0,4).toInt()-1900;
@@ -715,6 +910,119 @@ void WebInterface::begin() {
         }
     );
 
+    // ── Lagerdauer-Statistik ─────────────────────────────────
+
+    _server.on("/api/storage-stats", HTTP_GET, [this](AsyncWebServerRequest *req) {
+        JsonDocument doc;
+        JsonArray arr = doc["stats"].to<JsonArray>();
+        for (const auto &s : _stats.items()) {
+            JsonObject o = arr.add<JsonObject>();
+            o["name"]        = s.name;
+            o["category"]    = s.category;
+            o["addedDate"]   = s.addedDate;
+            o["removedDate"] = s.removedDate;
+            o["storageDays"] = s.storageDays;
+        }
+        doc["count"] = _stats.count();
+        String out; serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+
+    // ── Backup / Restore ─────────────────────────────────────
+
+    _server.on("/api/backup/inventory", HTTP_GET, [](AsyncWebServerRequest *req) {
+        req->send(LittleFS, INVENTORY_FILE, "application/json");
+    });
+    _server.on("/api/backup/products", HTTP_GET, [](AsyncWebServerRequest *req) {
+        req->send(LittleFS, CUSTOM_PRODUCTS_FILE, "application/json");
+    });
+    _server.on("/api/backup/inventory", HTTP_POST,
+        [](AsyncWebServerRequest *req) {},
+        nullptr,
+        [this](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
+            static File _upFile;
+            if (index == 0) _upFile = LittleFS.open("/inv_upload.tmp", "w");
+            if (_upFile) _upFile.write(data, len);
+            if (index + len == total) {
+                if (_upFile) _upFile.close();
+                LittleFS.remove(INVENTORY_FILE);
+                LittleFS.rename("/inv_upload.tmp", INVENTORY_FILE);
+                _inventory.load();
+                req->send(200, "application/json", "{\"ok\":true}");
+            }
+        }
+    );
+    _server.on("/api/backup/products", HTTP_POST,
+        [](AsyncWebServerRequest *req) {},
+        nullptr,
+        [this](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
+            static File _upFile2;
+            if (index == 0) _upFile2 = LittleFS.open("/cp_upload.tmp", "w");
+            if (_upFile2) _upFile2.write(data, len);
+            if (index + len == total) {
+                if (_upFile2) _upFile2.close();
+                LittleFS.remove(CUSTOM_PRODUCTS_FILE);
+                LittleFS.rename("/cp_upload.tmp", CUSTOM_PRODUCTS_FILE);
+                _customProducts.load();
+                req->send(200, "application/json", "{\"ok\":true}");
+            }
+        }
+    );
+
+    // ── OTA-Passwort ─────────────────────────────────────────
+
+    _server.on("/api/ota-config", HTTP_GET, [](AsyncWebServerRequest *req) {
+        Preferences p; p.begin("ota", true);
+        String pw = p.getString("password", "lebensmittel");
+        p.end();
+        req->send(200, "application/json", "{\"password\":\"" + pw + "\"}");
+    });
+    _server.on("/api/ota-config", HTTP_POST,
+        [](AsyncWebServerRequest *req) {},
+        nullptr,
+        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonDocument doc;
+            if (deserializeJson(doc, (const char*)data, len)) {
+                req->send(400, "application/json", "{\"error\":\"JSON Fehler\"}"); return;
+            }
+            String pw = doc["password"] | "";
+            if (pw.isEmpty()) { req->send(400, "application/json", "{\"error\":\"Leer\"}"); return; }
+            Preferences p; p.begin("ota", false);
+            p.putString("password", pw);
+            p.end();
+            req->send(200, "application/json", "{\"ok\":true}");
+        }
+    );
+
+    // ── Telegram-Konfiguration ───────────────────────────────
+
+    _server.on("/api/telegram-config", HTTP_GET, [](AsyncWebServerRequest *req) {
+        Preferences p; p.begin("telegram", true);
+        String token  = p.getString("token",  "");
+        String chatId = p.getString("chatid", "");
+        p.end();
+        JsonDocument doc; doc["token"] = token; doc["chatId"] = chatId;
+        String out; serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+    _server.on("/api/telegram-config", HTTP_POST,
+        [](AsyncWebServerRequest *req) {},
+        nullptr,
+        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonDocument doc;
+            if (deserializeJson(doc, (const char*)data, len)) {
+                req->send(400, "application/json", "{\"error\":\"JSON Fehler\"}"); return;
+            }
+            String token  = doc["token"]  | "";
+            String chatId = doc["chatId"] | "";
+            Preferences p; p.begin("telegram", false);
+            p.putString("token",  token);
+            p.putString("chatid", chatId);
+            p.end();
+            req->send(200, "application/json", "{\"ok\":true}");
+        }
+    );
+
     // ── MQTT-Konfiguration ────────────────────────────────────
 
     _server.on("/api/mqtt-config", HTTP_GET, [](AsyncWebServerRequest *req) {
@@ -753,8 +1061,13 @@ void WebInterface::begin() {
 
     _server.onNotFound([](AsyncWebServerRequest *req) { req->send(404,"text/plain","Not found"); });
 
-    // OTA-Update unter /update (Benutzer: admin, PW: lebensmittel)
-    ElegantOTA.begin(&_server, "admin", "lebensmittel");
+    // OTA-Update unter /update (Benutzer: admin, PW aus NVS)
+    {
+        Preferences p; p.begin("ota", true);
+        String pw = p.getString("password", "lebensmittel");
+        p.end();
+        ElegantOTA.begin(&_server, "admin", pw.c_str());
+    }
 
     _server.begin();
     Serial.println("[Web] Server gestartet auf Port 80");

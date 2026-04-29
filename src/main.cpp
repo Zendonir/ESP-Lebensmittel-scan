@@ -11,11 +11,14 @@
 #include "TouchController.h"
 #include "ThermalPrinter.h"
 #include "FoodAPI.h"
+#include "FoodCache.h"
 #include "Inventory.h"
 #include "CustomProducts.h"
 #include "Categories.h"
 #include "CategoryManager.h"
+#include "StorageStats.h"
 #include "WebInterface.h"
+#include <HTTPClient.h>
 
 // ── States ────────────────────────────────────────────────────
 
@@ -107,7 +110,7 @@ void startAP() {
     WiFi.softAP(AP_SSID, AP_PASSWORD);
     Serial.printf("[WiFi] AP: %s  PW: %s  IP: %s\n",
                   AP_SSID, AP_PASSWORD, WiFi.softAPIP().toString().c_str());
-    webInterface = new WebInterface(inventory, customProducts);
+    webInterface = new WebInterface(inventory, customProducts, storageStats);
     webInterface->begin();
     setState(State::AP_MODE);
 }
@@ -151,13 +154,21 @@ void mqttPublish(const String &subtopic, const String &payload) {
 }
 void mqttPublishItem(const InventoryItem &item) {
     JsonDocument doc;
-    doc["name"]    = item.name;
-    doc["brand"]   = item.brand;
-    doc["expiry"]  = item.expiryDate;
-    doc["label"]   = item.labelBarcode;
-    doc["category"]= item.category;
+    doc["name"]     = item.name;
+    doc["brand"]    = item.brand;
+    doc["expiry"]   = item.expiryDate;
+    doc["label"]    = item.labelBarcode;
+    doc["category"] = item.category;
     String out; serializeJson(doc, out);
     mqttPublish("eingelagert", out);
+}
+void mqttPublishRetrieve(const InventoryItem &item, int storageDays) {
+    JsonDocument doc;
+    doc["name"]        = item.name;
+    doc["category"]    = item.category;
+    doc["storageDays"] = storageDays;
+    String out; serializeJson(doc, out);
+    mqttPublish("ausgelagert", out);
 }
 void mqttCheckWarnings() {
     if (_mqttCfg.host.isEmpty()) return;
@@ -170,6 +181,58 @@ void mqttCheckWarnings() {
         String out; serializeJson(doc, out);
         mqttPublish("warnung", out);
     }
+}
+static bool _haDiscoverySent = false;
+void mqttSendHADiscovery() {
+    if (_mqttCfg.host.isEmpty() || !_mqtt.connected() || _haDiscoverySent) return;
+    String dev = "{\"identifiers\":[\"lager_scanner\"],\"name\":\"Lebensmittel Scanner\",\"model\":\"ESP32-S3\"}";
+    auto sendDisc = [&](const char *id, const char *name, const char *stateTopic, const char *valTpl) {
+        String topic = "homeassistant/sensor/lager_scanner/";
+        topic += id; topic += "/config";
+        JsonDocument d;
+        d["name"]                    = name;
+        d["state_topic"]             = String(_mqttCfg.prefix) + "/" + stateTopic;
+        d["value_template"]          = valTpl;
+        d["json_attributes_topic"]   = String(_mqttCfg.prefix) + "/" + stateTopic;
+        d["unique_id"]               = String("lager_") + id;
+        JsonDocument devDoc; deserializeJson(devDoc, dev);
+        d["device"]                  = devDoc;
+        String out; serializeJson(d, out);
+        _mqtt.publish(topic.c_str(), out.c_str(), true);
+    };
+    sendDisc("eingelagert", "Eingelagert",  "eingelagert", "{{ value_json.name }}");
+    sendDisc("ausgelagert", "Ausgelagert",  "ausgelagert", "{{ value_json.name }}");
+    sendDisc("warnung",     "Ablaufwarnung","warnung",      "{{ value_json.bald_ablaufend }}");
+    _haDiscoverySent = true;
+}
+
+// ── Telegram ─────────────────────────────────────────────────
+
+struct TelegramCfg { String token, chatId; };
+static TelegramCfg _telegramCfg;
+
+TelegramCfg loadTelegramCfg() {
+    TelegramCfg c;
+    Preferences p; p.begin("telegram", true);
+    c.token  = p.getString("token",  "");
+    c.chatId = p.getString("chatid", "");
+    p.end();
+    return c;
+}
+void telegramSend(const String &text) {
+    if (_telegramCfg.token.isEmpty() || _telegramCfg.chatId.isEmpty()) return;
+    WiFiClientSecure client; client.setInsecure();
+    HTTPClient https;
+    String url = "https://api.telegram.org/bot" + _telegramCfg.token + "/sendMessage";
+    if (!https.begin(client, url)) return;
+    https.addHeader("Content-Type", "application/json");
+    JsonDocument doc;
+    doc["chat_id"]    = _telegramCfg.chatId;
+    doc["text"]       = text;
+    doc["parse_mode"] = "HTML";
+    String body; serializeJson(doc, body);
+    https.POST(body);
+    https.end();
 }
 
 // ── Buzzer-Feedback ───────────────────────────────────────────
@@ -277,6 +340,8 @@ void setup() {
         categoryManager.begin();
         if (!inventory.begin())  Serial.println("[Inventory] Fehler!");
         customProducts.begin();
+        foodCache.begin();
+        storageStats.begin();
     }
 
     lastActivity = millis();
@@ -297,10 +362,17 @@ void loop() {
     // MQTT keep-alive + stündliche Ablauf-Warnung
     if (!_mqttCfg.host.isEmpty()) {
         _mqtt.loop();
+        if (!_mqtt.connected()) _haDiscoverySent = false;
         if (millis() - _mqttLastCheck > MQTT_CHECK_INTERVAL_MS) {
             _mqttLastCheck = millis();
             mqttEnsureConnected();
+            mqttSendHADiscovery();
             mqttCheckWarnings();
+            // Telegram stündliche Warnung
+            int warn = inventory.expiringIn(WARNING_DAYS) + inventory.expiredCount();
+            if (warn > 0)
+                telegramSend("<b>⚠️ Ablauf-Warnung:</b> " + String(warn) +
+                             " Artikel laufen bald ab oder sind abgelaufen!");
         }
     }
     touch.update();
@@ -370,10 +442,12 @@ void loop() {
         if (WiFi.status()==WL_CONNECTED) {
             configTzTime(TZ_STRING, NTP_SERVER, NTP_SERVER2);
             Serial.printf("[WiFi] IP: %s\n", WiFi.localIP().toString().c_str());
-            webInterface = new WebInterface(inventory, customProducts);
+            webInterface = new WebInterface(inventory, customProducts, storageStats);
             webInterface->begin();
-            _mqttCfg = loadMqttCfg();
+            _mqttCfg      = loadMqttCfg();
+            _telegramCfg  = loadTelegramCfg();
             mqttEnsureConnected();
+            mqttSendHADiscovery();
             setState(State::MAIN);
         }
         if (millis()-stateEnter > 20000) startAP();
@@ -462,9 +536,16 @@ void loop() {
     case State::FETCHING: {
         static unsigned long lastAnim=0;
         if (millis()-lastAnim > 500) { display.showFetching(currentBarcode); lastAnim=millis(); }
-        currentProduct = (WiFi.status()==WL_CONNECTED)
-            ? foodAPI.lookup(currentBarcode)
-            : ProductInfo{false, currentBarcode, "Unbekannt ("+currentBarcode+")"};
+        // Cache-Lookup (offline + schnell)
+        ProductInfo cached = foodCache.get(currentBarcode);
+        if (cached.found) {
+            currentProduct = cached;
+        } else if (WiFi.status()==WL_CONNECTED) {
+            currentProduct = foodAPI.lookup(currentBarcode);
+            if (currentProduct.found) foodCache.put(currentProduct);
+        } else {
+            currentProduct = { false, currentBarcode, "Unbekannt (" + currentBarcode + ")" };
+        }
         initDateToday();
         setState(State::ENTER_DATE);
         break;
@@ -511,6 +592,9 @@ void loop() {
             lastAddedItem = item;
             buzzOk();
             mqttPublishItem(item);
+            telegramSend("<b>✅ Eingelagert:</b> " + item.name +
+                         "\nMHD: " + isoToDisplay(item.expiryDate) +
+                         "\nLabel: " + item.labelBarcode);
             setState(State::PRINTING);
         } else {
             buzzError();
@@ -573,7 +657,12 @@ void loop() {
             screenDirty = false;
         }
         if (hit(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H)) {
-            // Auslagern: aus Inventar entfernen
+            // Lagerdauer = -(daysUntilExpiry(addedDate)) da addedDate in Vergangenheit
+            int storageDays = max(0, -daysUntilExpiry(retrieveItem.addedDate));
+            storageStats.record(retrieveItem, todayStr(), storageDays);
+            mqttPublishRetrieve(retrieveItem, storageDays);
+            telegramSend("<b>\xF0\x9F\x93\xA4 Ausgelagert:</b> " + retrieveItem.name +
+                         "\nLagerdauer: " + String(storageDays) + " Tage");
             inventory.removeByLabel(retrieveItem.labelBarcode);
             setState(State::MAIN);
         }
