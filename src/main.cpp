@@ -17,6 +17,8 @@
 #include "Categories.h"
 #include "CategoryManager.h"
 #include "StorageStats.h"
+#include "ShoppingList.h"
+#include "ServerSync.h"
 #include "WebInterface.h"
 #include <HTTPClient.h>
 
@@ -110,7 +112,7 @@ void startAP() {
     WiFi.softAP(AP_SSID, AP_PASSWORD);
     Serial.printf("[WiFi] AP: %s  PW: %s  IP: %s\n",
                   AP_SSID, AP_PASSWORD, WiFi.softAPIP().toString().c_str());
-    webInterface = new WebInterface(inventory, customProducts, storageStats);
+    webInterface = new WebInterface(inventory, customProducts, storageStats, shoppingList);
     webInterface->begin();
     setState(State::AP_MODE);
 }
@@ -342,6 +344,7 @@ void setup() {
         customProducts.begin();
         foodCache.begin();
         storageStats.begin();
+        shoppingList.begin();
     }
 
     lastActivity = millis();
@@ -359,7 +362,7 @@ void setup() {
 
 void loop() {
     if (webInterface) webInterface->loop();
-    // MQTT keep-alive + stündliche Ablauf-Warnung
+    serverSync.loop();
     if (!_mqttCfg.host.isEmpty()) {
         _mqtt.loop();
         if (!_mqtt.connected()) _haDiscoverySent = false;
@@ -442,12 +445,16 @@ void loop() {
         if (WiFi.status()==WL_CONNECTED) {
             configTzTime(TZ_STRING, NTP_SERVER, NTP_SERVER2);
             Serial.printf("[WiFi] IP: %s\n", WiFi.localIP().toString().c_str());
-            webInterface = new WebInterface(inventory, customProducts, storageStats);
+            webInterface = new WebInterface(inventory, customProducts, storageStats, shoppingList);
             webInterface->begin();
             _mqttCfg      = loadMqttCfg();
             _telegramCfg  = loadTelegramCfg();
             mqttEnsureConnected();
             mqttSendHADiscovery();
+            {
+                auto syncCfg = ServerSync::loadConfig();
+                serverSync.begin(syncCfg);
+            }
             setState(State::MAIN);
         }
         if (millis()-stateEnter > 20000) startAP();
@@ -591,6 +598,7 @@ void loop() {
         if (inventory.addItem(item)) {
             lastAddedItem = item;
             buzzOk();
+            serverSync.onItemAdded(item);
             mqttPublishItem(item);
             telegramSend("<b>✅ Eingelagert:</b> " + item.name +
                          "\nMHD: " + isoToDisplay(item.expiryDate) +
@@ -660,6 +668,8 @@ void loop() {
             // Lagerdauer = -(daysUntilExpiry(addedDate)) da addedDate in Vergangenheit
             int storageDays = max(0, -daysUntilExpiry(retrieveItem.addedDate));
             storageStats.record(retrieveItem, todayStr(), storageDays);
+            shoppingList.add(retrieveItem.name, retrieveItem.category);
+            serverSync.onItemRemoved(retrieveItem, storageDays);
             mqttPublishRetrieve(retrieveItem, storageDays);
             telegramSend("<b>\xF0\x9F\x93\xA4 Ausgelagert:</b> " + retrieveItem.name +
                          "\nLagerdauer: " + String(storageDays) + " Tage");

@@ -1,0 +1,20 @@
+services:
+  server:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data          # SQLite-Datenbank persistent
+    environment:
+      - DB_PATH=/data/lager.db
+    restart: unless-stopped
+
+  # Optionaler MQTT-Broker (auskommentieren wenn nicht benötigt)
+  # mqtt:
+  #   image: eclipse-mosquitto:2
+  #   ports:
+  #     - "1883:1883"
+  #   volumes:
+  #     - ./mosquitto/config:/mosquitto/config
+  #     - ./mosquitto/data:/mosquitto/data
+  #   restart: unless-stopped

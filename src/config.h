@@ -86,6 +86,7 @@
 #define CATEGORIES_FILE      "/categories.json"
 #define STORAGE_STATS_FILE   "/storage_stats.json"
 #define OFF_CACHE_FILE       "/off_cache.json"
+#define SHOPPING_LIST_FILE   "/shopping_list.json"
 #define MAX_ITEMS            500
 #define MAX_CUSTOM_PRODUCTS  100
 #define MAX_STATS_ENTRIES    200
