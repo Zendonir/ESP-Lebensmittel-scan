@@ -175,12 +175,13 @@ void DisplayManager::showMain(int catIndex,
     for (int i = 0; i < nCats; i++) {
         int16_t tx = i * tabW;
         bool sel = (i == catIndex);
-        uint16_t bg = sel ? g_categories[i].bgColor  : COLOR_SURFACE;
-        uint16_t fg = sel ? g_categories[i].textColor : COLOR_SUBTEXT;
+        bool hasCat = (i < (int)g_categories.size());
+        uint16_t bg = hasCat ? (sel ? g_categories[i].bgColor  : COLOR_SURFACE) : (sel ? COLOR_ACCENT : COLOR_SURFACE);
+        uint16_t fg = hasCat ? (sel ? g_categories[i].textColor : COLOR_SUBTEXT) : (sel ? COLOR_BG    : COLOR_SUBTEXT);
         _gfx->fillRect(tx, 0, tabW, TABS_H, bg);
 
         // Kategorie-Name (oben)
-        String abbrev = g_categories[i].name;
+        String abbrev = hasCat ? g_categories[i].name : "Alle";
         if (abbrev.length() > 4) abbrev = abbrev.substring(0, 4) + ".";
         textCenter(abbrev, tx + tabW / 2, 10, 1, fg, bg);
 

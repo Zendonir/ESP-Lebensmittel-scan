@@ -338,6 +338,7 @@ void setup() {
     if (!LittleFS.begin(true, "/littlefs", 10, "littlefs")) {
         Serial.println("[FS] LittleFS mount failed");
         display.showBooting("FS-Fehler!"); delay(1000);
+        categoryManager.begin(); // lädt Defaults auch ohne FS
     } else {
         Serial.println("[FS] LittleFS OK");
         categoryManager.begin();
