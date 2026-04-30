@@ -357,6 +357,7 @@ void setup() {
     display.showBooting("Display + Touch OK"); delay(300);
 
     scanner.begin();
+    Serial.printf("[Scanner] Serial1 RX=%d TX=%d baud=%d\n", BARCODE_RX_PIN, BARCODE_TX_PIN, BARCODE_BAUD);
     display.showBooting("Scanner OK"); delay(200);
 
     printer.begin();

@@ -39,7 +39,7 @@
 #define TOUCH_SDA  6
 #define TOUCH_SCL  7
 #define TOUCH_INT  8
-#define TOUCH_RST  -1
+#define TOUCH_RST  21
 
 // ============================================================
 //  Optionaler physischer Taster (BOOT-Button)
