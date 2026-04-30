@@ -1,30 +1,39 @@
 #include "TouchController.h"
-#include <Wire.h>
 
 TouchController::TouchController(uint8_t sda, uint8_t scl, uint8_t intPin, uint8_t rstPin)
     : _sda(sda), _scl(scl), _int(intPin), _rst(rstPin) {}
 
 bool TouchController::begin() {
-    if (_rst < 200) {
-        pinMode(_rst, OUTPUT);
-        digitalWrite(_rst, LOW); delay(10);
-        digitalWrite(_rst, HIGH); delay(100);
+    // I2C Master Bus (ESP-IDF API, kein Wire)
+    i2c_master_bus_config_t bus_cfg = {};
+    bus_cfg.i2c_port                    = I2C_NUM_0;
+    bus_cfg.sda_io_num                  = (gpio_num_t)_sda;
+    bus_cfg.scl_io_num                  = (gpio_num_t)_scl;
+    bus_cfg.clk_source                  = I2C_CLK_SRC_DEFAULT;
+    bus_cfg.glitch_ignore_cnt           = 7;
+    bus_cfg.flags.enable_internal_pullup = 1;
+
+    if (i2c_new_master_bus(&bus_cfg, &_i2c_bus) != ESP_OK) {
+        Serial.println("[Touch] I2C Bus init FEHLER");
+        return false;
     }
 
-    Wire.begin(_sda, _scl);
-    Wire.setClock(300000);
+    i2c_device_config_t dev_cfg = {};
+    dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+    dev_cfg.device_address  = I2C_ADDR;
+    dev_cfg.scl_speed_hz    = 300000;
 
-    // I2C-Scan (Debug)
-    Serial.printf("[Touch] I2C scan SDA=%d SCL=%d ...\n", _sda, _scl);
-    for (uint8_t addr = 1; addr < 127; addr++) {
-        Wire.beginTransmission(addr);
-        if (Wire.endTransmission() == 0)
-            Serial.printf("[Touch] Gefunden: 0x%02X\n", addr);
+    if (i2c_master_bus_add_device(_i2c_bus, &dev_cfg, &_i2c_dev) != ESP_OK) {
+        Serial.println("[Touch] FT3168 add device FEHLER");
+        return false;
     }
 
-    Wire.beginTransmission(I2C_ADDR);
-    _initialized = (Wire.endTransmission() == 0);
-    if (!_initialized) Serial.printf("[Touch] FT3168 NICHT gefunden (0x%02X)\n", I2C_ADDR);
+    // Verbindungstest: Register 0x02 lesen
+    uint8_t reg = 0x02, val = 0;
+    esp_err_t err = i2c_master_transmit_receive(_i2c_dev, &reg, 1, &val, 1, 10);
+    _initialized = (err == ESP_OK);
+
+    if (!_initialized) Serial.printf("[Touch] FT3168 NICHT gefunden (err=%d)\n", err);
     else               Serial.println("[Touch] FT3168 OK");
     return _initialized;
 }
@@ -57,25 +66,19 @@ bool TouchController::hits(int16_t bx, int16_t by, int16_t bw, int16_t bh) const
 }
 
 bool TouchController::readRegisters() {
-    // Zwei separate Transaktionen (kein Repeated-Start) wegen arduino-esp32 Bug
-    Wire.beginTransmission(I2C_ADDR);
-    Wire.write(0x02);
-    Wire.endTransmission(true);   // STOP senden
+    // FT3168 ab Register 0x02: [TD_STATUS, XH, XL, YH, YL]
+    uint8_t reg = 0x02;
+    uint8_t buf[5] = {};
+    esp_err_t err = i2c_master_transmit_receive(_i2c_dev, &reg, 1, buf, 5, 10);
+    if (err != ESP_OK) return false;
 
-    Wire.requestFrom((uint8_t)I2C_ADDR, (uint8_t)5, (uint8_t)true);
-    if (Wire.available() < 5) return false;
+    uint8_t touches = buf[0] & 0x0F;
+    if (touches == 0) return false;
 
-    uint8_t num = Wire.read();
-    uint8_t xH  = Wire.read();
-    uint8_t xL  = Wire.read();
-    uint8_t yH  = Wire.read();
-    uint8_t yL  = Wire.read();
+    int16_t raw_x = ((buf[1] & 0x0F) << 8) | buf[2];
+    int16_t raw_y = ((buf[3] & 0x0F) << 8) | buf[4];
 
-    if ((num & 0x0F) == 0) return false;
-
-    int16_t raw_x = ((xH & 0x0F) << 8) | xL;
-    int16_t raw_y = ((yH & 0x0F) << 8) | yL;
-
+    // Portrait (280×456) → Landscape (456×280)
     _x = raw_y;
     _y = 279 - raw_x;
 
