@@ -13,7 +13,7 @@ bool DisplayManager::begin() {
     Serial.printf("[Disp] CS=%d SCK=%d D0=%d D1=%d D2=%d D3=%d RST=%d\n",
                   LCD_CS, LCD_SCK, LCD_D0, LCD_D1, LCD_D2, LCD_D3, LCD_RST);
     _bus   = new Arduino_ESP32QSPI(LCD_CS, LCD_SCK, LCD_D0, LCD_D1, LCD_D2, LCD_D3);
-    _panel = new Arduino_CO5300(_bus, LCD_RST, 0, W, H, 20, 0, 180, 24);
+    _panel = new Arduino_CO5300(_bus, LCD_RST, 0, W, H, 0, 0, 0, 0);
     _gfx   = new Arduino_Canvas(W, H, _panel);
     Serial.printf("[Disp] canvas ptr=%p\n", (void*)_gfx);
     bool ok = _gfx->begin();
