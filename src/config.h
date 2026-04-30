@@ -27,10 +27,10 @@
 #define LCD_RST  21
 
 #ifndef DISPLAY_W
-  #define DISPLAY_W 280
+  #define DISPLAY_W 456
 #endif
 #ifndef DISPLAY_H
-  #define DISPLAY_H 456
+  #define DISPLAY_H 280
 #endif
 
 // ============================================================
