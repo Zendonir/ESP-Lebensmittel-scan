@@ -16,7 +16,7 @@
 
 // ============================================================
 //  Display – Waveshare ESP32-S3 1.64" AMOLED (CO5300, QSPI)
-//  Pins aus GFX-Library Beispiel: WAVESHARE_ESP32_S3_TOUCH_AMOLED_1_64
+//  Pins intern auf der Platine verdrahtet
 // ============================================================
 #define LCD_CS    9
 #define LCD_SCK  10
@@ -34,8 +34,7 @@
 #endif
 
 // ============================================================
-//  Touch – CST816S (I2C, auf der Platine integriert)
-//  Pins bitte mit Waveshare-Wiki für dein Modell abgleichen
+//  Touch – CST816S (I2C, intern auf der Platine)
 // ============================================================
 #define TOUCH_SDA  6
 #define TOUCH_SCL  7
@@ -43,25 +42,21 @@
 #define TOUCH_RST  -1
 
 // ============================================================
-//  Optionaler physischer Taster (ZURÜCK / HOME)
-//  Auf -1 setzen falls kein Taster angeschlossen
+//  Optionaler physischer Taster (BOOT-Button)
 // ============================================================
-#define BTN_BACK   0   // BOOT-Taster auf ESP32-S3 DevKit
-                       // (bereits auf der Platine, kein extra Taster nötig)
+#define BTN_BACK   0
 
 // ============================================================
-//  GM861 Barcode-Scanner (Hardware Serial1, UART)
-//  TX des GM861 → GPIO1 (ESP32 RX)
-//  RX des GM861 → GPIO2 (ESP32 TX)
+//  GM861 Barcode-Scanner (Hardware Serial1)
+//  GM861 TX → GPIO1  |  GM861 RX → GPIO2
 // ============================================================
 #define BARCODE_RX_PIN   1
 #define BARCODE_TX_PIN   2
 #define BARCODE_BAUD  9600
 
 // ============================================================
-//  RS232/TTL Mini-Thermodrucker (Hardware Serial2, ESC/POS)
-//  ESP32 TX (GPIO17) → Drucker RX
-//  ESP32 RX (GPIO18) → Drucker TX
+//  RS232/TTL Mini-Thermodrucker (Hardware Serial2)
+//  ESP32 GPIO17 → Drucker RX  |  ESP32 GPIO18 → Drucker TX
 // ============================================================
 #define PRINTER_TX_PIN   17
 #define PRINTER_RX_PIN   18
@@ -122,15 +117,13 @@
 #define COLOR_BTN_BACK  0x2945
 
 // ============================================================
-//  KY-006 Passiv-Buzzer (Signal-Pin → GPIO38)
-//  S  → GPIO38
-//  +  → 3.3V
-//  -  → GND
+//  KY-006 Passiv-Buzzer
+//  S  → GPIO45  |  +  → 3V3  |  -  → GND
+//  (GPIO38-41 sind intern für SD-Karte reserviert!)
 // ============================================================
-#define BUZZER_PIN  38
+#define BUZZER_PIN  45
 
 // ============================================================
 //  MQTT (optional) – wird über Web-Interface konfiguriert
-//  Wenn kein Broker eingestellt ist, bleibt MQTT deaktiviert
 // ============================================================
 #define MQTT_CHECK_INTERVAL_MS  3600000UL  // 1 Stunde
