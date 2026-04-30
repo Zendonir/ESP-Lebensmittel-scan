@@ -31,6 +31,9 @@ bool TouchController::begin() {
 
 void TouchController::update() {
     if (!_initialized) return;
+    if (millis() - _lastPoll < 20) return;
+    _lastPoll = millis();
+
     _tapped  = false;
     _gesture = Gesture::NONE;
 
@@ -54,13 +57,12 @@ bool TouchController::hits(int16_t bx, int16_t by, int16_t bw, int16_t bh) const
 }
 
 bool TouchController::readRegisters() {
-    // FT3168: ab Register 0x02 → 5 Bytes lesen (wie Referenz-Projekt)
-    // [0] TD_STATUS  [1] P1_XH  [2] P1_XL  [3] P1_YH  [4] P1_YL
+    // Zwei separate Transaktionen (kein Repeated-Start) wegen arduino-esp32 Bug
     Wire.beginTransmission(I2C_ADDR);
     Wire.write(0x02);
-    if (Wire.endTransmission(false) != 0) return false;
+    Wire.endTransmission(true);   // STOP senden
 
-    Wire.requestFrom(I2C_ADDR, (uint8_t)5);
+    Wire.requestFrom((uint8_t)I2C_ADDR, (uint8_t)5, (uint8_t)true);
     if (Wire.available() < 5) return false;
 
     uint8_t num = Wire.read();
@@ -74,7 +76,6 @@ bool TouchController::readRegisters() {
     int16_t raw_x = ((xH & 0x0F) << 8) | xL;
     int16_t raw_y = ((yH & 0x0F) << 8) | yL;
 
-    // Portrait (280×456) → Landscape (456×280) nach setRotation(1)
     _x = raw_y;
     _y = 279 - raw_x;
 

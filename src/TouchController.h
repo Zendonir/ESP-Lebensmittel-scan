@@ -40,6 +40,7 @@ private:
     bool    _initialized = false;
     bool    _wasDown = false;
     bool    _tapped  = false;
+    unsigned long _lastPoll = 0;
     int16_t _x = 0, _y = 0;
     Gesture _gesture = Gesture::NONE;
 
