@@ -5,12 +5,14 @@ TouchController::TouchController(uint8_t sda, uint8_t scl, uint8_t intPin, uint8
     : _sda(sda), _scl(scl), _int(intPin), _rst(rstPin) {}
 
 bool TouchController::begin() {
-    // Hardware-Reset
-    pinMode(_rst, OUTPUT);
-    digitalWrite(_rst, LOW);
-    delay(10);
-    digitalWrite(_rst, HIGH);
-    delay(100);
+    // Hardware-Reset (nur wenn RST-Pin gültig, d.h. nicht -1 → 255)
+    if (_rst < 200) {
+        pinMode(_rst, OUTPUT);
+        digitalWrite(_rst, LOW);
+        delay(10);
+        digitalWrite(_rst, HIGH);
+        delay(100);
+    }
 
     pinMode(_int, INPUT);
 
@@ -71,9 +73,15 @@ void TouchController::readRegisters() {
     if (num == 0) return;
 
     _gesture = static_cast<Gesture>(gest);
-    _x       = ((xH & 0x0F) << 8) | xL;
-    _y       = ((yH & 0x0F) << 8) | yL;
+
+    // Raw-Koordinaten im Portrait-Raum (280×456)
+    int16_t raw_x = ((xH & 0x0F) << 8) | xL;
+    int16_t raw_y = ((yH & 0x0F) << 8) | yL;
+
+    // Umrechnung für setRotation(1): Portrait → Landscape 456×280
+    _x = raw_y;
+    _y = 279 - raw_x;
     _tapped  = true;
 
-    Serial.printf("[Touch] gest=0x%02X x=%d y=%d\n", gest, _x, _y);
+    Serial.printf("[Touch] raw=%d,%d  disp=%d,%d\n", raw_x, raw_y, _x, _y);
 }
