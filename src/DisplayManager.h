@@ -12,59 +12,42 @@ struct DateInput {
     DateField activeField;
 };
 
-// ── Hauptscreen (Kategorietabs + Produktliste) ───────────────
-static constexpr int16_t TABS_H        = 34;
-static constexpr int16_t TABS_TAB_W    = DISPLAY_W / 8;    // 57px
-static constexpr int16_t MAIN_LIST_Y   = TABS_H;
-static constexpr int16_t MAIN_ITEM_H   = 44;
-static constexpr int16_t MAIN_MAX_VIS  = 5;                 // 5×44=220px → y=34..254
-static constexpr int16_t MAIN_HINT_Y   = MAIN_LIST_Y + MAIN_MAX_VIS * MAIN_ITEM_H; // 254
-static constexpr int16_t MAIN_INV_X    = DISPLAY_W - 112;  // Inventar-Button rechts
-static constexpr int16_t MAIN_INV_W    = 112;
+// ── Hauptscreen (Kategorie-Grid) ─────────────────────────────
+static constexpr int16_t CAT_HDR       = 44;
+static constexpr int16_t CAT_GAP       = 6;
+static constexpr int16_t CAT_COLS      = 3;
+static constexpr int16_t CAT_ROWS      = 2;
+static constexpr int16_t CAT_TILE_W    = (DISPLAY_W - (CAT_COLS + 1) * CAT_GAP) / CAT_COLS;
+static constexpr int16_t CAT_TILE_H    = (DISPLAY_H - CAT_HDR - (CAT_ROWS + 1) * CAT_GAP) / CAT_ROWS;
 
-// ── Universelle Buttons (landscape 456×280) ──────────────────
+// ── Produktliste / Unterscreen-Header ────────────────────────
+static constexpr int16_t SUB_HDR       = 54;
+static constexpr int16_t LIST_ITEM_H   = 44;
+static constexpr int16_t LIST_MAX_VIS  = (DISPLAY_H - SUB_HDR) / LIST_ITEM_H;
+
+// ── Datumseingabe (Numpad-Layout) ────────────────────────────
+static constexpr int16_t DATE_LEFT_W   = 150;
+static constexpr int16_t DATE_QUICK_Y  = SUB_HDR;
+static constexpr int16_t DATE_QUICK_H  = 40;
+static constexpr int16_t DATE_PAD_Y    = DATE_QUICK_Y + DATE_QUICK_H;  // 94
+static constexpr int16_t DATE_PAD_COL_W = (DISPLAY_W - DATE_LEFT_W) / 4;  // 76
+static constexpr int16_t DATE_PAD_ROW_H = (DISPLAY_H - DATE_PAD_Y) / 4;   // 46
+
+// ── Universelle Buttons (AP-Mode, Retrieve, Inventar-Browse) ─
 static constexpr int16_t TBTN_X           = 8;
-static constexpr int16_t TBTN_W           = 440;
+static constexpr int16_t TBTN_W           = DISPLAY_W - 16;
 static constexpr int16_t TBTN_H           = 44;
-static constexpr int16_t TBTN_PRIMARY_Y   = 228;
-static constexpr int16_t TBTN_SECONDARY_Y = 176;
+static constexpr int16_t TBTN_PRIMARY_Y   = DISPLAY_H - TBTN_H - 8;
+static constexpr int16_t TBTN_SECONDARY_Y = DISPLAY_H - 2 * TBTN_H - 16;
 
-// ── IDLE-Buttons (AP-Mode) ───────────────────────────────────
+// ── IDLE-Buttons (AP-Mode) ────────────────────────────────────
 static constexpr int16_t IDLE_LIST_BTN_Y = 172;
 static constexpr int16_t IDLE_INV_BTN_Y  = 220;
 static constexpr int16_t IDLE_BTN_H      = 40;
 
-// ── Datumseingabe ────────────────────────────────────────────
-static constexpr int16_t DATE_COL_W    = DISPLAY_W / 3;    // 152
-static constexpr int16_t DATE_PLUS_Y0  = 58;
-static constexpr int16_t DATE_PLUS_Y1  = 114;
-static constexpr int16_t DATE_VAL_Y0   = 116;
-static constexpr int16_t DATE_VAL_Y1   = 190;
-static constexpr int16_t DATE_MINUS_Y0 = 192;
-static constexpr int16_t DATE_MINUS_Y1 = 238;
-static constexpr int16_t DATE_BTN_Y    = 242;
-static constexpr int16_t DATE_BTN_H    = 34;
-static constexpr int16_t DATE_BACK_X   = 8;
-static constexpr int16_t DATE_BACK_W   = 140;
-static constexpr int16_t DATE_OK_X     = 156;
-static constexpr int16_t DATE_OK_W     = 292;
-
-// ── Kategorien-Grid (für den alten showCategorySelect – nicht mehr Hauptscreen) ─
-static constexpr int16_t CAT_X0      = 4;
-static constexpr int16_t CAT_Y0      = 44;
-static constexpr int16_t CAT_BTN_W   = 106;
-static constexpr int16_t CAT_BTN_H   = 106;
-static constexpr int16_t CAT_GAP     = 8;
-
-// ── Produktliste ─────────────────────────────────────────────
-static constexpr int16_t LIST_ITEMS_Y    = 40;
-static constexpr int16_t LIST_ITEM_H     = 44;
-static constexpr int16_t LIST_MAX_VIS    = 4;
-static constexpr int16_t LIST_BACK_BTN_Y = 220;
-
 // ── Inventar-Browser ─────────────────────────────────────────
-static constexpr int16_t INV_DEL_Y  = 228;
-static constexpr int16_t INV_BACK_Y = 176;
+static constexpr int16_t INV_DEL_Y  = TBTN_PRIMARY_Y;
+static constexpr int16_t INV_BACK_Y = TBTN_SECONDARY_Y;
 
 class DisplayManager {
 public:
@@ -72,18 +55,19 @@ public:
     bool begin();
     void setBrightness(uint8_t val);
 
-    // Hauptscreen: Kategorietabs + Produktliste der aktiven Kategorie
-    // catInvCounts: Inventar-Anzahl je Kategorie; warnCount: bald ablaufende Artikel
-    void showMain(int catIndex, const std::vector<CustomProduct> &products, int offset,
-                  const std::vector<int> &catInvCounts, int warnCount, bool wifiOk);
+    // Hauptscreen: Kategorie-Grid
+    void showCategoryGrid(const std::vector<int> &catInvCounts, int warnCount, bool wifiOk);
+
+    // Produktliste einer Kategorie
+    void showProductList(const String &catName, uint16_t catColor,
+                         const std::vector<CustomProduct> &products, int offset, bool wifiOk);
 
     void showBooting(const String &msg = "");
     void showWifiConnecting(const String &ssid, int attempt = 0);
     void showScanning();
     void showFetching(const String &barcode);
-    void showDateEntry(const DateInput &date, const String &productName);
+    void showDateEntry(const DateInput &date, const String &productName, bool wifiOk = false);
     void showPrinting();
-    // showSuccess: showReprint=true → zeigt "Nochmal drucken"-Button
     void showSuccess(const String &productName, const String &date, bool showReprint = true);
     void showError(const String &msg);
     void showRetrieve(const String &name, const String &storageDate,
@@ -104,10 +88,10 @@ private:
     int16_t textWidth(const String &s, uint8_t sz);
 
     void drawHeader(const String &title, uint16_t bgColor = COLOR_HEADER);
+    void drawStatusBar(const String &title, uint16_t titleColor, bool showBack, bool wifiOk);
     void drawTouchButton(int16_t x, int16_t y, int16_t w, int16_t h,
                          const String &label, uint16_t bg, uint16_t fg,
                          uint8_t textSz = 2);
-    void drawPlusMinusColumn(int col, int value, bool isYear);
-    void drawCategoryIcon(uint8_t catIndex, int16_t cx, int16_t cy);
+    void drawCategoryIcon(uint8_t catIndex, int16_t cx, int16_t cy, uint8_t s = 1);
     String daysLabel(int days);
 };
