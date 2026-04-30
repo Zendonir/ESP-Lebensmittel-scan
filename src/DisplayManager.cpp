@@ -168,6 +168,7 @@ void DisplayManager::showMain(int catIndex,
                                int warnCount,
                                bool wifiOk) {
     _gfx->fillScreen(COLOR_BG);
+    Serial.printf("[Disp] showMain cats=%d products=%d\n", (int)g_categories.size(), (int)products.size());
 
     // ── Kategorie-Tabs (dynamische Breite) ───────────────────
     int nCats    = max(1, (int)g_categories.size());
