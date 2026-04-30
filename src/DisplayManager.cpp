@@ -225,7 +225,7 @@ void DisplayManager::showProductList(const String &catName, uint16_t catColor,
         return;
     }
 
-    int visible = min(LIST_MAX_VIS, (int)products.size() - offset);
+    int visible = min((int)LIST_MAX_VIS, (int)products.size() - offset);
     for (int i = 0; i < visible; i++) {
         const auto &p = products[offset + i];
         int16_t iy = SUB_HDR + i * LIST_ITEM_H;
