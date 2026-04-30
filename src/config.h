@@ -47,11 +47,11 @@
 #define BTN_BACK   0
 
 // ============================================================
-//  GM861 Barcode-Scanner (Hardware Serial1)
-//  GM861 TX → GPIO1  |  GM861 RX → GPIO2
+//  GM861 Barcode-Scanner (Hardware Serial)
+//  GM861 TX → GPIO44 (RXD)  |  GM861 RX → GPIO43 (TXD)
 // ============================================================
-#define BARCODE_RX_PIN   1
-#define BARCODE_TX_PIN   2
+#define BARCODE_RX_PIN  44
+#define BARCODE_TX_PIN  43
 #define BARCODE_BAUD  9600
 
 // ============================================================
