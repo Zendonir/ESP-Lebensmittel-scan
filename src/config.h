@@ -40,7 +40,7 @@
 #define TOUCH_SDA  6
 #define TOUCH_SCL  7
 #define TOUCH_INT  8
-#define TOUCH_RST  21
+#define TOUCH_RST  -1
 
 // ============================================================
 //  Optionaler physischer Taster (ZURÜCK / HOME)
