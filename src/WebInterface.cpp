@@ -1314,7 +1314,7 @@ void WebInterface::begin() {
         _server.on("/ota", HTTP_GET, [pw](AsyncWebServerRequest *req) {
             if (!req->authenticate("admin", pw.c_str()))
                 return req->requestAuthentication();
-            req->send_P(200, "text/html", OTA_PAGE_HTML);
+            req->send(200, "text/html", OTA_PAGE_HTML);
         });
 
         _server.on("/ota", HTTP_POST,
