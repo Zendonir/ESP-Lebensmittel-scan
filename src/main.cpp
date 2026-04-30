@@ -29,9 +29,10 @@ enum class State {
     BOOTING,
     WIFI_CONNECTING,
     AP_MODE,
-    MAIN,             // Hauptscreen: Kategorietabs + Produktliste
+    MAIN,             // Hauptscreen: Kategorie-Grid
+    PRODUCT_LIST,     // Produktliste einer Kategorie
     FETCHING,         // Barcode-Lookup (Open Food Facts)
-    ENTER_DATE,       // Haltbarkeitsdatum eingeben
+    ENTER_DATE,       // Haltbarkeitsdatum eingeben (Numpad)
     SAVING,           // In Inventar speichern + Label-Code generieren
     PRINTING,         // Etikett drucken
     SUCCESS,          // Eingelagert-Bestätigung
@@ -51,6 +52,33 @@ FoodAPI        foodAPI;
 Inventory      inventory;
 CustomProducts customProducts;
 WebInterface  *webInterface = nullptr;
+
+// ── Scan-Log (RAM-basiert, letzte ~100 Scans) ─────────────────
+
+struct ScanLogEntry { unsigned long ts; String barcode; };
+static const int MAX_SCAN_LOGS = 100;
+static ScanLogEntry scanLogs[MAX_SCAN_LOGS];
+static int scanLogIndex = 0;
+
+void logScan(const String &barcode) {
+    scanLogs[scanLogIndex] = { millis() / 1000, barcode };
+    scanLogIndex = (scanLogIndex + 1) % MAX_SCAN_LOGS;
+}
+
+String getScanLogsJSON() {
+    JsonDocument doc;
+    JsonArray arr = doc.to<JsonArray>();
+    for (int i = 0; i < MAX_SCAN_LOGS; i++) {
+        int idx = (scanLogIndex + i) % MAX_SCAN_LOGS;
+        if (scanLogs[idx].barcode.length() > 0) {
+            JsonObject obj = arr.add<JsonObject>();
+            obj["ts"] = scanLogs[idx].ts;
+            obj["barcode"] = scanLogs[idx].barcode;
+        }
+    }
+    String out; serializeJson(doc, out);
+    return out;
+}
 
 #if BTN_BACK >= 0
 class BackButton {
@@ -403,6 +431,7 @@ void loop() {
         String bc = scanner.getBarcode();
         lastActivity = millis();
         Serial.printf("[Scan] %s\n", bc.c_str());
+        logScan(bc);
 
         if (state == State::POWER_SAVE) {
             display.setBrightness(220);
@@ -474,37 +503,54 @@ void loop() {
         break;
     }
 
-    // ── MAIN ─────────────────────────────────────────────────
+    // ── MAIN: Kategorie-Grid ─────────────────────────────────
     case State::MAIN: {
-        static std::vector<CustomProduct> mainProducts;
         if (screenDirty) {
-            String catName = (currentCatIndex < (int)g_categories.size())
-                             ? g_categories[currentCatIndex].name : "";
-            mainProducts = customProducts.byCategory(catName);
             std::vector<int> catCounts;
             catCounts.reserve(g_categories.size());
             for (const auto &cat : g_categories)
                 catCounts.push_back(inventory.countByCategory(cat.name));
             int warnCount = inventory.expiringIn(WARNING_DAYS) + inventory.expiredCount();
-            display.showMain(currentCatIndex, mainProducts, mainOffset,
-                             catCounts, warnCount, WiFi.status() == WL_CONNECTED);
+            display.showCategoryGrid(catCounts, warnCount, WiFi.status() == WL_CONNECTED);
             screenDirty = false;
         }
-        if (tapped && ty < TABS_H) {
-            int nCats  = max(1, (int)g_categories.size());
-            int newCat = tx / (DISPLAY_W / nCats);
-            if (newCat >= 0 && newCat < nCats && newCat != currentCatIndex) {
-                currentCatIndex = newCat;
-                mainOffset      = 0;
-                screenDirty     = true;
+        // Tap auf Kategorie-Tile
+        if (tapped && ty > CAT_HDR) {
+            int col = (tx - CAT_GAP) / (CAT_TILE_W + CAT_GAP);
+            int row = (ty - CAT_HDR - CAT_GAP) / (CAT_TILE_H + CAT_GAP);
+            int idx = row * CAT_COLS + col;
+            if (col >= 0 && col < CAT_COLS && row >= 0 && row < CAT_ROWS
+                && idx < (int)g_categories.size()) {
+                currentCatIndex = idx;
+                mainOffset = 0;
+                setState(State::PRODUCT_LIST);
             }
-            break;
         }
-        int relY = ty - MAIN_LIST_Y;
-        if (tapped && relY >= 0 && relY < MAIN_MAX_VIS * MAIN_ITEM_H) {
-            int idx = mainOffset + relY / MAIN_ITEM_H;
-            if (idx < (int)mainProducts.size()) {
-                const auto &p = mainProducts[idx];
+        break;
+    }
+
+    // ── PRODUCT_LIST: Produkte einer Kategorie ───────────────
+    case State::PRODUCT_LIST: {
+        static std::vector<CustomProduct> listProducts;
+        if (screenDirty) {
+            String catName = (currentCatIndex < (int)g_categories.size())
+                             ? g_categories[currentCatIndex].name : "";
+            listProducts = customProducts.byCategory(catName);
+            uint16_t catColor = (currentCatIndex < (int)g_categories.size())
+                                ? g_categories[currentCatIndex].bgColor : COLOR_ACCENT;
+            display.showProductList(catName, catColor, listProducts, mainOffset,
+                                    WiFi.status() == WL_CONNECTED);
+            screenDirty = false;
+        }
+        // Zurück
+        if ((tapped && ty < SUB_HDR && tx < 120) || hardBack) {
+            setState(State::MAIN); break;
+        }
+        // Produkt antippen
+        if (tapped && ty >= SUB_HDR) {
+            int idx = mainOffset + (ty - SUB_HDR) / LIST_ITEM_H;
+            if (idx < (int)listProducts.size()) {
+                const auto &p = listProducts[idx];
                 currentProduct = { true, p.barcode, p.name, p.brand, "", "" };
                 currentBarcode = p.barcode;
                 if (p.defaultDays > 0) {
@@ -518,11 +564,8 @@ void loop() {
                 break;
             }
         }
-        if (tapped && ty >= MAIN_HINT_Y && tx >= MAIN_INV_X && inventory.count()>0) {
-            browseIndex=0; setState(State::INVENTORY_BROWSE); break;
-        }
         if (gest==Gesture::SWIPE_UP || gest==Gesture::SWIPE_LEFT) {
-            int maxOff = max(0,(int)mainProducts.size()-MAIN_MAX_VIS);
+            int maxOff = max(0,(int)listProducts.size()-LIST_MAX_VIS);
             if (mainOffset<maxOff) { mainOffset++; screenDirty=true; }
         }
         if (gest==Gesture::SWIPE_DOWN || gest==Gesture::SWIPE_RIGHT) {
@@ -549,27 +592,98 @@ void loop() {
         break;
     }
 
-    // ── ENTER_DATE ───────────────────────────────────────────
+    // ── ENTER_DATE (Numpad) ──────────────────────────────────
     case State::ENTER_DATE: {
-        if (screenDirty) { display.showDateEntry(dateInput, currentProduct.name); screenDirty=false; }
-        bool changed=false;
-        if (tapped && ty>=DATE_PLUS_Y0 && ty<DATE_PLUS_Y1) {
-            int col=tx/DATE_COL_W;
-            if      (col==0){dateInput.day++;   clampDate(dateInput);changed=true;}
-            else if (col==1){dateInput.month++; clampDate(dateInput);changed=true;}
-            else if (col==2){dateInput.year++;  clampDate(dateInput);changed=true;}
+        static String inputBuf = "";
+        if (screenDirty) {
+            display.showDateEntry(dateInput, currentProduct.name, WiFi.status()==WL_CONNECTED);
+            screenDirty = false;
+            inputBuf = "";
         }
-        if (tapped && ty>=DATE_MINUS_Y0 && ty<DATE_MINUS_Y1) {
-            int col=tx/DATE_COL_W;
-            if      (col==0){dateInput.day--;   clampDate(dateInput);changed=true;}
-            else if (col==1){dateInput.month--; clampDate(dateInput);changed=true;}
-            else if (col==2){dateInput.year--;  clampDate(dateInput);changed=true;}
+
+        // Zurück
+        if ((tapped && ty < SUB_HDR && tx < 120) || hardBack) {
+            setState(State::PRODUCT_LIST); break;
         }
-        if (changed) display.showDateEntry(dateInput, currentProduct.name);
-        if (hit(DATE_OK_X, DATE_BTN_Y, DATE_OK_W, DATE_BTN_H))
-            setState(State::SAVING);
-        if (hit(DATE_BACK_X, DATE_BTN_Y, DATE_BACK_W, DATE_BTN_H) || hardBack)
-            setState(State::MAIN);
+
+        bool changed = false;
+
+        // Schnell-Add-Buttons (+1/+3/+7/+14 Tage)
+        if (tapped && ty >= DATE_QUICK_Y && ty < DATE_QUICK_Y + DATE_QUICK_H
+                && tx >= DATE_LEFT_W) {
+            int16_t btnW = (DISPLAY_W - DATE_LEFT_W) / 4;
+            int bIdx = (tx - DATE_LEFT_W) / btnW;
+            const int addArr[] = {1, 3, 7, 14};
+            if (bIdx >= 0 && bIdx < 4) {
+                struct tm t = {};
+                t.tm_year = dateInput.year - 1900;
+                t.tm_mon  = dateInput.month - 1;
+                t.tm_mday = dateInput.day + addArr[bIdx];
+                mktime(&t);
+                dateInput.day   = t.tm_mday;
+                dateInput.month = t.tm_mon + 1;
+                dateInput.year  = t.tm_year + 1900;
+                inputBuf = "";
+                changed = true;
+            }
+        }
+
+        // Speichern-Button (col 3, rows 1-3)
+        if (tapped && ty >= DATE_PAD_Y + DATE_PAD_ROW_H
+                && tx >= DATE_LEFT_W + 3 * DATE_PAD_COL_W) {
+            setState(State::SAVING); break;
+        }
+
+        // Numpad-Tasten
+        if (tapped && ty >= DATE_PAD_Y && tx >= DATE_LEFT_W
+                && ty < DATE_PAD_Y + 4 * DATE_PAD_ROW_H) {
+            int row = (ty - DATE_PAD_Y) / DATE_PAD_ROW_H;
+            int col = (tx - DATE_LEFT_W) / DATE_PAD_COL_W;
+            if (col < 0) col = 0;
+            if (col > 3) col = 3;
+
+            if (col == 3 && row == 0) {
+                // Backspace
+                if (inputBuf.length() > 0) {
+                    inputBuf.remove(inputBuf.length() - 1);
+                    int partial = inputBuf.isEmpty() ? 0 : inputBuf.toInt();
+                    if      (dateInput.activeField == FIELD_DAY)   dateInput.day   = max(1, partial);
+                    else if (dateInput.activeField == FIELD_MONTH) dateInput.month = max(1, partial);
+                    else if (dateInput.activeField == FIELD_YEAR)  dateInput.year  = max(2024, partial);
+                } else if (dateInput.activeField > FIELD_DAY) {
+                    dateInput.activeField = (DateField)(dateInput.activeField - 1);
+                }
+                changed = true;
+            } else if (col < 3) {
+                // Ziffern: 1 2 3 / 4 5 6 / 7 8 9 / _ 0 _
+                int digit = -1;
+                if (row == 0) digit = 1 + col;
+                else if (row == 1) digit = 4 + col;
+                else if (row == 2) digit = 7 + col;
+                else if (row == 3 && col == 1) digit = 0;
+                else if (row == 3 && col == 0) {  // Kalender-Taste = Heute
+                    initDateToday(); inputBuf = ""; changed = true;
+                }
+                if (digit >= 0) {
+                    inputBuf += String(digit);
+                    int maxLen = (dateInput.activeField == FIELD_YEAR) ? 4 : 2;
+                    int val    = inputBuf.toInt();
+                    if      (dateInput.activeField == FIELD_DAY)   dateInput.day   = constrain(val, 0, 31);
+                    else if (dateInput.activeField == FIELD_MONTH) dateInput.month = constrain(val, 0, 12);
+                    else if (dateInput.activeField == FIELD_YEAR)  dateInput.year  = constrain(val, 2024, 2099);
+                    if ((int)inputBuf.length() >= maxLen) {
+                        clampDate(dateInput);
+                        dateInput.activeField = (DateField)(dateInput.activeField + 1);
+                        if (dateInput.activeField > FIELD_YEAR)
+                            dateInput.activeField = FIELD_YEAR;
+                        inputBuf = "";
+                    }
+                    changed = true;
+                }
+            }
+        }
+
+        if (changed) display.showDateEntry(dateInput, currentProduct.name, WiFi.status()==WL_CONNECTED);
         break;
     }
 

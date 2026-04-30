@@ -1,5 +1,6 @@
 #include "DisplayManager.h"
 #include "CategoryManager.h"
+#include <time.h>
 
 static constexpr int16_t W   = DISPLAY_W;   // 456
 static constexpr int16_t H   = DISPLAY_H;   // 280
@@ -94,64 +95,64 @@ String DisplayManager::daysLabel(int days) {
 
 // ── Kategorie-Icons ───────────────────────────────────────────
 
-void DisplayManager::drawCategoryIcon(uint8_t cat, int16_t cx, int16_t cy) {
+void DisplayManager::drawCategoryIcon(uint8_t cat, int16_t cx, int16_t cy, uint8_t s) {
     switch (cat) {
-    case 0:
-        _gfx->fillRoundRect(cx-19,cy-9,38,20,6,0xD00A);
-        _gfx->fillRect(cx+13,cy-18,5,36,0xEF5B);
-        _gfx->fillCircle(cx+15,cy-20,6,0xEF5B);
-        _gfx->fillCircle(cx+15,cy+20,6,0xEF5B);
+    case 0: // Fleisch / Steak
+        _gfx->fillRoundRect(cx-19*s,cy-9*s,38*s,20*s,6*s,0xD00A);
+        _gfx->fillRect(cx+13*s,cy-18*s,5*s,36*s,0xEF5B);
+        _gfx->fillCircle(cx+15*s,cy-20*s,6*s,0xEF5B);
+        _gfx->fillCircle(cx+15*s,cy+20*s,6*s,0xEF5B);
         break;
-    case 1:
-        _gfx->fillCircle(cx-2,cy-9,17,0xD580);
-        _gfx->fillRoundRect(cx-4,cy+8,8,18,4,0xEF7B);
-        _gfx->fillCircle(cx,cy+27,6,0xD580);
+    case 1: // Geflügel
+        _gfx->fillCircle(cx-2*s,cy-9*s,17*s,0xD580);
+        _gfx->fillRoundRect(cx-4*s,cy+8*s,8*s,18*s,4*s,0xEF7B);
+        _gfx->fillCircle(cx,cy+27*s,6*s,0xD580);
         break;
-    case 2:
-        _gfx->fillEllipse(cx-4,cy,20,12,0x07DF);
-        _gfx->fillTriangle(cx+15,cy-12,cx+15,cy+12,cx+27,cy,0x07DF);
-        _gfx->fillCircle(cx-13,cy-4,3,0xFFFF);
-        _gfx->fillTriangle(cx-6,cy-12,cx+4,cy-12,cx-1,cy-19,0x07BF);
+    case 2: // Fisch
+        _gfx->fillEllipse(cx-4*s,cy,20*s,12*s,0x07DF);
+        _gfx->fillTriangle(cx+15*s,cy-12*s,cx+15*s,cy+12*s,cx+27*s,cy,0x07DF);
+        _gfx->fillCircle(cx-13*s,cy-4*s,3*s,0xFFFF);
+        _gfx->fillTriangle(cx-6*s,cy-12*s,cx+4*s,cy-12*s,cx-1*s,cy-19*s,0x07BF);
         break;
-    case 3:
-        _gfx->fillCircle(cx-8,cy-6,11,0x07E0);
-        _gfx->fillCircle(cx+8,cy-6,11,0x07E0);
-        _gfx->fillCircle(cx,cy-15,11,0x4FE0);
-        _gfx->fillRect(cx-3,cy+6,6,14,0x5B00);
+    case 3: // Gemüse
+        _gfx->fillCircle(cx-8*s,cy-6*s,11*s,0x07E0);
+        _gfx->fillCircle(cx+8*s,cy-6*s,11*s,0x07E0);
+        _gfx->fillCircle(cx,cy-15*s,11*s,0x4FE0);
+        _gfx->fillRect(cx-3*s,cy+6*s,6*s,14*s,0x5B00);
         break;
-    case 4:
-        _gfx->fillCircle(cx-7,cy+5,13,0xF800);
-        _gfx->fillCircle(cx+9,cy+1,11,0xFD40);
-        _gfx->fillRect(cx-5,cy-17,2,8,0x0460);
-        _gfx->fillEllipse(cx-1,cy-16,5,3,0x04A0);
+    case 4: // Backwaren
+        _gfx->fillCircle(cx-7*s,cy+5*s,13*s,0xF800);
+        _gfx->fillCircle(cx+9*s,cy+1*s,11*s,0xFD40);
+        _gfx->fillRect(cx-5*s,cy-17*s,2*s,8*s,0x0460);
+        _gfx->fillEllipse(cx-1*s,cy-16*s,5*s,3*s,0x04A0);
         break;
-    case 5:
-        _gfx->drawCircle(cx,cy,19,0xFFFF);
-        _gfx->drawCircle(cx,cy,13,0xFFFF);
-        _gfx->fillRect(cx-11,cy-16,2,30,0xFFFF);
-        _gfx->fillRect(cx-13,cy-16,2,10,0xFFFF);
-        _gfx->fillRect(cx-9,cy-16,2,10,0xFFFF);
-        _gfx->fillRect(cx+9,cy-16,2,30,0xFFFF);
-        _gfx->fillRoundRect(cx+9,cy-16,5,14,2,0xD6DB);
+    case 5: // Sonstiges
+        _gfx->drawCircle(cx,cy,19*s,0xFFFF);
+        _gfx->drawCircle(cx,cy,13*s,0xFFFF);
+        _gfx->fillRect(cx-11*s,cy-16*s,2*s,30*s,0xFFFF);
+        _gfx->fillRect(cx-13*s,cy-16*s,2*s,10*s,0xFFFF);
+        _gfx->fillRect(cx-9*s,cy-16*s,2*s,10*s,0xFFFF);
+        _gfx->fillRect(cx+9*s,cy-16*s,2*s,30*s,0xFFFF);
+        _gfx->fillRoundRect(cx+9*s,cy-16*s,5*s,14*s,2*s,0xD6DB);
         break;
     case 6:
-        _gfx->fillRoundRect(cx-19,cy-2,38,16,6,0x8320);
-        _gfx->fillCircle(cx-8,cy-5,12,0xA400);
-        _gfx->fillCircle(cx+8,cy-5,12,0xA400);
-        _gfx->drawLine(cx,cy-15,cx,cy+10,0x6240);
+        _gfx->fillRoundRect(cx-19*s,cy-2*s,38*s,16*s,6*s,0x8320);
+        _gfx->fillCircle(cx-8*s,cy-5*s,12*s,0xA400);
+        _gfx->fillCircle(cx+8*s,cy-5*s,12*s,0xA400);
+        _gfx->drawLine(cx,cy-15*s,cx,cy+10*s,0x6240);
         break;
     case 7: {
         uint16_t sc=0xB7FF;
-        for(int t=0;t<=1;t++){
-            _gfx->drawLine(cx+t,cy-21,cx+t,cy+21,sc);
-            _gfx->drawLine(cx-18+t,cy-11,cx+18+t,cy+11,sc);
-            _gfx->drawLine(cx-18+t,cy+11,cx+18+t,cy-11,sc);
+        for(int t=0;t<=s;t++){
+            _gfx->drawLine(cx+t,cy-21*s,cx+t,cy+21*s,sc);
+            _gfx->drawLine(cx-18*s+t,cy-11*s,cx+18*s+t,cy+11*s,sc);
+            _gfx->drawLine(cx-18*s+t,cy+11*s,cx+18*s+t,cy-11*s,sc);
         }
-        _gfx->drawLine(cx-6,cy-15,cx,cy-21,sc);
-        _gfx->drawLine(cx+6,cy-15,cx,cy-21,sc);
-        _gfx->drawLine(cx-6,cy+15,cx,cy+21,sc);
-        _gfx->drawLine(cx+6,cy+15,cx,cy+21,sc);
-        _gfx->fillCircle(cx,cy,4,sc);
+        _gfx->drawLine(cx-6*s,cy-15*s,cx,cy-21*s,sc);
+        _gfx->drawLine(cx+6*s,cy-15*s,cx,cy-21*s,sc);
+        _gfx->drawLine(cx-6*s,cy+15*s,cx,cy+21*s,sc);
+        _gfx->drawLine(cx+6*s,cy+15*s,cx,cy+21*s,sc);
+        _gfx->fillCircle(cx,cy,4*s,sc);
         break;
     }
     }
@@ -168,9 +169,17 @@ void DisplayManager::showMain(int catIndex,
     _gfx->fillScreen(0x0000);
     Serial.printf("[Disp] showMain cats=%d products=%d\n", (int)g_categories.size(), (int)products.size());
 
-    // ── Kategorie-Tabs (dynamische Breite) ───────────────────
-    int nCats    = max(1, (int)g_categories.size());
-    int16_t tabW = W / nCats;
+    // Status-Leiste
+    uint16_t wc = wifiOk ? COLOR_OK : COLOR_DANGER;
+    _gfx->fillCircle(W - 8, 8, 4, wc);
+    struct tm ti; char tbuf[6] = "--:--";
+    if (getLocalTime(&ti, 0))
+        snprintf(tbuf, sizeof(tbuf), "%02d:%02d", ti.tm_hour, ti.tm_min);
+    textLeft(tbuf, 6, 2, 1, COLOR_SUBTEXT);
+    textCenter("Kategorien", W / 2, CAT_HDR / 2, 2, COLOR_TEXT);
+    _gfx->drawFastHLine(0, CAT_HDR, W, COLOR_SURFACE);
+
+    int nCats = min((int)g_categories.size(), CAT_COLS * CAT_ROWS);
     for (int i = 0; i < nCats; i++) {
         int16_t tx = i * tabW;
         bool sel = (i == catIndex);
@@ -195,7 +204,6 @@ void DisplayManager::showMain(int catIndex,
     uint16_t wifiDot = wifiOk ? 0x07E0 : 0xF800;
     _gfx->fillCircle(W - 5, 5, 4, wifiDot);
 
-    // ── Produktliste ──────────────────────────────────────────
     if (products.empty()) {
         textCenter("Keine Produkte",               W / 2, 124,  1, 0x8410);
         textCenter("Im Web-Interface hinzufuegen", W / 2, 148, 1, 0x8410);
@@ -226,6 +234,9 @@ void DisplayManager::showMain(int catIndex,
             _gfx->fillRect(W - 4, 34, 4, barH, 0x18C3);
             _gfx->fillRect(W - 4, markY, 4, markH, sc);
         }
+
+        // Pfeil rechts
+        textLeft(">", W - 20, iy + 10, 2, COLOR_SUBTEXT, COLOR_SURFACE);
     }
 
     // ── Statusleiste unten ───────────────────────────────────
@@ -304,9 +315,42 @@ void DisplayManager::showDateEntry(const DateInput &d, const String &productName
     for (int i = 0; i < 3; i++)
         textCenter(labels[i], i * 152 + 76, 58, 1, 0x8410);
 
-    drawPlusMinusColumn(0, d.day,   false);
-    drawPlusMinusColumn(1, d.month, false);
-    drawPlusMinusColumn(2, d.year,  true);
+    // Numpad
+    // Numpad-Layout: row × col  (col 3 = Sonderbereich)
+    for (int row = 0; row < 4; row++) {
+        for (int col = 0; col < 4; col++) {
+            int16_t bx = RX + col * BW + 2;
+            int16_t by = DATE_PAD_Y + row * DATE_PAD_ROW_H + 2;
+            int16_t bw = BW - 4;
+            int16_t bh = DATE_PAD_ROW_H - 4;
+
+            if (col == 3) {
+                if (row == 0) {
+                    // Backspace
+                    _gfx->fillRoundRect(bx, by, bw, bh, 6, COLOR_BTN_BACK);
+                    textCenter("<X", bx + bw/2, by + bh/2, 1, COLOR_TEXT, COLOR_BTN_BACK);
+                } else if (row == 1) {
+                    // Speichern (spans rows 1-3)
+                    int16_t sh = 3 * DATE_PAD_ROW_H - 4;
+                    _gfx->fillRoundRect(bx, by, bw, sh, 8, COLOR_BTN_OK);
+                    textCenter("OK", bx + bw/2, by + sh/2 - 8, 2, COLOR_TEXT, COLOR_BTN_OK);
+                }
+                continue;  // rows 2+3 of col 3 covered by Speichern
+            }
+            if (row == 3 && col == 2) continue;  // Punkt-Taste überspringen
+
+            uint16_t bg = COLOR_SURFACE;
+            String label;
+            if      (row == 0) label = String(1 + col);          // 1 2 3
+            else if (row == 1) label = String(4 + col);          // 4 5 6
+            else if (row == 2) label = String(7 + col);          // 7 8 9
+            else if (row == 3 && col == 0) { label = "Hte"; bg = COLOR_BTN_BACK; } // Heute
+            else if (row == 3 && col == 1) label = "0";
+
+            _gfx->fillRoundRect(bx, by, bw, bh, 6, bg);
+            textCenter(label, bx + bw/2, by + bh/2, (label.length()<=1)?2:1, COLOR_TEXT, bg);
+        }
+    }
 
     drawTouchButton(8, 242, 140, 34, "Abbrechen", 0x18C3, 0x8410, 1);
     drawTouchButton(156, 242, 292, 34, "Bestaetigen", 0x0640, 0xFFFF, 2);

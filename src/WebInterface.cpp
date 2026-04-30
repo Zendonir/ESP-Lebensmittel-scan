@@ -116,6 +116,7 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
   <button onclick="switchTab('shop',this)">&#x1F6D2; Einkauf</button>
   <button onclick="switchTab('stats',this)">&#x1F4CA; Statistik</button>
   <button onclick="switchTab('system',this)">&#x1F4BE; System</button>
+  <button onclick="switchTab('scanlogs',this)">&#x1F4A0; Scans</button>
   <button onclick="location.href='/ota'" style="margin-left:auto">&#x2B06; OTA</button>
 </nav>
 <div id="inv" class="panel active">
@@ -406,6 +407,23 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     <div id="devMsg" style="margin-top:.75rem;font-size:.85rem"></div>
   </div>
 </div>
+<div id="scanlogs" class="panel">
+  <div class="toolbar" style="padding:1.5rem 1.5rem 0">
+    <h2 style="flex:1;margin:0">Scan-Verlauf</h2>
+    <button class="btn-ghost" onclick="loadScanlogs()">&#x1F504; Aktualisieren</button>
+  </div>
+  <div class="table-wrap">
+    <table id="scanlogsTable">
+      <thead>
+        <tr><th>Zeit</th><th>Barcode</th></tr>
+      </thead>
+      <tbody id="scanlogsTbody">
+        <tr><td colspan="2" style="text-align:center;color:var(--muted)">Wird geladen&hellip;</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div id="scanlogsEmpty" class="empty" style="display:none">Noch keine Scans aufgezeichnet</div>
+</div>
 <script>
 let catColorMap={};  // name→hex, wird nach loadCats() befüllt
 function catHex(name){return catColorMap[name]||'#333';}
@@ -420,6 +438,7 @@ function switchTab(id,btn){
   if(id==='shop')loadShop();
   if(id==='stats')loadStats();
   if(id==='system'){loadOtaPw();loadDevConfig();}
+  if(id==='scanlogs')loadScanlogs();
 }
 async function loadWifi(){
   try{const r=await fetch('/api/wifi-config');const d=await r.json();
@@ -829,6 +848,22 @@ async function clearMqtt(){
   if(!confirm('MQTT deaktivieren (Host leeren)?'))return;
   document.getElementById('mqttHost').value='';
   await saveMqtt();
+}
+async function loadScanlogs(){
+  try{const r=await fetch('/api/scanlogs');const scans=await r.json();
+    const tbody=document.getElementById('scanlogsTbody');
+    const empty=document.getElementById('scanlogsEmpty');
+    if(!scans||scans.length===0){
+      tbody.innerHTML='';empty.style.display='block';
+      return;
+    }
+    empty.style.display='none';
+    tbody.innerHTML=scans.map(s=>{
+      const d=new Date(s.ts*1000);
+      const time=d.toLocaleString('de-DE',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      return `<tr><td>${time}</td><td style="font-family:monospace;font-size:.85rem">${s.barcode}</td></tr>`;
+    }).join('');
+  }catch(e){console.error(e);}
 }
 
 loadInv();
@@ -1302,6 +1337,12 @@ void WebInterface::begin() {
             req->send(200, "application/json", "{\"ok\":true}");
         }
     );
+
+    // Scan logs endpoint
+    _server.on("/api/scanlogs", HTTP_GET, [](AsyncWebServerRequest *req) {
+        extern String getScanLogsJSON();
+        req->send(200, "application/json", getScanLogsJSON());
+    });
 
     _server.onNotFound([](AsyncWebServerRequest *req) { req->send(404,"text/plain","Not found"); });
 
