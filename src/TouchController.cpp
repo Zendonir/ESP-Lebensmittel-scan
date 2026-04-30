@@ -12,12 +12,19 @@ bool TouchController::begin() {
     }
 
     Wire.begin(_sda, _scl);
-    Wire.setClock(400000);
+    Wire.setClock(300000);
 
-    // Verbindungstest
+    // I2C-Scan (Debug)
+    Serial.printf("[Touch] I2C scan SDA=%d SCL=%d ...\n", _sda, _scl);
+    for (uint8_t addr = 1; addr < 127; addr++) {
+        Wire.beginTransmission(addr);
+        if (Wire.endTransmission() == 0)
+            Serial.printf("[Touch] Gefunden: 0x%02X\n", addr);
+    }
+
     Wire.beginTransmission(I2C_ADDR);
     _initialized = (Wire.endTransmission() == 0);
-    if (!_initialized) Serial.printf("[Touch] FT3168 nicht gefunden (I2C 0x%02X)\n", I2C_ADDR);
+    if (!_initialized) Serial.printf("[Touch] FT3168 NICHT gefunden (0x%02X)\n", I2C_ADDR);
     else               Serial.println("[Touch] FT3168 OK");
     return _initialized;
 }
@@ -47,32 +54,22 @@ bool TouchController::hits(int16_t bx, int16_t by, int16_t bw, int16_t bh) const
 }
 
 bool TouchController::readRegisters() {
-    // FT3168 Register-Layout ab 0x01:
-    // [0] GestureID  [1] TD_STATUS (touch count)
-    // [2] P1_XH      [3] P1_XL  [4] P1_YH  [5] P1_YL
+    // FT3168: ab Register 0x02 → 5 Bytes lesen (wie Referenz-Projekt)
+    // [0] TD_STATUS  [1] P1_XH  [2] P1_XL  [3] P1_YH  [4] P1_YL
     Wire.beginTransmission(I2C_ADDR);
-    Wire.write(0x01);
+    Wire.write(0x02);
     if (Wire.endTransmission(false) != 0) return false;
 
-    Wire.requestFrom(I2C_ADDR, (uint8_t)6);
-    if (Wire.available() < 6) return false;
+    Wire.requestFrom(I2C_ADDR, (uint8_t)5);
+    if (Wire.available() < 5) return false;
 
-    uint8_t gest = Wire.read();
-    uint8_t num  = Wire.read();
-    uint8_t xH   = Wire.read();
-    uint8_t xL   = Wire.read();
-    uint8_t yH   = Wire.read();
-    uint8_t yL   = Wire.read();
+    uint8_t num = Wire.read();
+    uint8_t xH  = Wire.read();
+    uint8_t xL  = Wire.read();
+    uint8_t yH  = Wire.read();
+    uint8_t yL  = Wire.read();
 
     if ((num & 0x0F) == 0) return false;
-
-    switch (gest) {
-        case 0x10: _gesture = Gesture::SWIPE_UP;    break;
-        case 0x18: _gesture = Gesture::SWIPE_DOWN;  break;
-        case 0x1C: _gesture = Gesture::SWIPE_LEFT;  break;
-        case 0x14: _gesture = Gesture::SWIPE_RIGHT; break;
-        default:   _gesture = Gesture::SINGLE_CLICK; break;
-    }
 
     int16_t raw_x = ((xH & 0x0F) << 8) | xL;
     int16_t raw_y = ((yH & 0x0F) << 8) | yL;
