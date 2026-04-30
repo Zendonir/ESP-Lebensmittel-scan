@@ -34,12 +34,12 @@
 #endif
 
 // ============================================================
-//  Touch – CST816S (I2C, intern auf der Platine)
+//  Touch – FT3168 (I2C, intern auf der Platine)
 // ============================================================
-#define TOUCH_SDA  6
-#define TOUCH_SCL  7
-#define TOUCH_INT  8
-#define TOUCH_RST  21
+#define TOUCH_SDA  47
+#define TOUCH_SCL  48
+#define TOUCH_INT  -1
+#define TOUCH_RST  -1
 
 // ============================================================
 //  Optionaler physischer Taster (BOOT-Button)

@@ -45,5 +45,5 @@ private:
 
     static constexpr uint8_t I2C_ADDR = 0x38;  // FT3168
 
-    void readRegisters();
+    bool readRegisters();
 };
