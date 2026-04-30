@@ -22,7 +22,8 @@ bool TouchController::begin() {
     // Verbindungstest
     Wire.beginTransmission(I2C_ADDR);
     _initialized = (Wire.endTransmission() == 0);
-    if (!_initialized) Serial.printf("[Touch] CST816S nicht gefunden (I2C 0x%02X)\n", I2C_ADDR);
+    if (!_initialized) Serial.printf("[Touch] FT3168 nicht gefunden (I2C 0x%02X)\n", I2C_ADDR);
+    else               Serial.println("[Touch] FT3168 OK");
     return _initialized;
 }
 
@@ -52,10 +53,10 @@ bool TouchController::hits(int16_t bx, int16_t by, int16_t bw, int16_t bh) const
 }
 
 void TouchController::readRegisters() {
-    // CST816S Register-Layout ab 0x01:
-    // [0] GestureID  [1] FingerNum
-    // [2] XposH      [3] XposL
-    // [4] YposH      [5] YposL
+    // FT3168 Register-Layout ab 0x01:
+    // [0] GestureID  [1] TD_STATUS (touch count)
+    // [2] P1_XH      [3] P1_XL
+    // [4] P1_YH      [5] P1_YL
     Wire.beginTransmission(I2C_ADDR);
     Wire.write(0x01);
     if (Wire.endTransmission(false) != 0) return;
@@ -70,9 +71,16 @@ void TouchController::readRegisters() {
     uint8_t yH   = Wire.read();
     uint8_t yL   = Wire.read();
 
-    if (num == 0) return;
+    if ((num & 0x0F) == 0) return;
 
-    _gesture = static_cast<Gesture>(gest);
+    // FT3168 Gesture-Codes → unsere Gesture-Enum
+    switch (gest) {
+        case 0x10: _gesture = Gesture::SWIPE_UP;    break;
+        case 0x18: _gesture = Gesture::SWIPE_DOWN;  break;
+        case 0x1C: _gesture = Gesture::SWIPE_LEFT;  break;
+        case 0x14: _gesture = Gesture::SWIPE_RIGHT; break;
+        default:   _gesture = Gesture::SINGLE_CLICK; break;
+    }
 
     // Raw-Koordinaten im Portrait-Raum (280×456)
     int16_t raw_x = ((xH & 0x0F) << 8) | xL;

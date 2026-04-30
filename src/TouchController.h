@@ -43,7 +43,7 @@ private:
     int16_t _x = 0, _y = 0;
     Gesture _gesture = Gesture::NONE;
 
-    static constexpr uint8_t I2C_ADDR = 0x15;
+    static constexpr uint8_t I2C_ADDR = 0x38;  // FT3168
 
     void readRegisters();
 };
