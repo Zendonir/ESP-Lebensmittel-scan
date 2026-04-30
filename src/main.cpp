@@ -45,7 +45,7 @@ enum class State {
 // ── Globale Objekte ───────────────────────────────────────────
 
 BarcodeScanner scanner(Serial2, BARCODE_RX_PIN, BARCODE_TX_PIN, BARCODE_BAUD);
-ThermalPrinter printer(Serial2, PRINTER_TX_PIN, PRINTER_RX_PIN, PRINTER_BAUD);
+ThermalPrinter printer(Serial1, PRINTER_TX_PIN, PRINTER_RX_PIN, PRINTER_BAUD);
 DisplayManager display;
 TouchController touch(TOUCH_SDA, TOUCH_SCL, TOUCH_INT, TOUCH_RST);
 FoodAPI        foodAPI;
@@ -357,7 +357,7 @@ void setup() {
     display.showBooting("Display + Touch OK"); delay(300);
 
     scanner.begin();
-    Serial.printf("[Scanner] Serial1 RX=%d TX=%d baud=%d\n", BARCODE_RX_PIN, BARCODE_TX_PIN, BARCODE_BAUD);
+    Serial.printf("[Scanner] Serial2 RX=GPIO%d TX=GPIO%d baud=%d\n", BARCODE_RX_PIN, BARCODE_TX_PIN, BARCODE_BAUD);
     display.showBooting("Scanner OK"); delay(200);
 
     printer.begin();
