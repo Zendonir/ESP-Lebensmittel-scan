@@ -44,7 +44,7 @@ enum class State {
 
 // ── Globale Objekte ───────────────────────────────────────────
 
-BarcodeScanner scanner(Serial1, BARCODE_RX_PIN, BARCODE_TX_PIN, BARCODE_BAUD);
+BarcodeScanner scanner(Serial2, BARCODE_RX_PIN, BARCODE_TX_PIN, BARCODE_BAUD);
 ThermalPrinter printer(Serial2, PRINTER_TX_PIN, PRINTER_RX_PIN, PRINTER_BAUD);
 DisplayManager display;
 TouchController touch(TOUCH_SDA, TOUCH_SCL, TOUCH_INT, TOUCH_RST);
@@ -392,6 +392,7 @@ void setup() {
 // ── loop() ────────────────────────────────────────────────────
 
 void loop() {
+    scanner.debugDump();
     if (webInterface) webInterface->loop();
     serverSync.loop();
     if (!_mqttCfg.host.isEmpty()) {

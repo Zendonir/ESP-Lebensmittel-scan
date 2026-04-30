@@ -6,9 +6,10 @@ public:
     BarcodeScanner(HardwareSerial &serial, uint8_t rxPin, uint8_t txPin, uint32_t baud);
 
     void begin();
-    bool available();       // true wenn ein vollständiger Barcode vorliegt
-    String getBarcode();    // gibt den Barcode zurück und leert den Buffer
+    bool available();
+    String getBarcode();
     void flush();
+    void debugDump();       // alle 2s: zeigt ob Bytes auf RX ankommen
 
 private:
     HardwareSerial &_serial;

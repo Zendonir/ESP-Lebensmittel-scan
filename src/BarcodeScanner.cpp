@@ -6,6 +6,29 @@ BarcodeScanner::BarcodeScanner(HardwareSerial &serial, uint8_t rxPin, uint8_t tx
 void BarcodeScanner::begin() {
     _serial.begin(_baud, SERIAL_8N1, _rxPin, _txPin);
     _buffer.reserve(32);
+    Serial.printf("[Scanner] begin() RX=GPIO%d TX=GPIO%d baud=%d\n", _rxPin, _txPin, _baud);
+}
+
+void BarcodeScanner::debugDump() {
+    static unsigned long _lastDbg = 0;
+    if (millis() - _lastDbg < 2000) return;
+    _lastDbg = millis();
+    int n = _serial.available();
+    if (n > 0) {
+        Serial.printf("[Scanner] %d Bytes im Buffer: ", n);
+        while (_serial.available()) {
+            uint8_t b = _serial.read();
+            Serial.printf("0x%02X ", b);
+            if (isPrintable(b)) _buffer += (char)b;
+            else if (b == '\r' || b == '\n') {
+                if (_buffer.length() > 3) _ready = true;
+                else _buffer = "";
+            }
+        }
+        Serial.println();
+    } else {
+        Serial.println("[Scanner] keine Daten auf RX");
+    }
 }
 
 bool BarcodeScanner::available() {
