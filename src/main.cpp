@@ -52,6 +52,33 @@ Inventory      inventory;
 CustomProducts customProducts;
 WebInterface  *webInterface = nullptr;
 
+// ── Scan-Log (RAM-basiert, letzte ~100 Scans) ─────────────────
+
+struct ScanLogEntry { unsigned long ts; String barcode; };
+static const int MAX_SCAN_LOGS = 100;
+static ScanLogEntry scanLogs[MAX_SCAN_LOGS];
+static int scanLogIndex = 0;
+
+void logScan(const String &barcode) {
+    scanLogs[scanLogIndex] = { millis() / 1000, barcode };
+    scanLogIndex = (scanLogIndex + 1) % MAX_SCAN_LOGS;
+}
+
+String getScanLogsJSON() {
+    JsonDocument doc;
+    JsonArray arr = doc.to<JsonArray>();
+    for (int i = 0; i < MAX_SCAN_LOGS; i++) {
+        int idx = (scanLogIndex + i) % MAX_SCAN_LOGS;
+        if (scanLogs[idx].barcode.length() > 0) {
+            JsonObject obj = arr.add<JsonObject>();
+            obj["ts"] = scanLogs[idx].ts;
+            obj["barcode"] = scanLogs[idx].barcode;
+        }
+    }
+    String out; serializeJson(doc, out);
+    return out;
+}
+
 #if BTN_BACK >= 0
 class BackButton {
     uint8_t _pin; bool _prev = HIGH; unsigned long _last = 0;
@@ -403,6 +430,7 @@ void loop() {
         String bc = scanner.getBarcode();
         lastActivity = millis();
         Serial.printf("[Scan] %s\n", bc.c_str());
+        logScan(bc);
 
         if (state == State::POWER_SAVE) {
             display.setBrightness(220);
