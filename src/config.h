@@ -122,10 +122,12 @@
 #define COLOR_BTN_BACK  0x2945
 
 // ============================================================
-//  Optionaler Buzzer (Passiv-Buzzer, -1 = deaktiviert)
-//  Kurzer Piepton bei Einlagerung, tiefer Ton bei Fehler
+//  KY-006 Passiv-Buzzer (Signal-Pin → GPIO38)
+//  S  → GPIO38
+//  +  → 3.3V
+//  -  → GND
 // ============================================================
-#define BUZZER_PIN  -1
+#define BUZZER_PIN  38
 
 // ============================================================
 //  MQTT (optional) – wird über Web-Interface konfiguriert
