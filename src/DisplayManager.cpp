@@ -20,7 +20,9 @@ bool DisplayManager::begin() {
     bool ok = _gfx->begin();
     Serial.printf("[Disp] gfx->begin()=%d  psram free after=%u\n", ok, ESP.getFreePsram());
     if (!ok) return false;
-    _gfx->setRotation(0); // Hochformat 280×456
+    Serial.printf("[Disp] W=%d H=%d rotation=0\n", W, H);
+    _panel->setRotation(0); // CO5300 Hardware: Portrait MADCTL
+    _gfx->setRotation(0);   // Canvas: Portrait Koordinatensystem
     _gfx->fillScreen(COLOR_BG);
     _gfx->flush();
     Serial.println("[Disp] flush() done");
