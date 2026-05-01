@@ -317,22 +317,27 @@ void DisplayManager::showDateEntry(const DateInput &d, const String &productName
                                     bool wifiOk, int dragCol, int16_t dragPx) {
     _gfx->fillScreen(COLOR_BG);
 
-    // Header mit Produktname
-    String pn = productName.length() > 20 ? productName.substring(0, 20) : productName;
-    drawStatusBar(pn, COLOR_ACCENT, true, wifiOk);
+    // ── Produktname ──────────────────────────────────────────────
+    String pn = productName.length() > 28 ? productName.substring(0, 28) : productName;
+    textCenter(pn, W / 2, DRUM_HDR_H / 2, 2, COLOR_TEXT);
 
-    // Spalten-Beschriftungen
-    const char* lbl[] = {"TAG", "MONAT", "JAHR"};
+    // ── Spalten-Trennlinien ──────────────────────────────────────
+    _gfx->drawFastVLine(    DRUM_COL_W, DRUM_HDR_H, DRUM_BTN_Y - DRUM_HDR_H, COLOR_SURFACE);
+    _gfx->drawFastVLine(2 * DRUM_COL_W, DRUM_HDR_H, DRUM_BTN_Y - DRUM_HDR_H, COLOR_SURFACE);
+
+    // ── ▲ Pfeil-Buttons ──────────────────────────────────────────
     for (int c = 0; c < 3; c++) {
-        int16_t cx = c * DRUM_COL_W + DRUM_COL_W / 2;
-        textCenter(lbl[c], cx, SUB_HDR + DRUM_LBL_H / 2, 1, COLOR_SUBTEXT);
+        int16_t bx = c * DRUM_COL_W + 6;
+        int16_t bw = DRUM_COL_W - 12;
+        int16_t by = DRUM_ARRUP_Y + 3;
+        int16_t bh = DRUM_ARR_H - 6;
+        _gfx->fillRoundRect(bx, by, bw, bh, 8, COLOR_SURFACE);
+        _gfx->drawRoundRect(bx, by, bw, bh, 8, COLOR_ACCENT);
+        int16_t cx = bx + bw / 2, cy = by + bh / 2;
+        _gfx->fillTriangle(cx, cy - 10, cx - 13, cy + 8, cx + 13, cy + 8, COLOR_ACCENT);
     }
 
-    // Trennlinien zwischen Spalten
-    _gfx->drawFastVLine(DRUM_COL_W,     SUB_HDR, DRUM_BTN_Y - SUB_HDR, COLOR_SURFACE);
-    _gfx->drawFastVLine(2 * DRUM_COL_W, SUB_HDR, DRUM_BTN_Y - SUB_HDR, COLOR_SURFACE);
-
-    // Zahlen für jede Spalte zeichnen
+    // ── Drum-Zahlen ──────────────────────────────────────────────
     int  baseVals[3] = {d.day, d.month, d.year};
     int  minVals[3]  = {1, 1, 2024};
     int  maxVals[3]  = {31, 12, 2099};
@@ -341,7 +346,7 @@ void DisplayManager::showDateEntry(const DateInput &d, const String &productName
     for (int c = 0; c < 3; c++) {
         int16_t colCX = c * DRUM_COL_W + DRUM_COL_W / 2;
         int16_t px    = (c == dragCol) ? dragPx : 0;
-        int halfRange = (px != 0) ? 4 : 2;
+        int halfRange = (px != 0) ? 3 : 1;
 
         for (int r = -halfRange; r <= halfRange; r++) {
             int val = baseVals[c] + r;
@@ -349,16 +354,14 @@ void DisplayManager::showDateEntry(const DateInput &d, const String &productName
 
             int16_t rowCY = DRUM_SEL_Y + r * DRUM_ROW_H + DRUM_ROW_H / 2 + px;
 
-            // Größe und Farbe nach Pixelabstand vom Zentrum
-            int dist10 = (int)abs(rowCY - centerY) * 10 / DRUM_ROW_H;
+            int dist10 = abs(rowCY - centerY) * 10 / DRUM_ROW_H;
             uint16_t clr;
             uint8_t  sz;
             if      (dist10 <  5) { sz = 3; clr = COLOR_TEXT;    }
             else if (dist10 < 15) { sz = 2; clr = COLOR_SUBTEXT; }
             else                  { sz = 1; clr = 0x2104;        }
 
-            // Nur zeichnen wenn innerhalb der Picker-Fläche
-            if (rowCY < DRUM_TOP + 4 * sz || rowCY > DRUM_BTN_Y - 4 * sz) continue;
+            if (rowCY < DRUM_TOP + 4 * sz || rowCY > DRUM_ARRDWN_Y - 4 * sz) continue;
 
             String valStr = (c == 2) ? String(val)
                                      : (val < 10 ? "0" + String(val) : String(val));
@@ -366,16 +369,31 @@ void DisplayManager::showDateEntry(const DateInput &d, const String &productName
         }
     }
 
-    // Auswahlrahmen über die Zahlen legen
-    _gfx->drawRoundRect(4, DRUM_SEL_Y, W - 8, DRUM_ROW_H, 6, COLOR_ACCENT);
+    // ── Auswahlrahmen ────────────────────────────────────────────
+    _gfx->drawRoundRect(2, DRUM_SEL_Y, W - 4, DRUM_ROW_H, 6, COLOR_ACCENT);
 
-    // Buttons
+    // ── ▼ Pfeil-Buttons ──────────────────────────────────────────
+    for (int c = 0; c < 3; c++) {
+        int16_t bx = c * DRUM_COL_W + 6;
+        int16_t bw = DRUM_COL_W - 12;
+        int16_t by = DRUM_ARRDWN_Y + 3;
+        int16_t bh = DRUM_ARR_H - 6;
+        _gfx->fillRoundRect(bx, by, bw, bh, 8, COLOR_SURFACE);
+        _gfx->drawRoundRect(bx, by, bw, bh, 8, COLOR_ACCENT);
+        int16_t cx = bx + bw / 2, cy = by + bh / 2;
+        _gfx->fillTriangle(cx, cy + 10, cx - 13, cy - 8, cx + 13, cy - 8, COLOR_ACCENT);
+    }
+
+    // ── Back + OK Buttons ────────────────────────────────────────
     int16_t btnY = DRUM_BTN_Y + 4;
     int16_t btnH = H - DRUM_BTN_Y - 8;
-    _gfx->fillRoundRect(4, btnY, DRUM_COL_W - 8, btnH, 6, COLOR_BTN_BACK);
-    textCenter("Heute", DRUM_COL_W / 2, btnY + btnH / 2, 1, COLOR_TEXT, COLOR_BTN_BACK);
-    _gfx->fillRoundRect(DRUM_COL_W + 4, btnY, 2 * DRUM_COL_W - 8, btnH, 6, COLOR_BTN_OK);
-    textCenter("OK", DRUM_COL_W + DRUM_COL_W, btnY + btnH / 2, 2, COLOR_TEXT, COLOR_BTN_OK);
+    int16_t halfW = W / 2 - 6;
+    // Back (links, rot, nur Rahmen)
+    _gfx->drawRoundRect(4, btnY, halfW, btnH, 8, COLOR_DANGER);
+    textCenter("< Zuruck", 4 + halfW / 2, btnY + btnH / 2, 1, COLOR_DANGER);
+    // OK (rechts, grün, nur Rahmen)
+    _gfx->drawRoundRect(W / 2 + 2, btnY, halfW, btnH, 8, COLOR_OK);
+    textCenter("OK", W / 2 + 2 + halfW / 2, btnY + btnH / 2, 2, COLOR_OK);
 
     _gfx->flush();
 }

@@ -610,28 +610,35 @@ void loop() {
             swipeActive = false;
         }
 
-        // Zurück
-        if ((tapped && ty < SUB_HDR && tx < 120) || hardBack) {
-            swipeActive = false;
-            setState(State::PRODUCT_LIST); break;
-        }
+        if (hardBack) { swipeActive = false; setState(State::PRODUCT_LIST); break; }
 
         bool changed = false;
 
         if (tapped) {
             if (ty >= DRUM_BTN_Y) {
-                if (tx >= DRUM_COL_W) {
-                    swipeActive = false;
-                    setState(State::SAVING); break;
-                } else {
-                    initDateToday();
-                    changed = true;
-                }
+                // Back (links) oder OK (rechts)
+                if (tx < DISPLAY_W / 2) { swipeActive = false; setState(State::PRODUCT_LIST); break; }
+                else                    { swipeActive = false; setState(State::SAVING);        break; }
+            } else if (ty >= DRUM_ARRDWN_Y) {
+                // ▼ Pfeil — Zahl um 1 verringern
+                int c = constrain((int)(tx / DRUM_COL_W), 0, 2);
+                if      (c == 0) dateInput.day   = constrain(dateInput.day   - 1, 1, 31);
+                else if (c == 1) dateInput.month = constrain(dateInput.month - 1, 1, 12);
+                else             dateInput.year  = constrain(dateInput.year  - 1, 2024, 2099);
+                clampDate(dateInput); buzzOk(); changed = true;
             } else if (ty >= DRUM_TOP) {
+                // Drum-Bereich → Swipe starten
                 swipeActive = true;
                 swipeStartY = ty;
                 swipeCurY   = ty;
                 swipeCol    = constrain((int)(tx / DRUM_COL_W), 0, 2);
+            } else if (ty >= DRUM_ARRUP_Y) {
+                // ▲ Pfeil — Zahl um 1 erhöhen
+                int c = constrain((int)(tx / DRUM_COL_W), 0, 2);
+                if      (c == 0) dateInput.day   = constrain(dateInput.day   + 1, 1, 31);
+                else if (c == 1) dateInput.month = constrain(dateInput.month + 1, 1, 12);
+                else             dateInput.year  = constrain(dateInput.year  + 1, 2024, 2099);
+                clampDate(dateInput); buzzOk(); changed = true;
             }
         }
 

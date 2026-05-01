@@ -25,14 +25,17 @@ static constexpr int16_t SUB_HDR       = 54;
 static constexpr int16_t LIST_ITEM_H   = 44;
 static constexpr int16_t LIST_MAX_VIS  = (DISPLAY_H - SUB_HDR) / LIST_ITEM_H;
 
-// ── Drum-Roller Datumseingabe ────────────────────────────────
-static constexpr int16_t DRUM_LBL_H = 16;
-static constexpr int16_t DRUM_ROW_H = 34;
-static constexpr int16_t DRUM_ROWS  = 5;
-static constexpr int16_t DRUM_TOP   = SUB_HDR + DRUM_LBL_H;              // 70
-static constexpr int16_t DRUM_SEL_Y = DRUM_TOP + 2 * DRUM_ROW_H;        // 138
-static constexpr int16_t DRUM_BTN_Y = DRUM_TOP + DRUM_ROWS * DRUM_ROW_H; // 240
-static constexpr int16_t DRUM_COL_W = DISPLAY_W / 3;                     // 152
+// ── Datumseingabe (▲ Drum Roller ▼) ─────────────────────────
+static constexpr int16_t DRUM_COL_W    = DISPLAY_W / 3;                         // 152
+static constexpr int16_t DRUM_HDR_H    = 36;
+static constexpr int16_t DRUM_ARR_H    = 40;
+static constexpr int16_t DRUM_ROW_H    = 40;
+static constexpr int16_t DRUM_ROWS     = 3;
+static constexpr int16_t DRUM_ARRUP_Y  = DRUM_HDR_H;                            // 36
+static constexpr int16_t DRUM_TOP      = DRUM_ARRUP_Y + DRUM_ARR_H;             // 76
+static constexpr int16_t DRUM_SEL_Y    = DRUM_TOP + DRUM_ROW_H;                 // 116
+static constexpr int16_t DRUM_ARRDWN_Y = DRUM_TOP + DRUM_ROWS * DRUM_ROW_H;    // 196
+static constexpr int16_t DRUM_BTN_Y    = DRUM_ARRDWN_Y + DRUM_ARR_H;           // 236
 
 // ── Universelle Buttons (AP-Mode, Retrieve, Inventar-Browse) ─
 static constexpr int16_t TBTN_X           = 8;
