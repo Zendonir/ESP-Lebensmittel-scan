@@ -1,5 +1,6 @@
 #include "WebInterface.h"
 #include "config.h"
+#include "FontConfig.h"
 extern bool g_useNumpad;
 #include "CategoryManager.h"
 #include "StorageStats.h"
@@ -413,6 +414,40 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     </div>
     <div id="devMsg" style="margin-top:.75rem;font-size:.85rem"></div>
     <hr style="border-color:var(--border);margin:1.5rem 0">
+    <h2 style="margin-bottom:1rem">Schriftgr&ouml;&szlig;en am Ger&auml;t</h2>
+    <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
+      Gr&ouml;&szlig;e 1&nbsp;=&nbsp;6&thinsp;px, 2&nbsp;=&nbsp;12&thinsp;px, 3&nbsp;=&nbsp;18&thinsp;px, 4&nbsp;=&nbsp;24&thinsp;px.
+      &Auml;nderungen wirken sofort ohne Neustart.
+    </p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;max-width:440px">
+      <label style="font-size:.85rem;color:var(--muted)">&#x1F4D1; &Uuml;berschriften / Titel
+        <input type="number" id="fszTitle" min="1" max="4"
+               style="display:block;width:80px;margin-top:.3rem">
+      </label>
+      <label style="font-size:.85rem;color:var(--muted)">&#x1F4DD; Haupttext / Namen
+        <input type="number" id="fszBody" min="1" max="4"
+               style="display:block;width:80px;margin-top:.3rem">
+      </label>
+      <label style="font-size:.85rem;color:var(--muted)">&#x1F50D; Kleine Hinweistexte
+        <input type="number" id="fszSmall" min="1" max="4"
+               style="display:block;width:80px;margin-top:.3rem">
+      </label>
+      <label style="font-size:.85rem;color:var(--muted)">&#x1F522; Hervorgehobene Zahlen
+        <input type="number" id="fszValue" min="1" max="4"
+               style="display:block;width:80px;margin-top:.3rem">
+      </label>
+      <label style="font-size:.85rem;color:var(--muted)">&#x1F522; Ziffernblock-Tasten
+        <input type="number" id="fszKey" min="1" max="4"
+               style="display:block;width:80px;margin-top:.3rem">
+      </label>
+      <label style="font-size:.85rem;color:var(--muted)">&#x1F518; Button-Beschriftungen
+        <input type="number" id="fszBtn" min="1" max="4"
+               style="display:block;width:80px;margin-top:.3rem">
+      </label>
+    </div>
+    <button class="btn btn-ok" style="width:fit-content;margin-top:.75rem" onclick="saveFontSizes()">Speichern</button>
+    <div id="fszMsg" style="margin-top:.75rem;font-size:.85rem"></div>
+    <hr style="border-color:var(--border);margin:1.5rem 0">
     <h2 style="margin-bottom:1rem">Diagnose</h2>
     <div style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:center">
       <button class="btn" onclick="testBuzzer()">&#x1F50A; Buzzer testen</button>
@@ -450,7 +485,7 @@ function switchTab(id,btn){
   if(id==='mqtt'){loadMqtt();loadTelegram();}
   if(id==='shop')loadShop();
   if(id==='stats')loadStats();
-  if(id==='system'){loadOtaPw();loadDevConfig();}
+  if(id==='system'){loadOtaPw();loadDevConfig();loadFontSizes();}
   if(id==='scanlogs')loadScanlogs();
 }
 async function loadWifi(){
@@ -746,6 +781,32 @@ async function saveDevConfig(){
   else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
 }
 
+// ── Schriftgrößen ─────────────────────────────────────────────
+async function loadFontSizes(){
+  try{const d=await fetch('/api/font-config').then(r=>r.json());
+    document.getElementById('fszTitle').value=d.title||2;
+    document.getElementById('fszBody').value=d.body||2;
+    document.getElementById('fszSmall').value=d.small||1;
+    document.getElementById('fszValue').value=d.value||3;
+    document.getElementById('fszKey').value=d.key||3;
+    document.getElementById('fszBtn').value=d.btn||2;}catch(e){}
+}
+async function saveFontSizes(){
+  const msg=document.getElementById('fszMsg');
+  const clamp=v=>{const n=parseInt(v)||2;return n<1?1:n>4?4:n;};
+  const body={
+    title:clamp(document.getElementById('fszTitle').value),
+    body:clamp(document.getElementById('fszBody').value),
+    small:clamp(document.getElementById('fszSmall').value),
+    value:clamp(document.getElementById('fszValue').value),
+    key:clamp(document.getElementById('fszKey').value),
+    btn:clamp(document.getElementById('fszBtn').value)};
+  const r=await fetch('/api/font-config',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert.';}
+  else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
+}
+
 // ── Statistik ─────────────────────────────────────────────────
 let allStats=[],statSortKey='removedDate',statSortAsc=false;
 async function loadStats(){
@@ -1020,6 +1081,38 @@ void WebInterface::begin() {
             p2.putBool("numpad", numpad);
             p2.end();
             g_useNumpad = numpad;
+            req->send(200, "application/json", "{\"ok\":true}");
+        }
+    );
+
+    // ── Schriftgrößen ────────────────────────────────────────
+    _server.on("/api/font-config", HTTP_GET, [](AsyncWebServerRequest *req) {
+        JsonDocument doc;
+        doc["title"] = g_fontCfg.title;
+        doc["body"]  = g_fontCfg.body;
+        doc["small"] = g_fontCfg.small;
+        doc["value"] = g_fontCfg.value;
+        doc["key"]   = g_fontCfg.key;
+        doc["btn"]   = g_fontCfg.btn;
+        String out; serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+    _server.on("/api/font-config", HTTP_POST,
+        [](AsyncWebServerRequest *req) {},
+        nullptr,
+        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonDocument doc;
+            if (deserializeJson(doc, (const char*)data, len)) {
+                req->send(400, "application/json", "{\"error\":\"JSON\"}"); return;
+            }
+            auto clamp = [](int v) -> uint8_t { return v < 1 ? 1 : v > 4 ? 4 : (uint8_t)v; };
+            g_fontCfg.title = clamp(doc["title"] | 2);
+            g_fontCfg.body  = clamp(doc["body"]  | 2);
+            g_fontCfg.small = clamp(doc["small"] | 1);
+            g_fontCfg.value = clamp(doc["value"] | 3);
+            g_fontCfg.key   = clamp(doc["key"]   | 3);
+            g_fontCfg.btn   = clamp(doc["btn"]   | 2);
+            saveFontConfig(g_fontCfg);
             req->send(200, "application/json", "{\"ok\":true}");
         }
     );

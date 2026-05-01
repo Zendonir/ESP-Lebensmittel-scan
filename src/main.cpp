@@ -7,6 +7,7 @@
 #include <PubSubClient.h>
 #include <time.h>
 #include "config.h"
+#include "FontConfig.h"
 #include "BarcodeScanner.h"
 #include "DisplayManager.h"
 #include "TouchController.h"
@@ -113,6 +114,7 @@ unsigned long stateEnter      = 0;
 bool          screenDirty     = true;
 unsigned long lastActivity    = 0;
 bool          g_useNumpad     = false;  // Datumseingabe-Modus (geladen aus NVS)
+FontConfig    g_fontCfg;               // Schriftgrößen (geladen aus NVS)
 
 void setState(State s) { state = s; stateEnter = millis(); screenDirty = true; }
 
@@ -385,6 +387,7 @@ void setup() {
     }
 
     { Preferences p; p.begin("dev", true); g_useNumpad = p.getBool("numpad", false); p.end(); }
+    loadFontConfig();
 
     lastActivity = millis();
     setState(State::WIFI_CONNECTING);
