@@ -229,15 +229,6 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     </div>
     <div id="catMsg" style="margin-top:.75rem;font-size:.85rem"></div>
   </div>
-  <div class="add-form">
-    <h3>Kategorie-Icons</h3>
-    <p style="font-size:.82rem;color:var(--muted);margin-bottom:.75rem">
-      PNG wird auf 48&times;48&thinsp;px skaliert und als RGB565 auf dem Ger&auml;t gespeichert.
-      Kein Icon hochgeladen &rarr; Standard-Symbol wird angezeigt.
-    </p>
-    <div id="iconList"></div>
-    <div id="iconMsg" style="margin-top:.6rem;font-size:.85rem"></div>
-  </div>
 </div>
 <div id="wifi" class="panel">
   <div style="padding:1.5rem;max-width:480px">
@@ -625,7 +616,7 @@ async function loadCats(){
       fetch('/api/categories').then(r=>r.json()),
       fetch('/api/color-presets').then(r=>r.json())]);
     allCats=catsData;colorPresets=presetsData;
-    buildColorPicker();renderCats();renderIconList();
+    buildColorPicker();renderCats();
   }catch(e){document.getElementById('catsLoading').textContent='Fehler: '+e.message;}
 }
 function rgb565toHex(v){
@@ -690,87 +681,6 @@ async function deleteCat(i){
   const r=await fetch('/api/categories',{method:'POST',
     headers:{'Content-Type':'application/json'},body:JSON.stringify(newList)});
   if(r.ok)loadCats();else alert('Fehler');
-}
-
-// ── Kategorie-Icons ───────────────────────────────────────────
-const ICON_SIZE=48;
-function renderIconList(){
-  const div=document.getElementById('iconList');if(!div)return;
-  if(!allCats||allCats.length===0){
-    div.innerHTML='<p style="color:var(--muted);font-size:.85rem">Keine Kategorien.</p>';return;}
-  div.innerHTML=allCats.map((c,i)=>
-    '<div style="display:flex;align-items:center;gap:.75rem;padding:.5rem 0;border-bottom:1px solid var(--border)">'+
-    '<span style="min-width:110px;font-size:.9rem;font-weight:500">'+esc(c.name)+'</span>'+
-    '<canvas id="iconPrev'+i+'" width="'+ICON_SIZE+'" height="'+ICON_SIZE+'"'+
-    ' style="border:1px solid var(--border);border-radius:4px;background:#222;width:48px;height:48px"></canvas>'+
-    '<label class="btn btn-sm" style="cursor:pointer">PNG wählen'+
-    '<input type="file" accept="image/*" style="display:none" onchange="iconFileSelected('+i+',this)">'+
-    '</label>'+
-    '<button class="btn-ghost btn-sm" onclick="deleteIcon('+i+')" title="Icon löschen">&#x2715;</button>'+
-    '</div>').join('');
-  allCats.forEach((_,i)=>loadIconPreview(i));
-}
-async function loadIconPreview(idx){
-  try{
-    const r=await fetch('/api/icon/'+idx);if(!r.ok)return;
-    const arr=new Uint8Array(await r.arrayBuffer());
-    const cv=document.getElementById('iconPrev'+idx);if(!cv)return;
-    const ctx=cv.getContext('2d');
-    const id=ctx.createImageData(ICON_SIZE,ICON_SIZE);
-    for(let i=0;i<ICON_SIZE*ICON_SIZE;i++){
-      const px=arr[i*2]|(arr[i*2+1]<<8);
-      const r2=(px>>11)&0x1F,g=(px>>5)&0x3F,b=px&0x1F;
-      id.data[i*4]=(r2<<3)|(r2>>2);id.data[i*4+1]=(g<<2)|(g>>4);
-      id.data[i*4+2]=(b<<3)|(b>>2);id.data[i*4+3]=255;}
-    ctx.putImageData(id,0,0);
-  }catch(e){}
-}
-async function iconFileSelected(idx,input){
-  const file=input.files[0];if(!file)return;
-  const msg=document.getElementById('iconMsg');
-  msg.style.color='var(--muted)';msg.textContent='Konvertiere…';
-  try{
-    const raw=await convertPngToRgb565(file,ICON_SIZE,ICON_SIZE);
-    const cv=document.getElementById('iconPrev'+idx);
-    if(cv){
-      const ctx=cv.getContext('2d');const id=ctx.createImageData(ICON_SIZE,ICON_SIZE);
-      for(let i=0;i<ICON_SIZE*ICON_SIZE;i++){
-        const px=raw[i*2]|(raw[i*2+1]<<8);
-        const r2=(px>>11)&0x1F,g=(px>>5)&0x3F,b=px&0x1F;
-        id.data[i*4]=(r2<<3)|(r2>>2);id.data[i*4+1]=(g<<2)|(g>>4);
-        id.data[i*4+2]=(b<<3)|(b>>2);id.data[i*4+3]=255;}
-      ctx.putImageData(id,0,0);}
-    const r=await fetch('/api/icon/'+idx,{method:'POST',
-      headers:{'Content-Type':'application/octet-stream'},body:raw});
-    if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Icon gespeichert.';}
-    else{msg.style.color='var(--danger)';msg.textContent='Fehler beim Hochladen.';}
-  }catch(e){msg.style.color='var(--danger)';msg.textContent='Fehler: '+e;}
-  input.value='';
-}
-function convertPngToRgb565(file,w,h){
-  return new Promise((res,rej)=>{
-    const img=new Image(),url=URL.createObjectURL(file);
-    img.onload=()=>{
-      const c=document.createElement('canvas');c.width=w;c.height=h;
-      const ctx=c.getContext('2d');ctx.drawImage(img,0,0,w,h);
-      URL.revokeObjectURL(url);
-      const rgba=ctx.getImageData(0,0,w,h).data;
-      const out=new Uint8Array(w*h*2);
-      for(let i=0;i<w*h;i++){
-        const r=rgba[i*4]>>3,g=rgba[i*4+1]>>2,b=rgba[i*4+2]>>3;
-        const px=(r<<11)|(g<<5)|b;
-        out[i*2]=px&0xFF;out[i*2+1]=(px>>8)&0xFF;}
-      res(out);};
-    img.onerror=rej;img.src=url;});
-}
-async function deleteIcon(idx){
-  const msg=document.getElementById('iconMsg');
-  const r=await fetch('/api/icon/'+idx,{method:'DELETE'});
-  if(r.ok){
-    msg.style.color='var(--ok)';msg.textContent='✓ Icon gelöscht.';
-    const cv=document.getElementById('iconPrev'+idx);
-    if(cv)cv.getContext('2d').clearRect(0,0,ICON_SIZE,ICON_SIZE);
-  }else{msg.style.color='var(--danger)';msg.textContent='Fehler beim Löschen.';}
 }
 
 // ── Einkaufsliste ─────────────────────────────────────────────
@@ -1226,51 +1136,6 @@ void WebInterface::begin() {
                       ok ? "{\"ok\":true}" : "{\"error\":\"Speichern fehlgeschlagen\"}");
         }
     );
-
-    // ── Kategorie-Icons ──────────────────────────────────────
-    static constexpr int ICON_BYTES = 48 * 48 * 2; // 4608
-
-    _server.on("^\\/api\\/icon\\/([0-9]+)$", HTTP_GET, [](AsyncWebServerRequest *req) {
-        int idx = req->pathArg(0).toInt();
-        char path[24]; snprintf(path, sizeof(path), "/icons/cat%d.rgb", idx);
-        if (!LittleFS.exists(path)) { req->send(404); return; }
-        req->send(LittleFS, path, "application/octet-stream");
-    });
-
-    _server.on("^\\/api\\/icon\\/([0-9]+)$", HTTP_POST,
-        [](AsyncWebServerRequest *req) {},
-        nullptr,
-        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
-            static File s_iconFile;
-            if (index == 0) {
-                int idx = req->pathArg(0).toInt();
-                if (idx < 0 || idx > 11) {
-                    req->send(400, "application/json", "{\"error\":\"Index\"}"); return;
-                }
-                if (!LittleFS.exists("/icons")) LittleFS.mkdir("/icons");
-                char path[24]; snprintf(path, sizeof(path), "/icons/cat%d.rgb", idx);
-                s_iconFile = LittleFS.open(path, "w");
-            }
-            if (s_iconFile) s_iconFile.write(data, len);
-            if (index + len >= total) {
-                if (s_iconFile) s_iconFile.close();
-                if ((int)total != ICON_BYTES) {
-                    int idx2 = req->pathArg(0).toInt();
-                    char path2[24]; snprintf(path2, sizeof(path2), "/icons/cat%d.rgb", idx2);
-                    LittleFS.remove(path2);
-                    req->send(400, "application/json", "{\"error\":\"Falsiche Größe\"}"); return;
-                }
-                req->send(200, "application/json", "{\"ok\":true}");
-            }
-        }
-    );
-
-    _server.on("^\\/api\\/icon\\/([0-9]+)$", HTTP_DELETE, [](AsyncWebServerRequest *req) {
-        int idx = req->pathArg(0).toInt();
-        char path[24]; snprintf(path, sizeof(path), "/icons/cat%d.rgb", idx);
-        LittleFS.remove(path);
-        req->send(200, "application/json", "{\"ok\":true}");
-    });
 
     // ── Eigene Produkte ───────────────────────────────────────
 
