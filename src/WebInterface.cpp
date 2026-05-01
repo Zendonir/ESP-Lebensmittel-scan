@@ -1,5 +1,6 @@
 #include "WebInterface.h"
 #include "config.h"
+extern bool g_useNumpad;
 #include "CategoryManager.h"
 #include "StorageStats.h"
 #include "ShoppingList.h"
@@ -402,6 +403,12 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
         <input type="text" id="devServer" placeholder="http://192.168.1.100:8000" maxlength="80"
                style="display:block;width:100%;margin-top:.3rem">
       </label>
+      <label style="font-size:.85rem;color:var(--muted)">Datumseingabe am Ger&auml;t
+        <select id="dateInputMode" style="display:block;margin-top:.3rem;width:200px">
+          <option value="drum">Drum Roller (Wischen)</option>
+          <option value="numpad">Ziffernblock</option>
+        </select>
+      </label>
       <button class="btn btn-ok" style="width:fit-content" onclick="saveDevConfig()">Speichern</button>
     </div>
     <div id="devMsg" style="margin-top:.75rem;font-size:.85rem"></div>
@@ -724,16 +731,18 @@ async function loadDevConfig(){
   try{const d=await fetch('/api/device-config').then(r=>r.json());
     document.getElementById('devName').value=d.name||'';
     document.getElementById('devRoom').value=d.room||'';
-    document.getElementById('devServer').value=d.serverUrl||'';}catch(e){}
+    document.getElementById('devServer').value=d.serverUrl||'';
+    document.getElementById('dateInputMode').value=d.dateInput||'drum';}catch(e){}
 }
 async function saveDevConfig(){
   const name=document.getElementById('devName').value.trim();
   const room=document.getElementById('devRoom').value.trim();
   const serverUrl=document.getElementById('devServer').value.trim();
+  const dateInput=document.getElementById('dateInputMode').value;
   const msg=document.getElementById('devMsg');
   const r=await fetch('/api/device-config',{method:'POST',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify({name,room,serverUrl})});
-  if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert. Server-Sync aktiv nach Neustart.';}
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({name,room,serverUrl,dateInput})});
+  if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert.';}
   else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
 }
 
@@ -980,12 +989,16 @@ void WebInterface::begin() {
         String room = p.getString("room", "");
         String url  = p.getString("url",  "");
         p.end();
+        Preferences p2; p2.begin("dev", true);
+        bool numpad = p2.getBool("numpad", false);
+        p2.end();
         JsonDocument doc;
         doc["name"]      = name;
         doc["room"]      = room;
         doc["serverUrl"] = url;
         doc["mac"]       = WiFi.macAddress();
         doc["ip"]        = WiFi.localIP().toString();
+        doc["dateInput"] = numpad ? "numpad" : "drum";
         String out; serializeJson(doc, out);
         req->send(200, "application/json", out);
     });
@@ -1002,6 +1015,11 @@ void WebInterface::begin() {
             p.putString("room", doc["room"] | "");
             p.putString("url",  doc["serverUrl"] | "");
             p.end();
+            bool numpad = (String(doc["dateInput"] | "drum") == "numpad");
+            Preferences p2; p2.begin("dev", false);
+            p2.putBool("numpad", numpad);
+            p2.end();
+            g_useNumpad = numpad;
             req->send(200, "application/json", "{\"ok\":true}");
         }
     );
