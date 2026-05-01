@@ -106,6 +106,5 @@ private:
     void drawTouchButton(int16_t x, int16_t y, int16_t w, int16_t h,
                          const String &label, uint16_t bg, uint16_t fg,
                          uint8_t textSz = 2);
-    void drawCategoryIcon(uint8_t catIndex, int16_t cx, int16_t cy, uint8_t s = 1);
     String daysLabel(int days);
 };

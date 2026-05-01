@@ -1,7 +1,6 @@
 #include "DisplayManager.h"
 #include "CategoryManager.h"
 #include <time.h>
-#include <LittleFS.h>
 
 static constexpr int16_t W   = DISPLAY_W;   // 280
 static constexpr int16_t H   = DISPLAY_H;   // 456
@@ -103,91 +102,6 @@ String DisplayManager::daysLabel(int days) {
     return String(days) + " Tage";
 }
 
-// ── Kategorie-Icons ───────────────────────────────────────────
-
-void DisplayManager::drawCategoryIcon(uint8_t cat, int16_t cx, int16_t cy, uint8_t s) {
-    // Custom icon from LittleFS overrides procedural drawing
-    {
-        static constexpr int ICON_W = 48, ICON_H = 48;
-        char path[24]; snprintf(path, sizeof(path), "/icons/cat%d.rgb", cat);
-        File f = LittleFS.open(path, "r");
-        if (f && (int)f.size() == ICON_W * ICON_H * 2) {
-            int16_t ox = cx - ICON_W / 2, oy = cy - ICON_H / 2;
-            uint8_t row[ICON_W * 2];
-            for (int y = 0; y < ICON_H; y++) {
-                if (f.read(row, sizeof(row)) != (int)sizeof(row)) break;
-                for (int x = 0; x < ICON_W; x++) {
-                    uint16_t px = row[x * 2] | (uint16_t(row[x * 2 + 1]) << 8);
-                    _gfx->drawPixel(ox + x, oy + y, px);
-                }
-            }
-            f.close();
-            return;
-        }
-        if (f) f.close();
-    }
-    switch (cat) {
-    case 0: // Fleisch / Steak
-        _gfx->fillRoundRect(cx-19*s,cy-9*s,38*s,20*s,6*s,0xD00A);
-        _gfx->fillRect(cx+13*s,cy-18*s,5*s,36*s,0xEF5B);
-        _gfx->fillCircle(cx+15*s,cy-20*s,6*s,0xEF5B);
-        _gfx->fillCircle(cx+15*s,cy+20*s,6*s,0xEF5B);
-        break;
-    case 1: // Geflügel
-        _gfx->fillCircle(cx-2*s,cy-9*s,17*s,0xD580);
-        _gfx->fillRoundRect(cx-4*s,cy+8*s,8*s,18*s,4*s,0xEF7B);
-        _gfx->fillCircle(cx,cy+27*s,6*s,0xD580);
-        break;
-    case 2: // Fisch
-        _gfx->fillEllipse(cx-4*s,cy,20*s,12*s,0x07DF);
-        _gfx->fillTriangle(cx+15*s,cy-12*s,cx+15*s,cy+12*s,cx+27*s,cy,0x07DF);
-        _gfx->fillCircle(cx-13*s,cy-4*s,3*s,0xFFFF);
-        _gfx->fillTriangle(cx-6*s,cy-12*s,cx+4*s,cy-12*s,cx-1*s,cy-19*s,0x07BF);
-        break;
-    case 3: // Gemüse
-        _gfx->fillCircle(cx-8*s,cy-6*s,11*s,0x07E0);
-        _gfx->fillCircle(cx+8*s,cy-6*s,11*s,0x07E0);
-        _gfx->fillCircle(cx,cy-15*s,11*s,0x4FE0);
-        _gfx->fillRect(cx-3*s,cy+6*s,6*s,14*s,0x5B00);
-        break;
-    case 4: // Backwaren
-        _gfx->fillCircle(cx-7*s,cy+5*s,13*s,0xF800);
-        _gfx->fillCircle(cx+9*s,cy+1*s,11*s,0xFD40);
-        _gfx->fillRect(cx-5*s,cy-17*s,2*s,8*s,0x0460);
-        _gfx->fillEllipse(cx-1*s,cy-16*s,5*s,3*s,0x04A0);
-        break;
-    case 5: // Sonstiges
-        _gfx->drawCircle(cx,cy,19*s,0xFFFF);
-        _gfx->drawCircle(cx,cy,13*s,0xFFFF);
-        _gfx->fillRect(cx-11*s,cy-16*s,2*s,30*s,0xFFFF);
-        _gfx->fillRect(cx-13*s,cy-16*s,2*s,10*s,0xFFFF);
-        _gfx->fillRect(cx-9*s,cy-16*s,2*s,10*s,0xFFFF);
-        _gfx->fillRect(cx+9*s,cy-16*s,2*s,30*s,0xFFFF);
-        _gfx->fillRoundRect(cx+9*s,cy-16*s,5*s,14*s,2*s,0xD6DB);
-        break;
-    case 6:
-        _gfx->fillRoundRect(cx-19*s,cy-2*s,38*s,16*s,6*s,0x8320);
-        _gfx->fillCircle(cx-8*s,cy-5*s,12*s,0xA400);
-        _gfx->fillCircle(cx+8*s,cy-5*s,12*s,0xA400);
-        _gfx->drawLine(cx,cy-15*s,cx,cy+10*s,0x6240);
-        break;
-    case 7: {
-        uint16_t sc=0xB7FF;
-        for(int t=0;t<=s;t++){
-            _gfx->drawLine(cx+t,cy-21*s,cx+t,cy+21*s,sc);
-            _gfx->drawLine(cx-18*s+t,cy-11*s,cx+18*s+t,cy+11*s,sc);
-            _gfx->drawLine(cx-18*s+t,cy+11*s,cx+18*s+t,cy-11*s,sc);
-        }
-        _gfx->drawLine(cx-6*s,cy-15*s,cx,cy-21*s,sc);
-        _gfx->drawLine(cx+6*s,cy-15*s,cx,cy-21*s,sc);
-        _gfx->drawLine(cx-6*s,cy+15*s,cx,cy+21*s,sc);
-        _gfx->drawLine(cx+6*s,cy+15*s,cx,cy+21*s,sc);
-        _gfx->fillCircle(cx,cy,4*s,sc);
-        break;
-    }
-    }
-}
-
 // ── Hauptscreen: Kategorie-Grid ───────────────────────────────
 
 void DisplayManager::showCategoryGrid(const std::vector<int> &catInvCounts,
@@ -222,13 +136,11 @@ void DisplayManager::showCategoryGrid(const std::vector<int> &catInvCounts,
             textCenter(cs, tx + CAT_TILE_W - 12, ty + 8, 1, COLOR_BG, badgeBg);
         }
 
-        // Icon zentriert, etwas über Mitte (Platz für Text unten)
-        drawCategoryIcon(i, tx + CAT_TILE_W / 2, ty + CAT_TILE_H / 2 - 10, 2);
-
-        // Kategorie-Name unten
+        // Kategorie-Name vertikal zentriert
         String name = g_categories[i].name;
-        if (name.length() > 10) name = name.substring(0, 10);
-        textCenter(name, tx + CAT_TILE_W / 2, ty + CAT_TILE_H - 14, 2, 0xFFFF, bg);
+        uint8_t tsz = (name.length() <= 9) ? 2 : 1;
+        if (name.length() > 20) name = name.substring(0, 20);
+        textCenter(name, tx + CAT_TILE_W / 2, ty + CAT_TILE_H / 2, tsz, 0xFFFF, bg);
     }
 
     _gfx->flush();
