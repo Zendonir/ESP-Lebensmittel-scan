@@ -22,6 +22,7 @@ public:
     void update();
 
     bool    wasTapped();
+    bool    isDown()  const { return _wasDown; }
     Gesture lastGesture() const { return _gesture; }
     int16_t tapX() const { return _x; }
     int16_t tapY() const { return _y; }

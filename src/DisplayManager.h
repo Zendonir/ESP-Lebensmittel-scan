@@ -25,13 +25,14 @@ static constexpr int16_t SUB_HDR       = 54;
 static constexpr int16_t LIST_ITEM_H   = 44;
 static constexpr int16_t LIST_MAX_VIS  = (DISPLAY_H - SUB_HDR) / LIST_ITEM_H;
 
-// ── Datumseingabe (Numpad-Layout) ────────────────────────────
-static constexpr int16_t DATE_LEFT_W   = 150;
-static constexpr int16_t DATE_QUICK_Y  = SUB_HDR;
-static constexpr int16_t DATE_QUICK_H  = 40;
-static constexpr int16_t DATE_PAD_Y    = DATE_QUICK_Y + DATE_QUICK_H;  // 94
-static constexpr int16_t DATE_PAD_COL_W = (DISPLAY_W - DATE_LEFT_W) / 4;  // 76
-static constexpr int16_t DATE_PAD_ROW_H = (DISPLAY_H - DATE_PAD_Y) / 4;   // 46
+// ── Drum-Roller Datumseingabe ────────────────────────────────
+static constexpr int16_t DRUM_LBL_H = 16;
+static constexpr int16_t DRUM_ROW_H = 34;
+static constexpr int16_t DRUM_ROWS  = 5;
+static constexpr int16_t DRUM_TOP   = SUB_HDR + DRUM_LBL_H;              // 70
+static constexpr int16_t DRUM_SEL_Y = DRUM_TOP + 2 * DRUM_ROW_H;        // 138
+static constexpr int16_t DRUM_BTN_Y = DRUM_TOP + DRUM_ROWS * DRUM_ROW_H; // 240
+static constexpr int16_t DRUM_COL_W = DISPLAY_W / 3;                     // 152
 
 // ── Universelle Buttons (AP-Mode, Retrieve, Inventar-Browse) ─
 static constexpr int16_t TBTN_X           = 8;

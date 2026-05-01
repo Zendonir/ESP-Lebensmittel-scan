@@ -316,98 +316,57 @@ void DisplayManager::showFetching(const String &barcode) {
 void DisplayManager::showDateEntry(const DateInput &d, const String &productName, bool wifiOk) {
     _gfx->fillScreen(COLOR_BG);
 
-    // Header
-    drawStatusBar("Datum eingeben", COLOR_DANGER, true, wifiOk);
+    // Header mit Produktname
+    String pn = productName.length() > 20 ? productName.substring(0, 20) : productName;
+    drawStatusBar(pn, COLOR_ACCENT, true, wifiOk);
 
-    // ── Linkes Panel: Produktinfo + Datumsanzeige ─────────────
-    const int16_t LW = DATE_LEFT_W;
-
-    String pn = productName.length() > 14 ? productName.substring(0, 14) : productName;
-    textLeft(pn, 6, SUB_HDR + 10, 2, COLOR_TEXT);
-    textLeft("Ablaufdatum", 6, SUB_HDR + 36, 1, COLOR_SUBTEXT);
-
-    // Trennlinie
-    _gfx->drawFastHLine(4, SUB_HDR + 50, LW - 8, COLOR_SURFACE);
-
-    // Datum-Anzeige: DD . MM . YYYY
-    char dayBuf[3], monBuf[3], yearBuf[5];
-    snprintf(dayBuf,  sizeof(dayBuf),  "%02d", d.day);
-    snprintf(monBuf,  sizeof(monBuf),  "%02d", d.month);
-    snprintf(yearBuf, sizeof(yearBuf), "%04d", d.year);
-
-    int16_t dy = SUB_HDR + 80;
-    uint16_t dayC  = (d.activeField == FIELD_DAY)   ? COLOR_DANGER : COLOR_TEXT;
-    uint16_t monC  = (d.activeField == FIELD_MONTH) ? COLOR_DANGER : COLOR_TEXT;
-    uint16_t yearC = (d.activeField == FIELD_YEAR)  ? COLOR_DANGER : COLOR_TEXT;
-
-    // Draw each field with underline for active
-    int16_t fx = 4;
-    textLeft(dayBuf,  fx,       dy, 3, dayC);
-    textLeft(".",     fx + 36,  dy, 3, COLOR_SUBTEXT);
-    textLeft(monBuf,  fx + 48,  dy, 3, monC);
-    textLeft(".",     fx + 84,  dy, 3, COLOR_SUBTEXT);
-    textLeft(yearBuf, fx + 96,  dy - 4, 2, yearC);
-
-    // Active field underline
-    if (d.activeField == FIELD_DAY)
-        _gfx->fillRect(fx, dy + 20, 34, 2, COLOR_DANGER);
-    else if (d.activeField == FIELD_MONTH)
-        _gfx->fillRect(fx + 48, dy + 20, 34, 2, COLOR_DANGER);
-    else if (d.activeField == FIELD_YEAR)
-        _gfx->fillRect(fx + 96, dy + 16, 48, 2, COLOR_DANGER);
-
-    // Hint
-    textLeft("TT.MM.JJJJ", 6, dy + 30, 1, COLOR_SUBTEXT);
-
-    // ── Rechtes Panel: Schnell-Buttons + Numpad ───────────────
-    const int16_t RX = DATE_LEFT_W;  // 150
-    const int16_t RW = W - RX;       // 306
-    const int16_t BW = RW / 4;       // ~76
-
-    // Schnell-Buttons
-    const char *quickLabels[] = {"+1 Tag", "+3 Tage", "+7 Tage", "+14 Tage"};
-    for (int i = 0; i < 4; i++) {
-        int16_t bx = RX + i * BW + 2;
-        _gfx->fillRoundRect(bx, DATE_QUICK_Y + 2, BW - 4, DATE_QUICK_H - 4, 6, COLOR_SURFACE);
-        textCenter(quickLabels[i], bx + (BW - 4) / 2, DATE_QUICK_Y + DATE_QUICK_H / 2, 1, COLOR_TEXT, COLOR_SURFACE);
+    // Spalten-Beschriftungen
+    const char* lbl[] = {"TAG", "MONAT", "JAHR"};
+    for (int c = 0; c < 3; c++) {
+        int16_t cx = c * DRUM_COL_W + DRUM_COL_W / 2;
+        textCenter(lbl[c], cx, SUB_HDR + DRUM_LBL_H / 2, 1, COLOR_SUBTEXT);
     }
 
-    // Numpad
-    // Numpad-Layout: row × col  (col 3 = Sonderbereich)
-    for (int row = 0; row < 4; row++) {
-        for (int col = 0; col < 4; col++) {
-            int16_t bx = RX + col * BW + 2;
-            int16_t by = DATE_PAD_Y + row * DATE_PAD_ROW_H + 2;
-            int16_t bw = BW - 4;
-            int16_t bh = DATE_PAD_ROW_H - 4;
+    // Trennlinien zwischen Spalten
+    _gfx->drawFastVLine(DRUM_COL_W,     SUB_HDR, DRUM_BTN_Y - SUB_HDR, COLOR_SURFACE);
+    _gfx->drawFastVLine(2 * DRUM_COL_W, SUB_HDR, DRUM_BTN_Y - SUB_HDR, COLOR_SURFACE);
 
-            if (col == 3) {
-                if (row == 0) {
-                    // Backspace
-                    _gfx->fillRoundRect(bx, by, bw, bh, 6, COLOR_BTN_BACK);
-                    textCenter("<X", bx + bw/2, by + bh/2, 1, COLOR_TEXT, COLOR_BTN_BACK);
-                } else if (row == 1) {
-                    // Speichern (spans rows 1-3)
-                    int16_t sh = 3 * DATE_PAD_ROW_H - 4;
-                    _gfx->fillRoundRect(bx, by, bw, sh, 8, COLOR_BTN_OK);
-                    textCenter("OK", bx + bw/2, by + sh/2 - 8, 2, COLOR_TEXT, COLOR_BTN_OK);
-                }
-                continue;  // rows 2+3 of col 3 covered by Speichern
-            }
-            if (row == 3 && col == 2) continue;  // Punkt-Taste überspringen
+    // Zahlen für jede Spalte und Zeile zeichnen
+    int baseVals[3] = {d.day, d.month, d.year};
+    int minVals[3]  = {1, 1, 2024};
+    int maxVals[3]  = {31, 12, 2099};
 
-            uint16_t bg = COLOR_SURFACE;
-            String label;
-            if      (row == 0) label = String(1 + col);          // 1 2 3
-            else if (row == 1) label = String(4 + col);          // 4 5 6
-            else if (row == 2) label = String(7 + col);          // 7 8 9
-            else if (row == 3 && col == 0) { label = "Hte"; bg = COLOR_BTN_BACK; } // Heute
-            else if (row == 3 && col == 1) label = "0";
+    for (int c = 0; c < 3; c++) {
+        int16_t colCX = c * DRUM_COL_W + DRUM_COL_W / 2;
+        for (int r = 0; r < DRUM_ROWS; r++) {
+            int offset = r - 2;  // -2,-1,0,+1,+2
+            int val = baseVals[c] + offset;
+            if (val < minVals[c] || val > maxVals[c]) continue;
 
-            _gfx->fillRoundRect(bx, by, bw, bh, 6, bg);
-            textCenter(label, bx + bw/2, by + bh/2, (label.length()<=1)?2:1, COLOR_TEXT, bg);
+            int16_t rowCY = DRUM_SEL_Y + offset * DRUM_ROW_H + DRUM_ROW_H / 2;
+
+            uint16_t col;
+            uint8_t  sz;
+            if (offset == 0)          { col = COLOR_TEXT;    sz = 3; }
+            else if (abs(offset) == 1){ col = COLOR_SUBTEXT; sz = 2; }
+            else                      { col = 0x2104;        sz = 1; }
+
+            String valStr = (c == 2) ? String(val)
+                                     : (val < 10 ? "0" + String(val) : String(val));
+            textCenter(valStr, colCX, rowCY, sz, col);
         }
     }
+
+    // Auswahlrahmen über die Zahlen legen
+    _gfx->drawRoundRect(4, DRUM_SEL_Y, W - 8, DRUM_ROW_H, 6, COLOR_ACCENT);
+
+    // Buttons
+    int16_t btnY = DRUM_BTN_Y + 4;
+    int16_t btnH = H - DRUM_BTN_Y - 8;
+    _gfx->fillRoundRect(4, btnY, DRUM_COL_W - 8, btnH, 6, COLOR_BTN_BACK);
+    textCenter("Heute", DRUM_COL_W / 2, btnY + btnH / 2, 1, COLOR_TEXT, COLOR_BTN_BACK);
+    _gfx->fillRoundRect(DRUM_COL_W + 4, btnY, 2 * DRUM_COL_W - 8, btnH, 6, COLOR_BTN_OK);
+    textCenter("OK", DRUM_COL_W + DRUM_COL_W, btnY + btnH / 2, 2, COLOR_TEXT, COLOR_BTN_OK);
 
     _gfx->flush();
 }

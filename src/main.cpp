@@ -597,95 +597,62 @@ void loop() {
         break;
     }
 
-    // ── ENTER_DATE (Numpad) ──────────────────────────────────
+    // ── ENTER_DATE (Drum-Roller) ─────────────────────────────
     case State::ENTER_DATE: {
-        static String inputBuf = "";
+        static bool    swipeActive = false;
+        static int16_t swipeStartY = 0;
+        static int16_t swipeCurY   = 0;
+        static int     swipeCol    = -1;
+
         if (screenDirty) {
             display.showDateEntry(dateInput, currentProduct.name, WiFi.status()==WL_CONNECTED);
             screenDirty = false;
-            inputBuf = "";
         }
 
         // Zurück
         if ((tapped && ty < SUB_HDR && tx < 120) || hardBack) {
+            swipeActive = false;
             setState(State::PRODUCT_LIST); break;
         }
 
         bool changed = false;
 
-        // Schnell-Add-Buttons (+1/+3/+7/+14 Tage)
-        if (tapped && ty >= DATE_QUICK_Y && ty < DATE_QUICK_Y + DATE_QUICK_H
-                && tx >= DATE_LEFT_W) {
-            int16_t btnW = (DISPLAY_W - DATE_LEFT_W) / 4;
-            int bIdx = (tx - DATE_LEFT_W) / btnW;
-            const int addArr[] = {1, 3, 7, 14};
-            if (bIdx >= 0 && bIdx < 4) {
-                struct tm t = {};
-                t.tm_year = dateInput.year - 1900;
-                t.tm_mon  = dateInput.month - 1;
-                t.tm_mday = dateInput.day + addArr[bIdx];
-                mktime(&t);
-                dateInput.day   = t.tm_mday;
-                dateInput.month = t.tm_mon + 1;
-                dateInput.year  = t.tm_year + 1900;
-                inputBuf = "";
-                changed = true;
-            }
-        }
-
-        // Speichern-Button (col 3, rows 1-3)
-        if (tapped && ty >= DATE_PAD_Y + DATE_PAD_ROW_H
-                && tx >= DATE_LEFT_W + 3 * DATE_PAD_COL_W) {
-            setState(State::SAVING); break;
-        }
-
-        // Numpad-Tasten
-        if (tapped && ty >= DATE_PAD_Y && tx >= DATE_LEFT_W
-                && ty < DATE_PAD_Y + 4 * DATE_PAD_ROW_H) {
-            int row = (ty - DATE_PAD_Y) / DATE_PAD_ROW_H;
-            int col = (tx - DATE_LEFT_W) / DATE_PAD_COL_W;
-            if (col < 0) col = 0;
-            if (col > 3) col = 3;
-
-            if (col == 3 && row == 0) {
-                // Backspace
-                if (inputBuf.length() > 0) {
-                    inputBuf.remove(inputBuf.length() - 1);
-                    int partial = inputBuf.isEmpty() ? 0 : inputBuf.toInt();
-                    if      (dateInput.activeField == FIELD_DAY)   dateInput.day   = max(1, partial);
-                    else if (dateInput.activeField == FIELD_MONTH) dateInput.month = max(1, partial);
-                    else if (dateInput.activeField == FIELD_YEAR)  dateInput.year  = max(2024, partial);
-                } else if (dateInput.activeField > FIELD_DAY) {
-                    dateInput.activeField = (DateField)(dateInput.activeField - 1);
-                }
-                changed = true;
-            } else if (col < 3) {
-                // Ziffern: 1 2 3 / 4 5 6 / 7 8 9 / _ 0 _
-                int digit = -1;
-                if (row == 0) digit = 1 + col;
-                else if (row == 1) digit = 4 + col;
-                else if (row == 2) digit = 7 + col;
-                else if (row == 3 && col == 1) digit = 0;
-                else if (row == 3 && col == 0) {  // Kalender-Taste = Heute
-                    initDateToday(); inputBuf = ""; changed = true;
-                }
-                if (digit >= 0) {
-                    inputBuf += String(digit);
-                    int maxLen = (dateInput.activeField == FIELD_YEAR) ? 4 : 2;
-                    int val    = inputBuf.toInt();
-                    if      (dateInput.activeField == FIELD_DAY)   dateInput.day   = constrain(val, 0, 31);
-                    else if (dateInput.activeField == FIELD_MONTH) dateInput.month = constrain(val, 0, 12);
-                    else if (dateInput.activeField == FIELD_YEAR)  dateInput.year  = constrain(val, 2024, 2099);
-                    if ((int)inputBuf.length() >= maxLen) {
-                        clampDate(dateInput);
-                        dateInput.activeField = (DateField)(dateInput.activeField + 1);
-                        if (dateInput.activeField > FIELD_YEAR)
-                            dateInput.activeField = FIELD_YEAR;
-                        inputBuf = "";
-                    }
+        if (tapped) {
+            if (ty >= DRUM_BTN_Y) {
+                if (tx >= DRUM_COL_W) {
+                    // OK-Button
+                    swipeActive = false;
+                    setState(State::SAVING); break;
+                } else {
+                    // Heute-Button
+                    initDateToday();
                     changed = true;
                 }
+            } else if (ty >= DRUM_TOP) {
+                // Swipe im Picker-Bereich starten
+                swipeActive = true;
+                swipeStartY = ty;
+                swipeCurY   = ty;
+                swipeCol    = constrain((int)(tx / DRUM_COL_W), 0, 2);
             }
+        }
+
+        // Y-Position während Wischen aktualisieren
+        if (touch.isDown() && swipeActive)
+            swipeCurY = touch.tapY();
+
+        // Wischen abgeschlossen
+        if (!touch.isDown() && swipeActive) {
+            int steps = (swipeStartY - swipeCurY) / 20;
+            if (steps != 0) {
+                if      (swipeCol == 0) dateInput.day   = constrain(dateInput.day   + steps, 1, 31);
+                else if (swipeCol == 1) dateInput.month = constrain(dateInput.month + steps, 1, 12);
+                else if (swipeCol == 2) dateInput.year  = constrain(dateInput.year  + steps, 2024, 2099);
+                clampDate(dateInput);
+                changed = true;
+                buzzOk();
+            }
+            swipeActive = false;
         }
 
         if (changed) display.showDateEntry(dateInput, currentProduct.name, WiFi.status()==WL_CONNECTED);
