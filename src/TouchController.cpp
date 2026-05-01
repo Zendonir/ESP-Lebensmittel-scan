@@ -78,9 +78,9 @@ bool TouchController::readRegisters() {
     int16_t raw_x = ((buf[1] & 0x0F) << 8) | buf[2];
     int16_t raw_y = ((buf[3] & 0x0F) << 8) | buf[4];
 
-    // Portrait (280×456) → Landscape (456×280)
-    _x = raw_y;
-    _y = 279 - raw_x;
+    // Hochformat 280×456
+    _x = raw_x;
+    _y = raw_y;
 
     return true;
 }
