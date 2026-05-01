@@ -11,7 +11,7 @@ public:
     void flush();
     void enable();
     void disable();
-    void debugDump();       // alle 2s: zeigt ob Bytes auf RX ankommen
+
 
 private:
     HardwareSerial &_serial;

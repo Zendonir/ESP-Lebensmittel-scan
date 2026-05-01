@@ -405,6 +405,12 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
       <button class="btn btn-ok" style="width:fit-content" onclick="saveDevConfig()">Speichern</button>
     </div>
     <div id="devMsg" style="margin-top:.75rem;font-size:.85rem"></div>
+    <hr style="border-color:var(--border);margin:1.5rem 0">
+    <h2 style="margin-bottom:1rem">Diagnose</h2>
+    <div style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:center">
+      <button class="btn" onclick="testBuzzer()">&#x1F50A; Buzzer testen</button>
+      <span id="buzzerMsg" style="font-size:.85rem;color:var(--muted)"></span>
+    </div>
   </div>
 </div>
 <div id="scanlogs" class="panel">
@@ -801,6 +807,15 @@ async function saveOtaPw(){
   const r=await fetch('/api/ota-config',{method:'POST',
     headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
   if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert. Wirkung nach Neustart.';}
+  else{msg.style.color='var(--danger)';msg.textContent='Fehler';}
+}
+
+// ── Diagnose ──────────────────────────────────────────────────
+async function testBuzzer(){
+  const msg=document.getElementById('buzzerMsg');
+  msg.textContent='…';
+  const r=await fetch('/api/buzzer-test',{method:'POST'});
+  if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Ton gespielt';}
   else{msg.style.color='var(--danger)';msg.textContent='Fehler';}
 }
 
@@ -1342,6 +1357,15 @@ void WebInterface::begin() {
     _server.on("/api/scanlogs", HTTP_GET, [](AsyncWebServerRequest *req) {
         extern String getScanLogsJSON();
         req->send(200, "application/json", getScanLogsJSON());
+    });
+
+    _server.on("/api/buzzer-test", HTTP_POST, [](AsyncWebServerRequest *req) {
+#if defined(BUZZER_PIN) && BUZZER_PIN >= 0
+        tone(BUZZER_PIN, 2200, 80);
+        delay(120);
+        tone(BUZZER_PIN, 1800, 80);
+#endif
+        req->send(200, "application/json", "{\"ok\":true}");
     });
 
     _server.onNotFound([](AsyncWebServerRequest *req) { req->send(404,"text/plain","Not found"); });

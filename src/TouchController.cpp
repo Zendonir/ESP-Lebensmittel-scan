@@ -82,6 +82,5 @@ bool TouchController::readRegisters() {
     _x = raw_y;
     _y = 279 - raw_x;
 
-    Serial.printf("[Touch] raw=%d,%d  disp=%d,%d\n", raw_x, raw_y, _x, _y);
     return true;
 }

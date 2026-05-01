@@ -343,7 +343,10 @@ String generateLabelCode() {
 
 void setup() {
     Serial.begin(115200); delay(100);
-    Serial.printf("[PSRAM] Size: %u  Free: %u\n", ESP.getPsramSize(), ESP.getFreePsram());
+#if defined(BUZZER_PIN) && BUZZER_PIN >= 0
+    pinMode(BUZZER_PIN, OUTPUT);
+    digitalWrite(BUZZER_PIN, LOW);
+#endif
 
 #if BTN_BACK >= 0
     backBtn.begin();
@@ -358,7 +361,6 @@ void setup() {
     display.showBooting("Display + Touch OK"); delay(300);
 
     scanner.begin();
-    Serial.printf("[Scanner] Serial2 RX=GPIO%d TX=GPIO%d baud=%d\n", BARCODE_RX_PIN, BARCODE_TX_PIN, BARCODE_BAUD);
     display.showBooting("Scanner OK"); delay(200);
 
     printer.begin();
@@ -393,7 +395,6 @@ void setup() {
 // ── loop() ────────────────────────────────────────────────────
 
 void loop() {
-    scanner.debugDump();
     if (webInterface) webInterface->loop();
     serverSync.loop();
     if (!_mqttCfg.host.isEmpty()) {
