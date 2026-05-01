@@ -724,11 +724,11 @@ void loop() {
     // ── SUCCESS ──────────────────────────────────────────────
     case State::SUCCESS: {
         int16_t halfW = (TBTN_W - 4) / 2;
-        if (hit(TBTN_X, 228, halfW, TBTN_H)) {
+        if (hit(TBTN_X, TBTN_SECONDARY_Y, halfW, TBTN_H)) {
             setState(State::PRINTING);
             break;
         }
-        if (hit(TBTN_X + (TBTN_W + 4) / 2, 228, halfW, TBTN_H) ||
+        if (hit(TBTN_X + (TBTN_W + 4) / 2, TBTN_SECONDARY_Y, halfW, TBTN_H) ||
             hardBack || millis()-stateEnter > 8000) {
             setState(State::MAIN);
         }

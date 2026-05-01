@@ -2,8 +2,8 @@
 #include "CategoryManager.h"
 #include <time.h>
 
-static constexpr int16_t W   = DISPLAY_W;   // 456
-static constexpr int16_t H   = DISPLAY_H;   // 280
+static constexpr int16_t W   = DISPLAY_W;   // 280
+static constexpr int16_t H   = DISPLAY_H;   // 456
 static constexpr int16_t HDR = 40;   // used by legacy drawHeader()
 
 // ── Init ──────────────────────────────────────────────────────
@@ -14,13 +14,15 @@ bool DisplayManager::begin() {
     Serial.printf("[Disp] CS=%d SCK=%d D0=%d D1=%d D2=%d D3=%d RST=%d\n",
                   LCD_CS, LCD_SCK, LCD_D0, LCD_D1, LCD_D2, LCD_D3, LCD_RST);
     _bus   = new Arduino_ESP32QSPI(LCD_CS, LCD_SCK, LCD_D0, LCD_D1, LCD_D2, LCD_D3);
-    _panel = new Arduino_CO5300(_bus, LCD_RST, 0, 280, 456, 20, 0, 180, 24);
-    _gfx   = new Arduino_Canvas(280, 456, _panel);
+    _panel = new Arduino_CO5300(_bus, LCD_RST, 0, W, H, 20, 0, 180, 24);
+    _gfx   = new Arduino_Canvas(W, H, _panel);
     Serial.printf("[Disp] canvas ptr=%p\n", (void*)_gfx);
     bool ok = _gfx->begin();
     Serial.printf("[Disp] gfx->begin()=%d  psram free after=%u\n", ok, ESP.getFreePsram());
     if (!ok) return false;
-    _gfx->setRotation(1);
+    Serial.printf("[Disp] W=%d H=%d rotation=0\n", W, H);
+    _panel->setRotation(0); // CO5300 Hardware: Portrait MADCTL
+    _gfx->setRotation(0);   // Canvas: Portrait Koordinatensystem
     _gfx->fillScreen(COLOR_BG);
     _gfx->flush();
     Serial.println("[Disp] flush() done");
@@ -273,13 +275,13 @@ void DisplayManager::showBooting(const String &msg) {
 void DisplayManager::showWifiConnecting(const String &ssid, int attempt) {
     _gfx->fillScreen(COLOR_BG);
     drawHeader("WLAN Verbindung");
-    textCenter("Verbinde mit:", W / 2,  76, 1, COLOR_SUBTEXT);
-    textCenter(ssid,            W / 2, 108, 2, COLOR_ACCENT);
+    textCenter("Verbinde mit:", W / 2, H/2 - 80, 1, COLOR_SUBTEXT);
+    textCenter(ssid,            W / 2, H/2 - 44, 2, COLOR_ACCENT);
     int barW   = W - 80;
     int filled = min(barW, (attempt % 20) * (barW / 20));
-    _gfx->drawRect(40, 136, barW, 10, COLOR_SURFACE);
-    if (filled > 0) _gfx->fillRect(40, 136, filled, 10, COLOR_ACCENT);
-    textCenter("Bitte warten...", W / 2, 164, 1, COLOR_SUBTEXT);
+    _gfx->drawRect(40, H/2 - 10, barW, 10, COLOR_SURFACE);
+    if (filled > 0) _gfx->fillRect(40, H/2 - 10, filled, 10, COLOR_ACCENT);
+    textCenter("Bitte warten...", W / 2, H/2 + 22, 1, COLOR_SUBTEXT);
     _gfx->flush();
 }
 
@@ -288,12 +290,12 @@ void DisplayManager::showWifiConnecting(const String &ssid, int attempt) {
 void DisplayManager::showScanning() {
     _gfx->fillScreen(COLOR_BG);
     drawHeader("Bitte scannen");
-    int bx = 20, by = 48, bw = W - 40, bh = 106;
+    int bx = 20, by = 60, bw = W - 40, bh = 140;
     for (int x = 0; x < bw; x += 7)
         _gfx->fillRect(bx + x, by, (x % 14 < 7) ? 4 : 2, bh, COLOR_TEXT);
     _gfx->fillRect(bx, by + bh + 4, bw, 2, COLOR_SUBTEXT);
-    textCenter("GM861 vor den Scanner halten",   W / 2, 172, 1, COLOR_SUBTEXT);
-    textCenter("EAN13  EAN8  QR  DataMatrix", W / 2, 192, 1, COLOR_SUBTEXT);
+    textCenter("GM861 vor den Scanner halten",   W / 2, by + bh + 28, 1, COLOR_SUBTEXT);
+    textCenter("EAN13  EAN8  QR  DataMatrix", W / 2, by + bh + 48, 1, COLOR_SUBTEXT);
     drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H, "Abbrechen", COLOR_SURFACE, COLOR_TEXT);
     _gfx->flush();
 }
@@ -301,13 +303,13 @@ void DisplayManager::showScanning() {
 void DisplayManager::showFetching(const String &barcode) {
     _gfx->fillScreen(COLOR_BG);
     drawHeader("Suche Produkt...");
-    textCenter("Open Food Facts", W / 2,  80, 1, COLOR_SUBTEXT);
+    textCenter("Open Food Facts", W / 2, H/2 - 80, 1, COLOR_SUBTEXT);
     String b = barcode.length() > 24 ? barcode.substring(0, 24) : barcode;
-    textCenter(b, W / 2, 116, 2, COLOR_ACCENT);
+    textCenter(b, W / 2, H/2 - 40, 2, COLOR_ACCENT);
     static uint8_t dots = 0;
     String d = ""; for (int i = 0; i < (dots % 4); i++) d += " .";
-    _gfx->fillRect(0, 144, W, 30, COLOR_BG);
-    textCenter(d, W / 2, 156, 2, COLOR_TEXT); dots++;
+    _gfx->fillRect(0, H/2 - 10, W, 30, COLOR_BG);
+    textCenter(d, W / 2, H/2 + 4, 2, COLOR_TEXT); dots++;
     _gfx->flush();
 }
 
@@ -404,14 +406,13 @@ void DisplayManager::showPrinting() {
     _gfx->fillScreen(COLOR_BG);
     drawHeader("Drucke Etikett...", COLOR_ACCENT);
     // Drucker-Icon (einfaches Rechteck + Papier)
-    int16_t px = W / 2 - 36, py = 70;
+    int16_t px = W / 2 - 36, py = H / 2 - 60;
     _gfx->fillRoundRect(px, py,      72, 50, 6, COLOR_SURFACE);   // Gehäuse
     _gfx->fillRect     (px + 8, py - 20, 56, 26, COLOR_SUBTEXT); // Papiereinzug
     _gfx->fillRect     (px + 14, py + 26, 44, 32, 0xFFFF);        // Papier-Ausgabe
-    // Drucklinien auf dem Papier
     for (int l = 0; l < 3; l++)
         _gfx->fillRect(px + 18, py + 30 + l * 9, 36, 4, COLOR_SURFACE);
-    textCenter("Bitte warten...", W / 2, 158, 1, COLOR_SUBTEXT);
+    textCenter("Bitte warten...", W / 2, H / 2 + 20, 1, COLOR_SUBTEXT);
     _gfx->flush();
 }
 
@@ -420,19 +421,19 @@ void DisplayManager::showPrinting() {
 void DisplayManager::showSuccess(const String &productName, const String &date, bool showReprint) {
     _gfx->fillScreen(COLOR_BG);
     drawHeader("Eingelagert!", COLOR_BTN_OK);
-    _gfx->fillCircle(W / 2, 116, 44, COLOR_OK);
+    int16_t cy = H / 2 - 60;
+    _gfx->fillCircle(W / 2, cy, 50, COLOR_OK);
     for (int t = 0; t < 5; t++) {
-        _gfx->drawLine(W/2-24+t, 116, W/2-4+t,  137, COLOR_BG);
-        _gfx->drawLine(W/2-4+t,  137, W/2+24+t,  97, COLOR_BG);
+        _gfx->drawLine(W/2-26+t, cy,     W/2-4+t,  cy+24, COLOR_BG);
+        _gfx->drawLine(W/2-4+t,  cy+24,  W/2+26+t, cy-18, COLOR_BG);
     }
     String pn = productName.length() > 28 ? productName.substring(0, 28) : productName;
-    textCenter(pn,           W / 2, 178, 2, COLOR_TEXT);
-    textCenter("MHD: "+date, W / 2, 202, 1, COLOR_SUBTEXT);
+    textCenter(pn,           W / 2, H/2 + 20, 2, COLOR_TEXT);
+    textCenter("MHD: "+date, W / 2, H/2 + 50, 1, COLOR_SUBTEXT);
     if (showReprint) {
-        // Zwei Buttons unten: Nochmal drucken | Weiter
-        drawTouchButton(TBTN_X,            228, (TBTN_W - 4) / 2, TBTN_H,
+        drawTouchButton(TBTN_X,                      TBTN_SECONDARY_Y, (TBTN_W - 4) / 2, TBTN_H,
                         "Nochmal", COLOR_BTN_BACK, COLOR_TEXT, 1);
-        drawTouchButton(TBTN_X + (TBTN_W + 4) / 2, 228, (TBTN_W - 4) / 2, TBTN_H,
+        drawTouchButton(TBTN_X + (TBTN_W + 4) / 2, TBTN_SECONDARY_Y, (TBTN_W - 4) / 2, TBTN_H,
                         "Weiter",  COLOR_BTN_OK,   COLOR_TEXT);
     }
     _gfx->flush();
@@ -441,9 +442,10 @@ void DisplayManager::showSuccess(const String &productName, const String &date, 
 void DisplayManager::showError(const String &msg) {
     _gfx->fillScreen(COLOR_BG);
     drawHeader("Fehler", COLOR_DANGER);
-    _gfx->fillCircle(W / 2, 128, 46, COLOR_DANGER);
-    textCenter("!", W / 2, 116, 4, COLOR_BG, COLOR_DANGER);
-    textCenter(msg, W / 2, 196, 1, COLOR_TEXT);
+    int16_t cy = H / 2 - 60;
+    _gfx->fillCircle(W / 2, cy, 50, COLOR_DANGER);
+    textCenter("!", W / 2, cy - 12, 4, COLOR_BG, COLOR_DANGER);
+    textCenter(msg, W / 2, H/2 + 20, 1, COLOR_TEXT);
     drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H, "OK", COLOR_BTN_BACK, COLOR_TEXT);
     _gfx->flush();
 }
@@ -455,15 +457,15 @@ void DisplayManager::showRetrieve(const String &name, const String &storageDate,
     _gfx->fillScreen(COLOR_BG);
     drawHeader("Auslagerung", COLOR_ACCENT);
     String n = name.length() > 28 ? name.substring(0, 28) : name;
-    textCenter(n, W / 2, 72, 2, COLOR_TEXT);
-    textCenter("Eingelagert: " + storageDate, W / 2, 106, 1, COLOR_SUBTEXT);
-    textCenter("MHD: " + expiryDate,          W / 2, 126, 1, COLOR_SUBTEXT);
+    textCenter(n, W / 2, H/2 - 80, 2, COLOR_TEXT);
+    textCenter("Eingelagert: " + storageDate, W / 2, H/2 - 42, 1, COLOR_SUBTEXT);
+    textCenter("MHD: " + expiryDate,          W / 2, H/2 - 20, 1, COLOR_SUBTEXT);
     uint16_t sc = (daysLeft < 0)             ? COLOR_DANGER
                 : (daysLeft <= DANGER_DAYS)  ? COLOR_DANGER
                 : (daysLeft <= WARNING_DAYS) ? COLOR_WARN
                 :                              COLOR_OK;
-    textCenter(daysLabel(daysLeft), W / 2, 164, 3, sc);
-    if (daysLeft >= 0) textCenter("verbleibend", W / 2, 196, 1, COLOR_SUBTEXT);
+    textCenter(daysLabel(daysLeft), W / 2, H/2 + 20, 3, sc);
+    if (daysLeft >= 0) textCenter("verbleibend", W / 2, H/2 + 60, 1, COLOR_SUBTEXT);
     drawTouchButton(TBTN_X, TBTN_SECONDARY_Y, TBTN_W, TBTN_H,
                     "Behalten", COLOR_SURFACE, COLOR_SUBTEXT, 1);
     drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H,
@@ -483,20 +485,18 @@ void DisplayManager::showInventoryItem(int index, int total, const String &name,
     _gfx->fillRect(0, 6, W, HDR - 6, COLOR_HEADER);
     textCenter(String(index + 1) + " / " + String(total), W / 2, HDR / 2 + 3, 2, 0xFFFF, COLOR_HEADER);
 
-    int16_t y = HDR + 14;
-    String n = name.length() > 26 ? name.substring(0, 26) : name;
-    textLeft(n, 10, y, 2, COLOR_TEXT); y += 28;
-    if (name.length() > 26) {
-        textLeft(name.substring(26, 52), 10, y, 2, COLOR_TEXT); y += 28;
-    }
-    y += 6;
-    textLeft("MHD:   " + expiry,                10, y,      1, COLOR_SUBTEXT);
-    textLeft("Menge: " + String(qty) + " Stk.", 10, y + 22, 1, COLOR_SUBTEXT);
+    String n = name.length() > 22 ? name.substring(0, 22) : name;
+    textCenter(n, W / 2, HDR + 28, 2, COLOR_TEXT);
+    if (name.length() > 22)
+        textCenter(name.substring(22, 44), W / 2, HDR + 54, 2, COLOR_TEXT);
 
-    textCenter(daysLabel(daysLeft), W * 3 / 4, 122, 3, sc);
-    if (daysLeft >= 0) textCenter("verbleibend", W * 3 / 4, 154, 1, COLOR_SUBTEXT);
+    textCenter("MHD:   " + expiry,                W / 2, H/2 - 40, 1, COLOR_SUBTEXT);
+    textCenter("Menge: " + String(qty) + " Stk.", W / 2, H/2 - 18, 1, COLOR_SUBTEXT);
 
-    textCenter("< wischen >", W / 2, 162, 1, COLOR_SURFACE);
+    textCenter(daysLabel(daysLeft), W / 2, H/2 + 30, 3, sc);
+    if (daysLeft >= 0) textCenter("verbleibend", W / 2, H/2 + 68, 1, COLOR_SUBTEXT);
+
+    textCenter("< wischen >", W / 2, TBTN_SECONDARY_Y - 20, 1, COLOR_SURFACE);
     drawTouchButton(TBTN_X, INV_BACK_Y, TBTN_W, TBTN_H, "Zurueck",          COLOR_SURFACE, COLOR_SUBTEXT, 1);
     drawTouchButton(TBTN_X, INV_DEL_Y,  TBTN_W, TBTN_H, "Artikel loeschen", COLOR_DANGER,  COLOR_TEXT);
     _gfx->flush();
@@ -507,13 +507,13 @@ void DisplayManager::showInventoryItem(int index, int total, const String &name,
 void DisplayManager::showAPMode(const String &ssid, const String &password, const String &ip) {
     _gfx->fillScreen(COLOR_BG);
     drawHeader("WiFi Einrichtung", COLOR_WARN);
-    textCenter("Kein WLAN konfiguriert!",    W / 2,  60, 1, COLOR_WARN);
-    textCenter("Netz:",                      W / 2,  80, 1, COLOR_SUBTEXT);
-    textCenter(ssid,                         W / 2, 106, 2, COLOR_ACCENT);
-    textCenter("PW:",                        W / 2, 128, 1, COLOR_SUBTEXT);
-    textCenter(password,                     W / 2, 152, 2, COLOR_TEXT);
-    _gfx->drawFastHLine(20, 170, W - 40, COLOR_SURFACE);
-    textCenter("Browser: http://" + ip,      W / 2, 188, 1, COLOR_ACCENT);
+    textCenter("Kein WLAN konfiguriert!",    W / 2,  80, 1, COLOR_WARN);
+    textCenter("Netz:",                      W / 2, 120, 1, COLOR_SUBTEXT);
+    textCenter(ssid,                         W / 2, 150, 2, COLOR_ACCENT);
+    textCenter("PW:",                        W / 2, 192, 1, COLOR_SUBTEXT);
+    textCenter(password,                     W / 2, 222, 2, COLOR_TEXT);
+    _gfx->drawFastHLine(20, 258, W - 40, COLOR_SURFACE);
+    textCenter("Browser: http://" + ip,      W / 2, 280, 1, COLOR_ACCENT);
     drawTouchButton(TBTN_X, IDLE_LIST_BTN_Y, TBTN_W, IDLE_BTN_H,
                     "Zur Produktliste", COLOR_BTN_OK, COLOR_TEXT);
     drawTouchButton(TBTN_X, IDLE_INV_BTN_Y, TBTN_W, IDLE_BTN_H,

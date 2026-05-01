@@ -12,42 +12,42 @@ struct DateInput {
     DateField activeField;
 };
 
-// ── Hauptscreen (Kategorie-Grid) ─────────────────────────────
+// ── Hauptscreen (Kategorie-Grid) — Hochformat 280×456 ────────
 static constexpr int16_t CAT_HDR       = 44;
 static constexpr int16_t CAT_GAP       = 6;
-static constexpr int16_t CAT_COLS      = 3;
-static constexpr int16_t CAT_ROWS      = 2;
+static constexpr int16_t CAT_COLS      = 2;
+static constexpr int16_t CAT_ROWS      = 4;
 static constexpr int16_t CAT_TILE_W    = (DISPLAY_W - (CAT_COLS + 1) * CAT_GAP) / CAT_COLS;
 static constexpr int16_t CAT_TILE_H    = (DISPLAY_H - CAT_HDR - (CAT_ROWS + 1) * CAT_GAP) / CAT_ROWS;
 
 // ── Produktliste / Unterscreen-Header ────────────────────────
 static constexpr int16_t SUB_HDR       = 54;
-static constexpr int16_t LIST_ITEM_H   = 44;
+static constexpr int16_t LIST_ITEM_H   = 48;
 static constexpr int16_t LIST_MAX_VIS  = (DISPLAY_H - SUB_HDR) / LIST_ITEM_H;
 
-// ── Datumseingabe (▲ Drum Roller ▼) ─────────────────────────
-static constexpr int16_t DRUM_COL_W    = DISPLAY_W / 3;                         // 152
-static constexpr int16_t DRUM_HDR_H    = 36;
-static constexpr int16_t DRUM_ARR_H    = 40;
-static constexpr int16_t DRUM_ROW_H    = 40;
+// ── Datumseingabe (▲ Drum Roller ▼) — Hochformat 280×456 ─────
+static constexpr int16_t DRUM_COL_W    = DISPLAY_W / 3;                         // 93
+static constexpr int16_t DRUM_HDR_H    = 60;
+static constexpr int16_t DRUM_ARR_H    = 60;
+static constexpr int16_t DRUM_ROW_H    = 60;
 static constexpr int16_t DRUM_ROWS     = 3;
-static constexpr int16_t DRUM_ARRUP_Y  = DRUM_HDR_H;                            // 36
-static constexpr int16_t DRUM_TOP      = DRUM_ARRUP_Y + DRUM_ARR_H;             // 76
-static constexpr int16_t DRUM_SEL_Y    = DRUM_TOP + DRUM_ROW_H;                 // 116
-static constexpr int16_t DRUM_ARRDWN_Y = DRUM_TOP + DRUM_ROWS * DRUM_ROW_H;    // 196
-static constexpr int16_t DRUM_BTN_Y    = DRUM_ARRDWN_Y + DRUM_ARR_H;           // 236
+static constexpr int16_t DRUM_ARRUP_Y  = DRUM_HDR_H;                            // 60
+static constexpr int16_t DRUM_TOP      = DRUM_ARRUP_Y + DRUM_ARR_H;             // 120
+static constexpr int16_t DRUM_SEL_Y    = DRUM_TOP + DRUM_ROW_H;                 // 180
+static constexpr int16_t DRUM_ARRDWN_Y = DRUM_TOP + DRUM_ROWS * DRUM_ROW_H;    // 300
+static constexpr int16_t DRUM_BTN_Y    = DRUM_ARRDWN_Y + DRUM_ARR_H;           // 360
 
-// ── Universelle Buttons (AP-Mode, Retrieve, Inventar-Browse) ─
+// ── Universelle Buttons ───────────────────────────────────────
 static constexpr int16_t TBTN_X           = 8;
 static constexpr int16_t TBTN_W           = DISPLAY_W - 16;
-static constexpr int16_t TBTN_H           = 44;
+static constexpr int16_t TBTN_H           = 48;
 static constexpr int16_t TBTN_PRIMARY_Y   = DISPLAY_H - TBTN_H - 8;
 static constexpr int16_t TBTN_SECONDARY_Y = DISPLAY_H - 2 * TBTN_H - 16;
 
 // ── IDLE-Buttons (AP-Mode) ────────────────────────────────────
-static constexpr int16_t IDLE_LIST_BTN_Y = 172;
-static constexpr int16_t IDLE_INV_BTN_Y  = 220;
-static constexpr int16_t IDLE_BTN_H      = 40;
+static constexpr int16_t IDLE_LIST_BTN_Y = DISPLAY_H - 2 * 48 - 16;
+static constexpr int16_t IDLE_INV_BTN_Y  = DISPLAY_H - 48 - 8;
+static constexpr int16_t IDLE_BTN_H      = 48;
 
 // ── Inventar-Browser ─────────────────────────────────────────
 static constexpr int16_t INV_DEL_Y  = TBTN_PRIMARY_Y;
