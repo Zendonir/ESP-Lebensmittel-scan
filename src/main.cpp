@@ -44,7 +44,8 @@ enum class State {
 
 // ── Globale Objekte ───────────────────────────────────────────
 
-BarcodeScanner scanner(Serial2, BARCODE_RX_PIN, BARCODE_TX_PIN, BARCODE_BAUD);
+HardwareSerial scannerSerial(0);  // UART0 = native GPIO44(RX) / GPIO43(TX)
+BarcodeScanner scanner(scannerSerial, BARCODE_RX_PIN, BARCODE_TX_PIN, BARCODE_BAUD);
 ThermalPrinter printer(Serial1, PRINTER_TX_PIN, PRINTER_RX_PIN, PRINTER_BAUD);
 DisplayManager display;
 TouchController touch(TOUCH_SDA, TOUCH_SCL, TOUCH_INT, TOUCH_RST);
