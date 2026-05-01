@@ -55,6 +55,18 @@ String BarcodeScanner::getBarcode() {
     return code;
 }
 
+void BarcodeScanner::enable() {
+    // GM861: Scanner aktivieren (Automatik-Modus)
+    static const uint8_t cmd[] = {0x7E,0x00,0x08,0x01,0x00,0x02,0x01,0xAB,0xCD};
+    _serial.write(cmd, sizeof(cmd));
+}
+
+void BarcodeScanner::disable() {
+    // GM861: Scanner deaktivieren (schläft, kein Scan)
+    static const uint8_t cmd[] = {0x7E,0x00,0x08,0x01,0x00,0x02,0x00,0xAB,0xCD};
+    _serial.write(cmd, sizeof(cmd));
+}
+
 void BarcodeScanner::flush() {
     _buffer = "";
     _ready = false;

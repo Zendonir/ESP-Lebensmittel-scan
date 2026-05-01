@@ -459,6 +459,7 @@ void loop() {
         state != State::WIFI_CONNECTING &&
         millis() - lastActivity > POWER_SAVE_MS) {
         display.setBrightness(0);
+        scanner.disable();
         setState(State::POWER_SAVE);
     }
 
@@ -817,6 +818,7 @@ void loop() {
         if (tapped) {
             lastActivity = millis();
             display.setBrightness(220);
+            scanner.enable();
             setState(State::MAIN);
         }
         break;
