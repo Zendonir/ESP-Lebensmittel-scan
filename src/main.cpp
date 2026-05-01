@@ -273,10 +273,12 @@ void telegramSend(const String &text) {
 inline void buzz(uint16_t freq = 2000, uint32_t dur = 80)  { tone(BUZZER_PIN, freq, dur); }
 inline void buzzOk()    { buzz(2200, 80); }
 inline void buzzError() { buzz(600, 300); }
+inline void buzzTick()  { buzz(120, 12); }  // leises dumpfes Tippen
 #else
 inline void buzz(uint16_t = 0, uint32_t = 0) {}
 inline void buzzOk()    {}
 inline void buzzError() {}
+inline void buzzTick()  {}
 #endif
 
 // ── Hilfs-Funktionen ──────────────────────────────────────────
@@ -439,6 +441,7 @@ void loop() {
         lastActivity = millis();
         Serial.printf("[Scan] %s\n", bc.c_str());
         logScan(bc);
+        buzzOk();
 
         if (state == State::POWER_SAVE) {
             display.setBrightness(220);
@@ -646,6 +649,7 @@ void loop() {
                     // Ziffer 0-9
                     int digit = (row < 3) ? (row * 3 + col + 1) : 0;
                     if (npTyped.length() < 2) {
+                        buzzTick();
                         npTyped += (char)('0' + digit);
                         doAdvance = (npTyped.length() == 2);
                     }
