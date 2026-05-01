@@ -416,33 +416,45 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     <hr style="border-color:var(--border);margin:1.5rem 0">
     <h2 style="margin-bottom:1rem">Schriftgr&ouml;&szlig;en am Ger&auml;t</h2>
     <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
-      Gr&ouml;&szlig;e 1&nbsp;=&nbsp;6&thinsp;px, 2&nbsp;=&nbsp;12&thinsp;px, 3&nbsp;=&nbsp;18&thinsp;px, 4&nbsp;=&nbsp;24&thinsp;px.
+      Pixelh&ouml;he der Schrift: 8&thinsp;px, 16&thinsp;px, 24&thinsp;px oder 32&thinsp;px (Vielfaches von 8).
       &Auml;nderungen wirken sofort ohne Neustart.
     </p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;max-width:440px">
       <label style="font-size:.85rem;color:var(--muted)">&#x1F4D1; &Uuml;berschriften / Titel
-        <input type="number" id="fszTitle" min="1" max="4"
-               style="display:block;width:80px;margin-top:.3rem">
+        <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
+          <input type="number" id="fszTitle" min="8" max="32" step="8" style="width:70px">
+          <span style="color:var(--muted);font-size:.8rem">px</span>
+        </div>
       </label>
       <label style="font-size:.85rem;color:var(--muted)">&#x1F4DD; Haupttext / Namen
-        <input type="number" id="fszBody" min="1" max="4"
-               style="display:block;width:80px;margin-top:.3rem">
+        <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
+          <input type="number" id="fszBody" min="8" max="32" step="8" style="width:70px">
+          <span style="color:var(--muted);font-size:.8rem">px</span>
+        </div>
       </label>
       <label style="font-size:.85rem;color:var(--muted)">&#x1F50D; Kleine Hinweistexte
-        <input type="number" id="fszSmall" min="1" max="4"
-               style="display:block;width:80px;margin-top:.3rem">
+        <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
+          <input type="number" id="fszSmall" min="8" max="32" step="8" style="width:70px">
+          <span style="color:var(--muted);font-size:.8rem">px</span>
+        </div>
       </label>
       <label style="font-size:.85rem;color:var(--muted)">&#x1F522; Hervorgehobene Zahlen
-        <input type="number" id="fszValue" min="1" max="4"
-               style="display:block;width:80px;margin-top:.3rem">
+        <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
+          <input type="number" id="fszValue" min="8" max="32" step="8" style="width:70px">
+          <span style="color:var(--muted);font-size:.8rem">px</span>
+        </div>
       </label>
       <label style="font-size:.85rem;color:var(--muted)">&#x1F522; Ziffernblock-Tasten
-        <input type="number" id="fszKey" min="1" max="4"
-               style="display:block;width:80px;margin-top:.3rem">
+        <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
+          <input type="number" id="fszKey" min="8" max="32" step="8" style="width:70px">
+          <span style="color:var(--muted);font-size:.8rem">px</span>
+        </div>
       </label>
       <label style="font-size:.85rem;color:var(--muted)">&#x1F518; Button-Beschriftungen
-        <input type="number" id="fszBtn" min="1" max="4"
-               style="display:block;width:80px;margin-top:.3rem">
+        <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
+          <input type="number" id="fszBtn" min="8" max="32" step="8" style="width:70px">
+          <span style="color:var(--muted);font-size:.8rem">px</span>
+        </div>
       </label>
     </div>
     <button class="btn btn-ok" style="width:fit-content;margin-top:.75rem" onclick="saveFontSizes()">Speichern</button>
@@ -784,16 +796,16 @@ async function saveDevConfig(){
 // ── Schriftgrößen ─────────────────────────────────────────────
 async function loadFontSizes(){
   try{const d=await fetch('/api/font-config').then(r=>r.json());
-    document.getElementById('fszTitle').value=d.title||2;
-    document.getElementById('fszBody').value=d.body||2;
-    document.getElementById('fszSmall').value=d.small||1;
-    document.getElementById('fszValue').value=d.value||3;
-    document.getElementById('fszKey').value=d.key||3;
-    document.getElementById('fszBtn').value=d.btn||2;}catch(e){}
+    document.getElementById('fszTitle').value=d.title||16;
+    document.getElementById('fszBody').value=d.body||16;
+    document.getElementById('fszSmall').value=d.small||8;
+    document.getElementById('fszValue').value=d.value||24;
+    document.getElementById('fszKey').value=d.key||24;
+    document.getElementById('fszBtn').value=d.btn||16;}catch(e){}
 }
 async function saveFontSizes(){
   const msg=document.getElementById('fszMsg');
-  const clamp=v=>{const n=parseInt(v)||2;return n<1?1:n>4?4:n;};
+  const clamp=v=>{const n=Math.round(parseInt(v)/8)*8;return n<8?8:n>32?32:n;};
   const body={
     title:clamp(document.getElementById('fszTitle').value),
     body:clamp(document.getElementById('fszBody').value),
@@ -1105,13 +1117,13 @@ void WebInterface::begin() {
             if (deserializeJson(doc, (const char*)data, len)) {
                 req->send(400, "application/json", "{\"error\":\"JSON\"}"); return;
             }
-            auto clamp = [](int v) -> uint8_t { return v < 1 ? 1 : v > 4 ? 4 : (uint8_t)v; };
-            g_fontCfg.title = clamp(doc["title"] | 2);
-            g_fontCfg.body  = clamp(doc["body"]  | 2);
-            g_fontCfg.small = clamp(doc["small"] | 1);
-            g_fontCfg.value = clamp(doc["value"] | 3);
-            g_fontCfg.key   = clamp(doc["key"]   | 3);
-            g_fontCfg.btn   = clamp(doc["btn"]   | 2);
+            auto clamp = [](int v) -> uint8_t { v = (v/8)*8; return v < 8 ? 8 : v > 32 ? 32 : (uint8_t)v; };
+            g_fontCfg.title = clamp(doc["title"] | 16);
+            g_fontCfg.body  = clamp(doc["body"]  | 16);
+            g_fontCfg.small = clamp(doc["small"] |  8);
+            g_fontCfg.value = clamp(doc["value"] | 24);
+            g_fontCfg.key   = clamp(doc["key"]   | 24);
+            g_fontCfg.btn   = clamp(doc["btn"]   | 16);
             saveFontConfig(g_fontCfg);
             req->send(200, "application/json", "{\"ok\":true}");
         }

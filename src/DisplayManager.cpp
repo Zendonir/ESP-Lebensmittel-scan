@@ -59,7 +59,7 @@ void DisplayManager::textLeft(const String &s, int16_t x, int16_t y,
 
 void DisplayManager::drawHeader(const String &title, uint16_t bg) {
     _gfx->fillRect(0, 0, W, HDR, bg);
-    textCenter(title, W / 2, HDR / 2, g_fontCfg.title, 0xFFFF, bg);
+    textCenter(title, W / 2, HDR / 2, pxToSz(g_fontCfg.title), 0xFFFF, bg);
 }
 
 void DisplayManager::drawTouchButton(int16_t x, int16_t y, int16_t w, int16_t h,
@@ -81,12 +81,12 @@ void DisplayManager::drawStatusBar(const String &title, uint16_t titleColor,
     struct tm ti; char tbuf[6] = "--:--";
     if (getLocalTime(&ti, 0))
         snprintf(tbuf, sizeof(tbuf), "%02d:%02d", ti.tm_hour, ti.tm_min);
-    textLeft(tbuf, 6, 2, g_fontCfg.small, COLOR_SUBTEXT);
+    textLeft(tbuf, 6, 2, pxToSz(g_fontCfg.small), COLOR_SUBTEXT);
 
     if (showBack)
-        textLeft("< Zuruck", 6, SUB_HDR / 2 + 2, g_fontCfg.small, COLOR_TEXT);
+        textLeft("< Zuruck", 6, SUB_HDR / 2 + 2, pxToSz(g_fontCfg.small), COLOR_TEXT);
 
-    textCenter(title, W / 2, SUB_HDR / 2, g_fontCfg.title, titleColor);
+    textCenter(title, W / 2, SUB_HDR / 2, pxToSz(g_fontCfg.title), titleColor);
 
     _gfx->drawFastHLine(0, SUB_HDR, W, COLOR_SURFACE);
 }
@@ -109,8 +109,8 @@ void DisplayManager::showCategoryGrid(const std::vector<int> &catInvCounts,
     struct tm ti; char tbuf[6] = "--:--";
     if (getLocalTime(&ti, 0))
         snprintf(tbuf, sizeof(tbuf), "%02d:%02d", ti.tm_hour, ti.tm_min);
-    textLeft(tbuf, 6, 2, g_fontCfg.small, COLOR_SUBTEXT);
-    textCenter("Kategorien", W / 2, CAT_HDR / 2, g_fontCfg.title, COLOR_TEXT);
+    textLeft(tbuf, 6, 2, pxToSz(g_fontCfg.small), COLOR_SUBTEXT);
+    textCenter("Kategorien", W / 2, CAT_HDR / 2, pxToSz(g_fontCfg.title), COLOR_TEXT);
     _gfx->drawFastHLine(0, CAT_HDR, W, COLOR_SURFACE);
 
     int nCats = min((int)g_categories.size(), CAT_COLS * CAT_ROWS);
@@ -127,13 +127,13 @@ void DisplayManager::showCategoryGrid(const std::vector<int> &catInvCounts,
             uint16_t badgeBg = (warnCount > 0) ? COLOR_WARN : COLOR_ACCENT;
             _gfx->fillCircle(tx + CAT_TILE_W - 12, ty + 12, 11, badgeBg);
             String cs = cnt > 99 ? "9+" : String(cnt);
-            textCenter(cs, tx + CAT_TILE_W - 12, ty + 8, g_fontCfg.small, COLOR_BG, badgeBg);
+            textCenter(cs, tx + CAT_TILE_W - 12, ty + 8, pxToSz(g_fontCfg.small), COLOR_BG, badgeBg);
         }
 
         String name = g_categories[i].name;
         uint8_t tsz = (name.length() <= 9)
-                        ? g_fontCfg.body
-                        : (uint8_t)max(1, (int)g_fontCfg.body - 1);
+                        ? pxToSz(g_fontCfg.body)
+                        : (uint8_t)max(1, (int)pxToSz(g_fontCfg.body) - 1);
         if (name.length() > 20) name = name.substring(0, 20);
         textCenter(name, tx + CAT_TILE_W / 2, ty + CAT_TILE_H / 2, tsz, 0xFFFF, bg);
     }
@@ -150,8 +150,8 @@ void DisplayManager::showProductList(const String &catName, uint16_t catColor,
     drawStatusBar(catName, catColor, true, wifiOk);
 
     if (products.empty()) {
-        textCenter("Keine Produkte konfiguriert",   W / 2, SUB_HDR + 80,  g_fontCfg.small, COLOR_SUBTEXT);
-        textCenter("Web-Interface: Vorlagen > Neu", W / 2, SUB_HDR + 100, g_fontCfg.small, COLOR_SUBTEXT);
+        textCenter("Keine Produkte konfiguriert",   W / 2, SUB_HDR + 80,  pxToSz(g_fontCfg.small), COLOR_SUBTEXT);
+        textCenter("Web-Interface: Vorlagen > Neu", W / 2, SUB_HDR + 100, pxToSz(g_fontCfg.small), COLOR_SUBTEXT);
         _gfx->flush();
         return;
     }
@@ -164,15 +164,15 @@ void DisplayManager::showProductList(const String &catName, uint16_t catColor,
         _gfx->fillRoundRect(4, iy + 2, W - 8, LIST_ITEM_H - 4, 6, COLOR_SURFACE);
 
         String name = p.name.length() > 26 ? p.name.substring(0, 26) : p.name;
-        textLeft(name, 14, iy + 10, g_fontCfg.body, COLOR_TEXT, COLOR_SURFACE);
+        textLeft(name, 14, iy + 10, pxToSz(g_fontCfg.body), COLOR_TEXT, COLOR_SURFACE);
 
         if (p.defaultDays > 0) {
             String d = String(p.defaultDays) + "d";
-            textLeft(d, W - 38 - textWidth(d, g_fontCfg.small), iy + 16,
-                     g_fontCfg.small, COLOR_ACCENT, COLOR_SURFACE);
+            textLeft(d, W - 38 - textWidth(d, pxToSz(g_fontCfg.small)), iy + 16,
+                     pxToSz(g_fontCfg.small), COLOR_ACCENT, COLOR_SURFACE);
         }
 
-        textLeft(">", W - 20, iy + 10, g_fontCfg.body, COLOR_SUBTEXT, COLOR_SURFACE);
+        textLeft(">", W - 20, iy + 10, pxToSz(g_fontCfg.body), COLOR_SUBTEXT, COLOR_SURFACE);
     }
 
     if ((int)products.size() > LIST_MAX_VIS) {
@@ -191,24 +191,24 @@ void DisplayManager::showProductList(const String &catName, uint16_t catColor,
 
 void DisplayManager::showBooting(const String &msg) {
     _gfx->fillScreen(COLOR_BG);
-    textCenter("Lebensmittel", W / 2, H / 2 - 22, g_fontCfg.title, COLOR_ACCENT);
-    textCenter("Scanner",      W / 2, H / 2 +  4, g_fontCfg.title, COLOR_ACCENT);
+    textCenter("Lebensmittel", W / 2, H / 2 - 22, pxToSz(g_fontCfg.title), COLOR_ACCENT);
+    textCenter("Scanner",      W / 2, H / 2 +  4, pxToSz(g_fontCfg.title), COLOR_ACCENT);
     _gfx->drawFastHLine(80, H / 2 + 22, W - 160, COLOR_SURFACE);
     if (!msg.isEmpty())
-        textCenter(msg, W / 2, H / 2 + 42, g_fontCfg.small, COLOR_SUBTEXT);
+        textCenter(msg, W / 2, H / 2 + 42, pxToSz(g_fontCfg.small), COLOR_SUBTEXT);
     _gfx->flush();
 }
 
 void DisplayManager::showWifiConnecting(const String &ssid, int attempt) {
     _gfx->fillScreen(COLOR_BG);
     drawHeader("WLAN Verbindung");
-    textCenter("Verbinde mit:", W / 2, H/2 - 80, g_fontCfg.small, COLOR_SUBTEXT);
-    textCenter(ssid,            W / 2, H/2 - 44, g_fontCfg.body,  COLOR_ACCENT);
+    textCenter("Verbinde mit:", W / 2, H/2 - 80, pxToSz(g_fontCfg.small), COLOR_SUBTEXT);
+    textCenter(ssid,            W / 2, H/2 - 44, pxToSz(g_fontCfg.body),  COLOR_ACCENT);
     int barW   = W - 80;
     int filled = min(barW, (attempt % 20) * (barW / 20));
     _gfx->drawRect(40, H/2 - 10, barW, 10, COLOR_SURFACE);
     if (filled > 0) _gfx->fillRect(40, H/2 - 10, filled, 10, COLOR_ACCENT);
-    textCenter("Bitte warten...", W / 2, H/2 + 22, g_fontCfg.small, COLOR_SUBTEXT);
+    textCenter("Bitte warten...", W / 2, H/2 + 22, pxToSz(g_fontCfg.small), COLOR_SUBTEXT);
     _gfx->flush();
 }
 
@@ -221,23 +221,23 @@ void DisplayManager::showScanning() {
     for (int x = 0; x < bw; x += 7)
         _gfx->fillRect(bx + x, by, (x % 14 < 7) ? 4 : 2, bh, COLOR_TEXT);
     _gfx->fillRect(bx, by + bh + 4, bw, 2, COLOR_SUBTEXT);
-    textCenter("GM861 vor den Scanner halten",  W / 2, by + bh + 28, g_fontCfg.small, COLOR_SUBTEXT);
-    textCenter("EAN13  EAN8  QR  DataMatrix",   W / 2, by + bh + 48, g_fontCfg.small, COLOR_SUBTEXT);
+    textCenter("GM861 vor den Scanner halten",  W / 2, by + bh + 28, pxToSz(g_fontCfg.small), COLOR_SUBTEXT);
+    textCenter("EAN13  EAN8  QR  DataMatrix",   W / 2, by + bh + 48, pxToSz(g_fontCfg.small), COLOR_SUBTEXT);
     drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H,
-                    "Abbrechen", COLOR_SURFACE, COLOR_TEXT, g_fontCfg.btn);
+                    "Abbrechen", COLOR_SURFACE, COLOR_TEXT, pxToSz(g_fontCfg.btn));
     _gfx->flush();
 }
 
 void DisplayManager::showFetching(const String &barcode) {
     _gfx->fillScreen(COLOR_BG);
     drawHeader("Suche Produkt...");
-    textCenter("Open Food Facts", W / 2, H/2 - 80, g_fontCfg.small, COLOR_SUBTEXT);
+    textCenter("Open Food Facts", W / 2, H/2 - 80, pxToSz(g_fontCfg.small), COLOR_SUBTEXT);
     String b = barcode.length() > 24 ? barcode.substring(0, 24) : barcode;
-    textCenter(b, W / 2, H/2 - 40, g_fontCfg.body, COLOR_ACCENT);
+    textCenter(b, W / 2, H/2 - 40, pxToSz(g_fontCfg.body), COLOR_ACCENT);
     static uint8_t dots = 0;
     String d = ""; for (int i = 0; i < (dots % 4); i++) d += " .";
     _gfx->fillRect(0, H/2 - 10, W, 30, COLOR_BG);
-    textCenter(d, W / 2, H/2 + 4, g_fontCfg.body, COLOR_TEXT); dots++;
+    textCenter(d, W / 2, H/2 + 4, pxToSz(g_fontCfg.body), COLOR_TEXT); dots++;
     _gfx->flush();
 }
 
@@ -248,7 +248,7 @@ void DisplayManager::showDateEntry(const DateInput &d, const String &productName
     _gfx->fillScreen(COLOR_BG);
 
     String pn = productName.length() > 28 ? productName.substring(0, 28) : productName;
-    textCenter(pn, W / 2, DRUM_HDR_H / 2, g_fontCfg.body, COLOR_TEXT);
+    textCenter(pn, W / 2, DRUM_HDR_H / 2, pxToSz(g_fontCfg.body), COLOR_TEXT);
 
     _gfx->drawFastVLine(    DRUM_COL_W, DRUM_HDR_H, DRUM_BTN_Y - DRUM_HDR_H, COLOR_SURFACE);
     _gfx->drawFastVLine(2 * DRUM_COL_W, DRUM_HDR_H, DRUM_BTN_Y - DRUM_HDR_H, COLOR_SURFACE);
@@ -282,9 +282,9 @@ void DisplayManager::showDateEntry(const DateInput &d, const String &productName
 
             int dist10 = abs(rowCY - centerY) * 10 / DRUM_ROW_H;
             uint16_t clr; uint8_t sz;
-            if      (dist10 <  5) { sz = g_fontCfg.value; clr = COLOR_TEXT; }
-            else if (dist10 < 15) { sz = (uint8_t)max(1, (int)g_fontCfg.value - 1); clr = COLOR_SUBTEXT; }
-            else                  { sz = (uint8_t)max(1, (int)g_fontCfg.value - 2); clr = 0x2104; }
+            if      (dist10 <  5) { sz = pxToSz(g_fontCfg.value); clr = COLOR_TEXT; }
+            else if (dist10 < 15) { sz = (uint8_t)max(1, (int)pxToSz(g_fontCfg.value) - 1); clr = COLOR_SUBTEXT; }
+            else                  { sz = (uint8_t)max(1, (int)pxToSz(g_fontCfg.value) - 2); clr = 0x2104; }
 
             if (rowCY < DRUM_TOP + 4 * sz || rowCY > DRUM_ARRDWN_Y - 4 * sz) continue;
 
@@ -311,9 +311,9 @@ void DisplayManager::showDateEntry(const DateInput &d, const String &productName
     int16_t btnH = H - DRUM_BTN_Y - 8;
     int16_t halfW = W / 2 - 6;
     _gfx->drawRoundRect(4, btnY, halfW, btnH, 8, COLOR_DANGER);
-    textCenter("< Zuruck", 4 + halfW / 2, btnY + btnH / 2, g_fontCfg.small, COLOR_DANGER);
+    textCenter("< Zuruck", 4 + halfW / 2, btnY + btnH / 2, pxToSz(g_fontCfg.small), COLOR_DANGER);
     _gfx->drawRoundRect(W / 2 + 2, btnY, halfW, btnH, 8, COLOR_OK);
-    textCenter("OK", W / 2 + 2 + halfW / 2, btnY + btnH / 2, g_fontCfg.btn, COLOR_OK);
+    textCenter("OK", W / 2 + 2 + halfW / 2, btnY + btnH / 2, pxToSz(g_fontCfg.btn), COLOR_OK);
 
     _gfx->flush();
 }
@@ -329,7 +329,7 @@ void DisplayManager::showPrinting() {
     _gfx->fillRect     (px + 14, py + 26, 44, 32, 0xFFFF);
     for (int l = 0; l < 3; l++)
         _gfx->fillRect(px + 18, py + 30 + l * 9, 36, 4, COLOR_SURFACE);
-    textCenter("Bitte warten...", W / 2, H / 2 + 20, g_fontCfg.small, COLOR_SUBTEXT);
+    textCenter("Bitte warten...", W / 2, H / 2 + 20, pxToSz(g_fontCfg.small), COLOR_SUBTEXT);
     _gfx->flush();
 }
 
@@ -345,13 +345,13 @@ void DisplayManager::showSuccess(const String &productName, const String &date, 
         _gfx->drawLine(W/2-4+t,  cy+24,  W/2+26+t, cy-18, COLOR_BG);
     }
     String pn = productName.length() > 28 ? productName.substring(0, 28) : productName;
-    textCenter(pn,           W / 2, H/2 + 20, g_fontCfg.body,  COLOR_TEXT);
-    textCenter("MHD: "+date, W / 2, H/2 + 50, g_fontCfg.small, COLOR_SUBTEXT);
+    textCenter(pn,           W / 2, H/2 + 20, pxToSz(g_fontCfg.body),  COLOR_TEXT);
+    textCenter("MHD: "+date, W / 2, H/2 + 50, pxToSz(g_fontCfg.small), COLOR_SUBTEXT);
     if (showReprint) {
         drawTouchButton(TBTN_X,                      TBTN_SECONDARY_Y, (TBTN_W - 4) / 2, TBTN_H,
-                        "Nochmal", COLOR_BTN_BACK, COLOR_TEXT, g_fontCfg.small);
+                        "Nochmal", COLOR_BTN_BACK, COLOR_TEXT, pxToSz(g_fontCfg.small));
         drawTouchButton(TBTN_X + (TBTN_W + 4) / 2, TBTN_SECONDARY_Y, (TBTN_W - 4) / 2, TBTN_H,
-                        "Weiter",  COLOR_BTN_OK,   COLOR_TEXT, g_fontCfg.btn);
+                        "Weiter",  COLOR_BTN_OK,   COLOR_TEXT, pxToSz(g_fontCfg.btn));
     }
     _gfx->flush();
 }
@@ -362,8 +362,8 @@ void DisplayManager::showError(const String &msg) {
     int16_t cy = H / 2 - 60;
     _gfx->fillCircle(W / 2, cy, 50, COLOR_DANGER);
     textCenter("!", W / 2, cy - 12, 4, COLOR_BG, COLOR_DANGER);
-    textCenter(msg, W / 2, H/2 + 20, g_fontCfg.small, COLOR_TEXT);
-    drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H, "OK", COLOR_BTN_BACK, COLOR_TEXT, g_fontCfg.btn);
+    textCenter(msg, W / 2, H/2 + 20, pxToSz(g_fontCfg.small), COLOR_TEXT);
+    drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H, "OK", COLOR_BTN_BACK, COLOR_TEXT, pxToSz(g_fontCfg.btn));
     _gfx->flush();
 }
 
@@ -374,19 +374,19 @@ void DisplayManager::showRetrieve(const String &name, const String &storageDate,
     _gfx->fillScreen(COLOR_BG);
     drawHeader("Auslagerung", COLOR_ACCENT);
     String n = name.length() > 28 ? name.substring(0, 28) : name;
-    textCenter(n, W / 2, H/2 - 80, g_fontCfg.body,  COLOR_TEXT);
-    textCenter("Eingelagert: " + storageDate, W / 2, H/2 - 42, g_fontCfg.small, COLOR_SUBTEXT);
-    textCenter("MHD: " + expiryDate,          W / 2, H/2 - 20, g_fontCfg.small, COLOR_SUBTEXT);
+    textCenter(n, W / 2, H/2 - 80, pxToSz(g_fontCfg.body),  COLOR_TEXT);
+    textCenter("Eingelagert: " + storageDate, W / 2, H/2 - 42, pxToSz(g_fontCfg.small), COLOR_SUBTEXT);
+    textCenter("MHD: " + expiryDate,          W / 2, H/2 - 20, pxToSz(g_fontCfg.small), COLOR_SUBTEXT);
     uint16_t sc = (daysLeft < 0)             ? COLOR_DANGER
                 : (daysLeft <= DANGER_DAYS)  ? COLOR_DANGER
                 : (daysLeft <= WARNING_DAYS) ? COLOR_WARN
                 :                              COLOR_OK;
-    textCenter(daysLabel(daysLeft), W / 2, H/2 + 20, g_fontCfg.value, sc);
-    if (daysLeft >= 0) textCenter("verbleibend", W / 2, H/2 + 60, g_fontCfg.small, COLOR_SUBTEXT);
+    textCenter(daysLabel(daysLeft), W / 2, H/2 + 20, pxToSz(g_fontCfg.value), sc);
+    if (daysLeft >= 0) textCenter("verbleibend", W / 2, H/2 + 60, pxToSz(g_fontCfg.small), COLOR_SUBTEXT);
     drawTouchButton(TBTN_X, TBTN_SECONDARY_Y, TBTN_W, TBTN_H,
-                    "Behalten", COLOR_SURFACE, COLOR_SUBTEXT, g_fontCfg.small);
+                    "Behalten", COLOR_SURFACE, COLOR_SUBTEXT, pxToSz(g_fontCfg.small));
     drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H,
-                    "Auslagern", COLOR_BTN_OK, COLOR_TEXT, g_fontCfg.btn);
+                    "Auslagern", COLOR_BTN_OK, COLOR_TEXT, pxToSz(g_fontCfg.btn));
     _gfx->flush();
 }
 
@@ -400,24 +400,24 @@ void DisplayManager::showInventoryItem(int index, int total, const String &name,
                 :                                               COLOR_OK;
     _gfx->fillRect(0, 0, W, 6, sc);
     _gfx->fillRect(0, 6, W, HDR - 6, COLOR_HEADER);
-    textCenter(String(index + 1) + " / " + String(total), W / 2, HDR / 2 + 3, g_fontCfg.body, 0xFFFF, COLOR_HEADER);
+    textCenter(String(index + 1) + " / " + String(total), W / 2, HDR / 2 + 3, pxToSz(g_fontCfg.body), 0xFFFF, COLOR_HEADER);
 
     String n = name.length() > 22 ? name.substring(0, 22) : name;
-    textCenter(n, W / 2, HDR + 28, g_fontCfg.body, COLOR_TEXT);
+    textCenter(n, W / 2, HDR + 28, pxToSz(g_fontCfg.body), COLOR_TEXT);
     if (name.length() > 22)
-        textCenter(name.substring(22, 44), W / 2, HDR + 54, g_fontCfg.body, COLOR_TEXT);
+        textCenter(name.substring(22, 44), W / 2, HDR + 54, pxToSz(g_fontCfg.body), COLOR_TEXT);
 
-    textCenter("MHD:   " + expiry,                W / 2, H/2 - 40, g_fontCfg.small, COLOR_SUBTEXT);
-    textCenter("Menge: " + String(qty) + " Stk.", W / 2, H/2 - 18, g_fontCfg.small, COLOR_SUBTEXT);
+    textCenter("MHD:   " + expiry,                W / 2, H/2 - 40, pxToSz(g_fontCfg.small), COLOR_SUBTEXT);
+    textCenter("Menge: " + String(qty) + " Stk.", W / 2, H/2 - 18, pxToSz(g_fontCfg.small), COLOR_SUBTEXT);
 
-    textCenter(daysLabel(daysLeft), W / 2, H/2 + 30, g_fontCfg.value, sc);
-    if (daysLeft >= 0) textCenter("verbleibend", W / 2, H/2 + 68, g_fontCfg.small, COLOR_SUBTEXT);
+    textCenter(daysLabel(daysLeft), W / 2, H/2 + 30, pxToSz(g_fontCfg.value), sc);
+    if (daysLeft >= 0) textCenter("verbleibend", W / 2, H/2 + 68, pxToSz(g_fontCfg.small), COLOR_SUBTEXT);
 
-    textCenter("< wischen >", W / 2, TBTN_SECONDARY_Y - 20, g_fontCfg.small, COLOR_SURFACE);
+    textCenter("< wischen >", W / 2, TBTN_SECONDARY_Y - 20, pxToSz(g_fontCfg.small), COLOR_SURFACE);
     drawTouchButton(TBTN_X, INV_BACK_Y, TBTN_W, TBTN_H,
-                    "Zurueck",          COLOR_SURFACE, COLOR_SUBTEXT, g_fontCfg.small);
+                    "Zurueck",          COLOR_SURFACE, COLOR_SUBTEXT, pxToSz(g_fontCfg.small));
     drawTouchButton(TBTN_X, INV_DEL_Y,  TBTN_W, TBTN_H,
-                    "Artikel loeschen", COLOR_DANGER,  COLOR_TEXT,    g_fontCfg.btn);
+                    "Artikel loeschen", COLOR_DANGER,  COLOR_TEXT,    pxToSz(g_fontCfg.btn));
     _gfx->flush();
 }
 
@@ -429,7 +429,7 @@ void DisplayManager::showDateEntryNumpad(const DateInput &d, const String &produ
 
     _gfx->fillRect(0, 0, W, NP_HDR_H, COLOR_HEADER);
     String pn = productName.length() > 22 ? productName.substring(0, 22) : productName;
-    textCenter(pn, W / 2, NP_HDR_H / 2, g_fontCfg.body, COLOR_TEXT, COLOR_HEADER);
+    textCenter(pn, W / 2, NP_HDR_H / 2, pxToSz(g_fontCfg.body), COLOR_TEXT, COLOR_HEADER);
     _gfx->fillCircle(W - 8, 8, 4, wifiOk ? COLOR_OK : COLOR_DANGER);
 
     static const char* fldLabel[] = {"Tag", "Monat", "Jahr"};
@@ -444,14 +444,14 @@ void DisplayManager::showDateEntryNumpad(const DateInput &d, const String &produ
         uint16_t lclr  = active ? 0x0000        : COLOR_SUBTEXT;
 
         _gfx->fillRect(bx, by, NP_COL_W, NP_DATE_H, bg);
-        textCenter(fldLabel[i], bx + NP_COL_W / 2, by + 14, g_fontCfg.small, lclr, bg);
+        textCenter(fldLabel[i], bx + NP_COL_W / 2, by + 14, pxToSz(g_fontCfg.small), lclr, bg);
 
         String valStr;
         if      (i < field)  valStr = (fldVals[i] < 10 ? "0" : "") + String(fldVals[i]);
         else if (i == field) valStr = typed.isEmpty() ? "__" : (typed.length()==1 ? typed+"_" : typed);
         else                 valStr = "--";
 
-        textCenter(valStr, bx + NP_COL_W / 2, by + NP_DATE_H / 2 + 8, g_fontCfg.value, fg, bg);
+        textCenter(valStr, bx + NP_COL_W / 2, by + NP_DATE_H / 2 + 8, pxToSz(g_fontCfg.value), fg, bg);
     }
     _gfx->drawFastVLine(    NP_COL_W, NP_HDR_H, NP_DATE_H, COLOR_BG);
     _gfx->drawFastVLine(2 * NP_COL_W, NP_HDR_H, NP_DATE_H, COLOR_BG);
@@ -474,7 +474,7 @@ void DisplayManager::showDateEntryNumpad(const DateInput &d, const String &produ
             int16_t bw = NP_COL_W - 8;
             int16_t bh = NP_ROW_H - 8;
             _gfx->fillRoundRect(bx, by, bw, bh, 10, bbg[row][col]);
-            uint8_t sz = (row == 3 && col != 1) ? g_fontCfg.btn : g_fontCfg.key;
+            uint8_t sz = (row == 3 && col != 1) ? pxToSz(g_fontCfg.btn) : pxToSz(g_fontCfg.key);
             textCenter(lbl[row][col], bx + bw / 2, by + bh / 2, sz, COLOR_TEXT, bbg[row][col]);
         }
     }
@@ -487,16 +487,16 @@ void DisplayManager::showDateEntryNumpad(const DateInput &d, const String &produ
 void DisplayManager::showAPMode(const String &ssid, const String &password, const String &ip) {
     _gfx->fillScreen(COLOR_BG);
     drawHeader("WiFi Einrichtung", COLOR_WARN);
-    textCenter("Kein WLAN konfiguriert!",    W / 2,  80, g_fontCfg.small, COLOR_WARN);
-    textCenter("Netz:",                      W / 2, 120, g_fontCfg.small, COLOR_SUBTEXT);
-    textCenter(ssid,                         W / 2, 150, g_fontCfg.body,  COLOR_ACCENT);
-    textCenter("PW:",                        W / 2, 192, g_fontCfg.small, COLOR_SUBTEXT);
-    textCenter(password,                     W / 2, 222, g_fontCfg.body,  COLOR_TEXT);
+    textCenter("Kein WLAN konfiguriert!",    W / 2,  80, pxToSz(g_fontCfg.small), COLOR_WARN);
+    textCenter("Netz:",                      W / 2, 120, pxToSz(g_fontCfg.small), COLOR_SUBTEXT);
+    textCenter(ssid,                         W / 2, 150, pxToSz(g_fontCfg.body),  COLOR_ACCENT);
+    textCenter("PW:",                        W / 2, 192, pxToSz(g_fontCfg.small), COLOR_SUBTEXT);
+    textCenter(password,                     W / 2, 222, pxToSz(g_fontCfg.body),  COLOR_TEXT);
     _gfx->drawFastHLine(20, 258, W - 40, COLOR_SURFACE);
-    textCenter("Browser: http://" + ip,      W / 2, 280, g_fontCfg.small, COLOR_ACCENT);
+    textCenter("Browser: http://" + ip,      W / 2, 280, pxToSz(g_fontCfg.small), COLOR_ACCENT);
     drawTouchButton(TBTN_X, IDLE_LIST_BTN_Y, TBTN_W, IDLE_BTN_H,
-                    "Zur Produktliste",  COLOR_BTN_OK,   COLOR_TEXT, g_fontCfg.btn);
+                    "Zur Produktliste",  COLOR_BTN_OK,   COLOR_TEXT, pxToSz(g_fontCfg.btn));
     drawTouchButton(TBTN_X, IDLE_INV_BTN_Y,  TBTN_W, IDLE_BTN_H,
-                    "Inventar anzeigen", COLOR_BTN_BACK, COLOR_TEXT, g_fontCfg.btn);
+                    "Inventar anzeigen", COLOR_BTN_BACK, COLOR_TEXT, pxToSz(g_fontCfg.btn));
     _gfx->flush();
 }
