@@ -112,6 +112,7 @@ int           browseIndex     = 0;
 unsigned long stateEnter      = 0;
 bool          screenDirty     = true;
 unsigned long lastActivity    = 0;
+bool          g_useNumpad     = false;  // Datumseingabe-Modus (geladen aus NVS)
 
 void setState(State s) { state = s; stateEnter = millis(); screenDirty = true; }
 
@@ -381,6 +382,8 @@ void setup() {
         shoppingList.begin();
     }
 
+    { Preferences p; p.begin("dev", true); g_useNumpad = p.getBool("numpad", false); p.end(); }
+
     lastActivity = millis();
     setState(State::WIFI_CONNECTING);
     auto wCfg = loadWifiCfg();
@@ -597,43 +600,94 @@ void loop() {
         break;
     }
 
-    // ── ENTER_DATE (Drum-Roller) ─────────────────────────────
+    // ── ENTER_DATE ───────────────────────────────────────────
     case State::ENTER_DATE: {
         static bool    swipeActive = false;
-        static int16_t swipeStartY = 0;
-        static int16_t swipeCurY   = 0;
+        static int16_t swipeStartY = 0, swipeCurY = 0;
         static int     swipeCol    = -1;
+        static int     npField     = 0;
+        static String  npTyped     = "";
+        bool wifiConn = (WiFi.status() == WL_CONNECTED);
 
         if (screenDirty) {
-            display.showDateEntry(dateInput, currentProduct.name, WiFi.status()==WL_CONNECTED);
+            swipeActive = false; npField = 0; npTyped = "";
             screenDirty = false;
-            swipeActive = false;
+            if (g_useNumpad) display.showDateEntryNumpad(dateInput, currentProduct.name, 0, "", wifiConn);
+            else             display.showDateEntry(dateInput, currentProduct.name, wifiConn);
         }
 
         if (hardBack) { swipeActive = false; setState(State::PRODUCT_LIST); break; }
 
+        // ── Ziffernblock-Zweig ────────────────────────────────
+        if (g_useNumpad) {
+            if (tapped && ty >= NP_TOP) {
+                int row = (ty - NP_TOP) / NP_ROW_H;
+                int col = constrain((int)(tx / NP_COL_W), 0, 2);
+                if (row < 0 || row > 3) break;
+
+                bool doAdvance = false;
+
+                if (row == 3 && col == 0) {
+                    // ← Backspace / Zurück
+                    if (!npTyped.isEmpty())      npTyped.remove(npTyped.length()-1, 1);
+                    else if (npField > 0)        { npField--; npTyped = ""; }
+                    else                         { setState(State::PRODUCT_LIST); break; }
+                } else if (row == 3 && col == 2) {
+                    // → / OK: Feld bestätigen (ggf. mit 1 Stelle)
+                    if (npTyped.isEmpty()) {
+                        buzzOk();
+                        if (npField == 2) { clampDate(dateInput); setState(State::SAVING); break; }
+                        npField++; npTyped = "";
+                    } else {
+                        if (npTyped.length() == 1) npTyped = "0" + npTyped;
+                        doAdvance = true;
+                    }
+                } else {
+                    // Ziffer 0-9
+                    int digit = (row < 3) ? (row * 3 + col + 1) : 0;
+                    if (npTyped.length() < 2) {
+                        npTyped += (char)('0' + digit);
+                        doAdvance = (npTyped.length() == 2);
+                    }
+                }
+
+                if (doAdvance) {
+                    int val = npTyped.toInt();
+                    int maxV = (npField == 0) ? 31 : (npField == 1) ? 12 : 99;
+                    bool valid = (npField == 2) ? (val <= 99)
+                                               : (val >= 1 && val <= maxV);
+                    if (!valid) {
+                        buzzError(); npTyped = "";
+                    } else {
+                        if      (npField == 0) dateInput.day   = val;
+                        else if (npField == 1) dateInput.month = val;
+                        else { dateInput.year = 2000 + val; clampDate(dateInput); buzzOk(); setState(State::SAVING); break; }
+                        clampDate(dateInput); buzzOk(); npField++; npTyped = "";
+                    }
+                }
+
+                display.showDateEntryNumpad(dateInput, currentProduct.name, npField, npTyped, wifiConn);
+            }
+            break;
+        }
+
+        // ── Drum-Roller-Zweig ─────────────────────────────────
         bool changed = false;
 
         if (tapped) {
             if (ty >= DRUM_BTN_Y) {
-                // Back (links) oder OK (rechts)
                 if (tx < DISPLAY_W / 2) { swipeActive = false; setState(State::PRODUCT_LIST); break; }
                 else                    { swipeActive = false; setState(State::SAVING);        break; }
             } else if (ty >= DRUM_ARRDWN_Y) {
-                // ▼ Pfeil — Zahl um 1 verringern
                 int c = constrain((int)(tx / DRUM_COL_W), 0, 2);
                 if      (c == 0) dateInput.day   = constrain(dateInput.day   - 1, 1, 31);
                 else if (c == 1) dateInput.month = constrain(dateInput.month - 1, 1, 12);
                 else             dateInput.year  = constrain(dateInput.year  - 1, 2024, 2099);
                 clampDate(dateInput); buzzOk(); changed = true;
             } else if (ty >= DRUM_TOP) {
-                // Drum-Bereich → Swipe starten
-                swipeActive = true;
-                swipeStartY = ty;
-                swipeCurY   = ty;
-                swipeCol    = constrain((int)(tx / DRUM_COL_W), 0, 2);
+                swipeActive = true; swipeStartY = ty; swipeCurY = ty;
+                swipeCol = constrain((int)(tx / DRUM_COL_W), 0, 2);
             } else if (ty >= DRUM_ARRUP_Y) {
-                // ▲ Pfeil — Zahl um 1 erhöhen
                 int c = constrain((int)(tx / DRUM_COL_W), 0, 2);
                 if      (c == 0) dateInput.day   = constrain(dateInput.day   + 1, 1, 31);
                 else if (c == 1) dateInput.month = constrain(dateInput.month + 1, 1, 12);
@@ -642,33 +696,27 @@ void loop() {
             }
         }
 
-        // Live-Neuzeichnung während Wischen
         if (touch.isDown() && swipeActive) {
             int16_t curY = touch.tapY();
             if (curY != swipeCurY) {
                 swipeCurY = curY;
-                int16_t dragPx = swipeCurY - swipeStartY;
                 display.showDateEntry(dateInput, currentProduct.name,
-                                      WiFi.status()==WL_CONNECTED, swipeCol, dragPx);
+                                      wifiConn, swipeCol, swipeCurY - swipeStartY);
             }
         }
 
-        // Wischen abgeschlossen → einrasten
         if (!touch.isDown() && swipeActive) {
-            int16_t dragPx = swipeCurY - swipeStartY;
-            int steps = -dragPx / 20; // hoch = negatives dragPx = positive steps = größere Zahl
+            int steps = -(swipeCurY - swipeStartY) / 20;
             if (steps != 0) {
                 if      (swipeCol == 0) dateInput.day   = constrain(dateInput.day   + steps, 1, 31);
                 else if (swipeCol == 1) dateInput.month = constrain(dateInput.month + steps, 1, 12);
                 else if (swipeCol == 2) dateInput.year  = constrain(dateInput.year  + steps, 2024, 2099);
-                clampDate(dateInput);
-                buzzOk();
+                clampDate(dateInput); buzzOk();
             }
-            swipeActive = false;
-            changed = true;
+            swipeActive = false; changed = true;
         }
 
-        if (changed) display.showDateEntry(dateInput, currentProduct.name, WiFi.status()==WL_CONNECTED);
+        if (changed) display.showDateEntry(dateInput, currentProduct.name, wifiConn);
         break;
     }
 

@@ -502,6 +502,71 @@ void DisplayManager::showInventoryItem(int index, int total, const String &name,
     _gfx->flush();
 }
 
+// ── Ziffernblock-Datumseingabe ────────────────────────────────
+
+void DisplayManager::showDateEntryNumpad(const DateInput &d, const String &productName,
+                                          int field, const String &typed, bool wifiOk) {
+    _gfx->fillScreen(COLOR_BG);
+
+    // ── Header: Produktname ──────────────────────────────────────
+    _gfx->fillRect(0, 0, W, NP_HDR_H, COLOR_HEADER);
+    String pn = productName.length() > 22 ? productName.substring(0, 22) : productName;
+    textCenter(pn, W / 2, NP_HDR_H / 2, 2, COLOR_TEXT, COLOR_HEADER);
+    _gfx->fillCircle(W - 8, 8, 4, wifiOk ? COLOR_OK : COLOR_DANGER);
+
+    // ── Datums-Anzeige (drei Felder nebeneinander) ───────────────
+    static const char* fldLabel[] = {"Tag", "Monat", "Jahr"};
+    int fldVals[3] = {d.day, d.month, d.year % 100};
+
+    for (int i = 0; i < 3; i++) {
+        int16_t bx = i * NP_COL_W;
+        int16_t by = NP_HDR_H;
+        bool    active = (i == field);
+        uint16_t bg     = active ? COLOR_ACCENT  : COLOR_SURFACE;
+        uint16_t fg     = active ? 0x0000        : COLOR_TEXT;
+        uint16_t lclr   = active ? 0x0000        : COLOR_SUBTEXT;
+
+        _gfx->fillRect(bx, by, NP_COL_W, NP_DATE_H, bg);
+
+        textCenter(fldLabel[i], bx + NP_COL_W / 2, by + 14, 1, lclr, bg);
+
+        String valStr;
+        if      (i < field)   valStr = (fldVals[i] < 10 ? "0" : "") + String(fldVals[i]);
+        else if (i == field)  valStr = typed.isEmpty() ? "__" : (typed.length()==1 ? typed+"_" : typed);
+        else                  valStr = "--";
+
+        textCenter(valStr, bx + NP_COL_W / 2, by + NP_DATE_H / 2 + 8, 3, fg, bg);
+    }
+    _gfx->drawFastVLine(    NP_COL_W, NP_HDR_H, NP_DATE_H, COLOR_BG);
+    _gfx->drawFastVLine(2 * NP_COL_W, NP_HDR_H, NP_DATE_H, COLOR_BG);
+
+    // ── Ziffernblock ─────────────────────────────────────────────
+    const char* lbl[4][3] = {
+        {"1","2","3"}, {"4","5","6"}, {"7","8","9"},
+        {"<","0", field == 2 ? "OK" : ">"}
+    };
+    uint16_t bbg[4][3] = {
+        {COLOR_SURFACE,  COLOR_SURFACE, COLOR_SURFACE},
+        {COLOR_SURFACE,  COLOR_SURFACE, COLOR_SURFACE},
+        {COLOR_SURFACE,  COLOR_SURFACE, COLOR_SURFACE},
+        {COLOR_BTN_BACK, COLOR_SURFACE, field == 2 ? COLOR_BTN_OK : COLOR_ACCENT}
+    };
+
+    for (int row = 0; row < 4; row++) {
+        for (int col = 0; col < 3; col++) {
+            int16_t bx = col * NP_COL_W + 4;
+            int16_t by = NP_TOP + row * NP_ROW_H + 4;
+            int16_t bw = NP_COL_W - 8;
+            int16_t bh = NP_ROW_H - 8;
+            _gfx->fillRoundRect(bx, by, bw, bh, 10, bbg[row][col]);
+            uint8_t sz = (row == 3 && col != 1) ? 2 : 3;
+            textCenter(lbl[row][col], bx + bw / 2, by + bh / 2, sz, COLOR_TEXT, bbg[row][col]);
+        }
+    }
+
+    _gfx->flush();
+}
+
 // ── AP-Modus ──────────────────────────────────────────────────
 
 void DisplayManager::showAPMode(const String &ssid, const String &password, const String &ip) {

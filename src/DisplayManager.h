@@ -37,6 +37,13 @@ static constexpr int16_t DRUM_SEL_Y    = DRUM_TOP + DRUM_ROW_H;                 
 static constexpr int16_t DRUM_ARRDWN_Y = DRUM_TOP + DRUM_ROWS * DRUM_ROW_H;    // 300
 static constexpr int16_t DRUM_BTN_Y    = DRUM_ARRDWN_Y + DRUM_ARR_H;           // 360
 
+// ── Ziffernblock-Datumseingabe — Hochformat 280×456 ──────────
+static constexpr int16_t NP_HDR_H  = 54;
+static constexpr int16_t NP_DATE_H = 72;
+static constexpr int16_t NP_TOP    = NP_HDR_H + NP_DATE_H;          // 126
+static constexpr int16_t NP_COL_W  = DISPLAY_W / 3;                  // 93
+static constexpr int16_t NP_ROW_H  = (DISPLAY_H - NP_TOP) / 4;      // 82
+
 // ── Universelle Buttons ───────────────────────────────────────
 static constexpr int16_t TBTN_X           = 8;
 static constexpr int16_t TBTN_W           = DISPLAY_W - 16;
@@ -72,6 +79,8 @@ public:
     void showFetching(const String &barcode);
     void showDateEntry(const DateInput &date, const String &productName,
                        bool wifiOk = false, int dragCol = -1, int16_t dragPx = 0);
+    void showDateEntryNumpad(const DateInput &date, const String &productName,
+                             int field, const String &typed, bool wifiOk = false);
     void showPrinting();
     void showSuccess(const String &productName, const String &date, bool showReprint = true);
     void showError(const String &msg);
