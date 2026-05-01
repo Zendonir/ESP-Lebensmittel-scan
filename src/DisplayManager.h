@@ -67,7 +67,8 @@ public:
     void showWifiConnecting(const String &ssid, int attempt = 0);
     void showScanning();
     void showFetching(const String &barcode);
-    void showDateEntry(const DateInput &date, const String &productName, bool wifiOk = false);
+    void showDateEntry(const DateInput &date, const String &productName,
+                       bool wifiOk = false, int dragCol = -1, int16_t dragPx = 0);
     void showPrinting();
     void showSuccess(const String &productName, const String &date, bool showReprint = true);
     void showError(const String &msg);

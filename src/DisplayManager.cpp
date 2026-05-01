@@ -313,7 +313,8 @@ void DisplayManager::showFetching(const String &barcode) {
 
 // ── Datumseingabe (Numpad-Layout) ─────────────────────────────
 
-void DisplayManager::showDateEntry(const DateInput &d, const String &productName, bool wifiOk) {
+void DisplayManager::showDateEntry(const DateInput &d, const String &productName,
+                                    bool wifiOk, int dragCol, int16_t dragPx) {
     _gfx->fillScreen(COLOR_BG);
 
     // Header mit Produktname
@@ -331,29 +332,37 @@ void DisplayManager::showDateEntry(const DateInput &d, const String &productName
     _gfx->drawFastVLine(DRUM_COL_W,     SUB_HDR, DRUM_BTN_Y - SUB_HDR, COLOR_SURFACE);
     _gfx->drawFastVLine(2 * DRUM_COL_W, SUB_HDR, DRUM_BTN_Y - SUB_HDR, COLOR_SURFACE);
 
-    // Zahlen für jede Spalte und Zeile zeichnen
-    int baseVals[3] = {d.day, d.month, d.year};
-    int minVals[3]  = {1, 1, 2024};
-    int maxVals[3]  = {31, 12, 2099};
+    // Zahlen für jede Spalte zeichnen
+    int  baseVals[3] = {d.day, d.month, d.year};
+    int  minVals[3]  = {1, 1, 2024};
+    int  maxVals[3]  = {31, 12, 2099};
+    int16_t centerY  = DRUM_SEL_Y + DRUM_ROW_H / 2;
 
     for (int c = 0; c < 3; c++) {
         int16_t colCX = c * DRUM_COL_W + DRUM_COL_W / 2;
-        for (int r = 0; r < DRUM_ROWS; r++) {
-            int offset = r - 2;  // -2,-1,0,+1,+2
-            int val = baseVals[c] + offset;
+        int16_t px    = (c == dragCol) ? dragPx : 0;
+        int halfRange = (px != 0) ? 4 : 2;
+
+        for (int r = -halfRange; r <= halfRange; r++) {
+            int val = baseVals[c] + r;
             if (val < minVals[c] || val > maxVals[c]) continue;
 
-            int16_t rowCY = DRUM_SEL_Y + offset * DRUM_ROW_H + DRUM_ROW_H / 2;
+            int16_t rowCY = DRUM_SEL_Y + r * DRUM_ROW_H + DRUM_ROW_H / 2 + px;
 
-            uint16_t col;
+            // Größe und Farbe nach Pixelabstand vom Zentrum
+            int dist10 = (int)abs(rowCY - centerY) * 10 / DRUM_ROW_H;
+            uint16_t clr;
             uint8_t  sz;
-            if (offset == 0)          { col = COLOR_TEXT;    sz = 3; }
-            else if (abs(offset) == 1){ col = COLOR_SUBTEXT; sz = 2; }
-            else                      { col = 0x2104;        sz = 1; }
+            if      (dist10 <  5) { sz = 3; clr = COLOR_TEXT;    }
+            else if (dist10 < 15) { sz = 2; clr = COLOR_SUBTEXT; }
+            else                  { sz = 1; clr = 0x2104;        }
+
+            // Nur zeichnen wenn innerhalb der Picker-Fläche
+            if (rowCY < DRUM_TOP + 4 * sz || rowCY > DRUM_BTN_Y - 4 * sz) continue;
 
             String valStr = (c == 2) ? String(val)
                                      : (val < 10 ? "0" + String(val) : String(val));
-            textCenter(valStr, colCX, rowCY, sz, col);
+            textCenter(valStr, colCX, rowCY, sz, clr);
         }
     }
 

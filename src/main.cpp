@@ -607,6 +607,7 @@ void loop() {
         if (screenDirty) {
             display.showDateEntry(dateInput, currentProduct.name, WiFi.status()==WL_CONNECTED);
             screenDirty = false;
+            swipeActive = false;
         }
 
         // Zurück
@@ -620,16 +621,13 @@ void loop() {
         if (tapped) {
             if (ty >= DRUM_BTN_Y) {
                 if (tx >= DRUM_COL_W) {
-                    // OK-Button
                     swipeActive = false;
                     setState(State::SAVING); break;
                 } else {
-                    // Heute-Button
                     initDateToday();
                     changed = true;
                 }
             } else if (ty >= DRUM_TOP) {
-                // Swipe im Picker-Bereich starten
                 swipeActive = true;
                 swipeStartY = ty;
                 swipeCurY   = ty;
@@ -637,22 +635,30 @@ void loop() {
             }
         }
 
-        // Y-Position während Wischen aktualisieren
-        if (touch.isDown() && swipeActive)
-            swipeCurY = touch.tapY();
+        // Live-Neuzeichnung während Wischen
+        if (touch.isDown() && swipeActive) {
+            int16_t curY = touch.tapY();
+            if (curY != swipeCurY) {
+                swipeCurY = curY;
+                int16_t dragPx = swipeCurY - swipeStartY;
+                display.showDateEntry(dateInput, currentProduct.name,
+                                      WiFi.status()==WL_CONNECTED, swipeCol, dragPx);
+            }
+        }
 
-        // Wischen abgeschlossen
+        // Wischen abgeschlossen → einrasten
         if (!touch.isDown() && swipeActive) {
-            int steps = (swipeStartY - swipeCurY) / 20;
+            int16_t dragPx = swipeCurY - swipeStartY;
+            int steps = -dragPx / 20; // hoch = negatives dragPx = positive steps = größere Zahl
             if (steps != 0) {
                 if      (swipeCol == 0) dateInput.day   = constrain(dateInput.day   + steps, 1, 31);
                 else if (swipeCol == 1) dateInput.month = constrain(dateInput.month + steps, 1, 12);
                 else if (swipeCol == 2) dateInput.year  = constrain(dateInput.year  + steps, 2024, 2099);
                 clampDate(dateInput);
-                changed = true;
                 buzzOk();
             }
             swipeActive = false;
+            changed = true;
         }
 
         if (changed) display.showDateEntry(dateInput, currentProduct.name, WiFi.status()==WL_CONNECTED);
