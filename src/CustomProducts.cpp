@@ -22,7 +22,9 @@ bool CustomProducts::load() {
         p.brand       = obj["brand"].as<String>();
         p.barcode     = obj["barcode"].as<String>();
         p.category    = obj["category"].as<String>();
+        p.description = obj["description"].as<String>();
         p.defaultDays = obj["defaultDays"] | 0;
+        p.askQty      = obj["askQty"] | false;
         if (p.category.isEmpty()) p.category = "Sonstiges";
         if (!p.name.isEmpty()) _items.push_back(p);
     }
@@ -41,7 +43,9 @@ bool CustomProducts::save() {
         obj["brand"]       = p.brand;
         obj["barcode"]     = p.barcode;
         obj["category"]    = p.category;
+        obj["description"] = p.description;
         obj["defaultDays"] = p.defaultDays;
+        obj["askQty"]      = p.askQty;
     }
     serializeJson(doc, f);
     f.close();

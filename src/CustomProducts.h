@@ -6,8 +6,10 @@ struct CustomProduct {
     String name;
     String brand;
     String barcode;
-    String category;    // muss einem der g_categories[i].name entsprechen
-    int    defaultDays; // voreingestellte Haltbarkeit in Tagen (0 = manuell eingeben)
+    String category;     // muss einem der g_categories[i].name entsprechen
+    String description;  // optionale Zusatzbeschreibung
+    int    defaultDays;  // voreingestellte Haltbarkeit in Tagen (0 = manuell eingeben)
+    bool   askQty;       // Anzahl/Portionen vor Einlagerung abfragen
 };
 
 class CustomProducts {

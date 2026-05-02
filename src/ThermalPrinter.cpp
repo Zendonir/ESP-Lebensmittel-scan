@@ -70,7 +70,8 @@ void ThermalPrinter::barcode128(const String &data) {
 // ── Label ─────────────────────────────────────────────────────
 
 void ThermalPrinter::printLabel(const String &name, const String &labelCode,
-                                 const String &storageDate, const String &expiryDate) {
+                                 const String &storageDate, const String &expiryDate,
+                                 int qty) {
     init();
 
     // ── Barcode (zentriert) ───────────────────────────────────
@@ -93,6 +94,8 @@ void ThermalPrinter::printLabel(const String &name, const String &labelCode,
     printLine("Einlag: " + storageDate);
     if (!expiryDate.isEmpty())
         printLine("MHD:    " + expiryDate);
+    if (qty > 1)
+        printLine("Menge:  " + String(qty) + " Stk.");
 
     // ── Abschneiden ───────────────────────────────────────────
     feed(3);

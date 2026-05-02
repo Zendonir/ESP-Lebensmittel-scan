@@ -528,3 +528,33 @@ void DisplayManager::showAPMode(const String &ssid, const String &password, cons
                     "Inventar anzeigen", COLOR_BTN_BACK, COLOR_TEXT, g_fontCfg.btn);
     _gfx->flush();
 }
+
+// ── Anzahl / Portionen-Eingabe ────────────────────────────────
+
+void DisplayManager::showQtyInput(const String &productName, int qty) {
+    _gfx->fillScreen(COLOR_BG);
+    drawHeader("Anzahl / Portionen");
+
+    String pn = productName.length() > 22 ? productName.substring(0, 22) : productName;
+    textCenter(pn, W / 2, 75, g_fontCfg.body, COLOR_TEXT);
+
+    // Minus-Taste (links)
+    _gfx->fillRoundRect(8, 145, 90, 90, 14, COLOR_SURFACE);
+    textCenter("-", 53, 190, g_fontCfg.value, COLOR_TEXT, COLOR_SURFACE);
+
+    // Anzahl (groß, mittig)
+    textCenter(String(qty), W / 2, 190, g_fontCfg.value, COLOR_ACCENT);
+
+    // Plus-Taste (rechts)
+    _gfx->fillRoundRect(182, 145, 90, 90, 14, COLOR_SURFACE);
+    textCenter("+", 227, 190, g_fontCfg.value, COLOR_TEXT, COLOR_SURFACE);
+
+    // Hinweis
+    textCenter("Portionen / Stueck", W / 2, 260, g_fontCfg.small, COLOR_SUBTEXT);
+
+    drawTouchButton(TBTN_X, TBTN_SECONDARY_Y, TBTN_W, TBTN_H,
+                    "< Zurueck", COLOR_SURFACE, COLOR_SUBTEXT, g_fontCfg.small);
+    drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H,
+                    "OK", COLOR_BTN_OK, COLOR_TEXT, g_fontCfg.btn);
+    _gfx->flush();
+}

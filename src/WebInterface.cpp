@@ -173,7 +173,7 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     <table id="cpTable" style="display:none">
       <thead><tr>
         <th>Kategorie</th><th>Produktname</th>
-        <th>Marke</th><th>MHD (Tage)</th><th>Barcode</th><th></th>
+        <th>Marke</th><th>MHD (Tage)</th><th>Anzahl</th><th>Barcode</th><th></th>
       </tr></thead>
       <tbody id="cpBody"></tbody>
     </table>
@@ -189,8 +189,16 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
       <label>Marke
         <input type="text" id="cpBrand" placeholder="z.B. Metzger Schmidt" maxlength="40">
       </label>
-      <label>Standard-MHD (Tage) <span style="color:var(--muted)">(0 = manuell)</span>
+      <label>Beschreibung <span style="color:var(--muted)">(optional)</span>
+        <textarea id="cpDescription" placeholder="z.B. Vakuumiert, 500g Packungen" maxlength="200" rows="2"
+          style="width:100%;resize:vertical;font-size:.9rem;padding:.4rem .6rem;border-radius:.5rem;border:1px solid var(--border);background:var(--surface);color:var(--text)"></textarea>
+      </label>
+      <label>Standard-MHD (Tage) <span style="color:var(--muted)">(0 = manuell am Ger&auml;t eingeben)</span>
         <input type="number" id="cpDefaultDays" placeholder="z.B. 180" min="0" max="3650" value="0" style="width:120px">
+      </label>
+      <label style="display:flex;align-items:center;gap:.6rem;cursor:pointer">
+        <input type="checkbox" id="cpAskQty" style="width:18px;height:18px;cursor:pointer">
+        <span>Anzahl / Portionen beim Einlagern abfragen</span>
       </label>
       <label>Barcode <span style="color:var(--muted)">(optional)</span>
         <input type="text" id="cpBarcode" placeholder="EAN13 / leer lassen" maxlength="30">
@@ -617,13 +625,17 @@ function renderCP(){
   const tbody=document.getElementById('cpBody');tbody.innerHTML='';
   categories.forEach(cat=>{if(!bycat[cat]||bycat[cat].length===0)return;
     const hdr=document.createElement('tr');hdr.className='cat-group-header';
-    hdr.innerHTML='<td colspan="6">'+catBadge(cat)+'&nbsp;'+esc(cat)+' ('+bycat[cat].length+')</td>';
+    hdr.innerHTML='<td colspan="7">'+catBadge(cat)+'&nbsp;'+esc(cat)+' ('+bycat[cat].length+')</td>';
     tbody.appendChild(hdr);
     bycat[cat].forEach(p=>{const tr=document.createElement('tr');
       const days=p.defaultDays>0?'<span class="pill pill-ok">'+p.defaultDays+' Tage</span>':'<span style="color:var(--muted)">manuell</span>';
-      tr.innerHTML='<td>'+catBadge(p.category)+'</td><td style="font-weight:500">'+esc(p.name)+'</td>'+
+      const qty=p.askQty?'<span class="pill pill-ok">&#x2714;</span>':'<span style="color:var(--muted)">–</span>';
+      const desc=p.description?'<div style="font-size:.8rem;color:var(--muted);margin-top:.15rem">'+esc(p.description)+'</div>':'';
+      tr.innerHTML='<td>'+catBadge(p.category)+'</td>'+
+        '<td style="font-weight:500">'+esc(p.name)+desc+'</td>'+
         '<td style="color:var(--muted)">'+esc(p.brand||'–')+'</td>'+
         '<td>'+days+'</td>'+
+        '<td>'+qty+'</td>'+
         '<td class="mono">'+esc(p.barcode||'–')+'</td>'+
         '<td><button class="btn btn-danger btn-sm" onclick="deleteCP('+p._idx+')">L&ouml;schen</button></td>';
       tbody.appendChild(tr);});});
@@ -633,17 +645,20 @@ async function addCP(){
   const brand=document.getElementById('cpBrand').value.trim();
   const barcode=document.getElementById('cpBarcode').value.trim();
   const category=document.getElementById('cpCategory').value;
+  const description=document.getElementById('cpDescription').value.trim();
   const defaultDays=parseInt(document.getElementById('cpDefaultDays').value)||0;
+  const askQty=document.getElementById('cpAskQty').checked;
   const msg=document.getElementById('cpMsg');
   if(!name){msg.style.color='var(--danger)';msg.textContent='Name ist Pflichtfeld.';return;}
   const r=await fetch('/api/custom-products',{method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({name,brand,barcode,category,defaultDays})});
+    body:JSON.stringify({name,brand,barcode,category,description,defaultDays,askQty})});
   const data=await r.json();
   if(r.ok){msg.style.color='var(--ok)';
-    msg.textContent='✓ "'+name+'" ('+category+(defaultDays>0?', MHD: '+defaultDays+' Tage':'')+') hinzugefügt.';
+    msg.textContent='✓ "'+name+'" ('+category+(defaultDays>0?', MHD: '+defaultDays+' Tage':'')+(askQty?', Anzahl':'')+') hinzugefügt.';
     document.getElementById('cpName').value='';document.getElementById('cpBrand').value='';
     document.getElementById('cpBarcode').value='';document.getElementById('cpDefaultDays').value='0';
+    document.getElementById('cpDescription').value='';document.getElementById('cpAskQty').checked=false;
     loadCP();
   }else{msg.style.color='var(--danger)';msg.textContent='Fehler: '+(data.error||r.status);}
 }
@@ -1253,7 +1268,9 @@ void WebInterface::begin() {
             obj["brand"]       = p.brand;
             obj["barcode"]     = p.barcode;
             obj["category"]    = p.category;
+            obj["description"] = p.description;
             obj["defaultDays"] = p.defaultDays;
+            obj["askQty"]      = p.askQty;
         }
         doc["count"] = _customProducts.count();
         String out; serializeJson(doc, out);
@@ -1273,7 +1290,9 @@ void WebInterface::begin() {
             p.brand       = doc["brand"].as<String>();
             p.barcode     = doc["barcode"].as<String>();
             p.category    = doc["category"].as<String>();
+            p.description = doc["description"].as<String>();
             p.defaultDays = doc["defaultDays"] | 0;
+            p.askQty      = doc["askQty"] | false;
             if (p.name.isEmpty()) {
                 req->send(400, "application/json", "{\"error\":\"Name erforderlich\"}"); return;
             }
