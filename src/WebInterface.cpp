@@ -10,6 +10,7 @@ extern bool g_useNumpad;
 #include <ArduinoJson.h>
 #include <Update.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <time.h>
 
 static const char OTA_PAGE_HTML[] = R"HTML(<!DOCTYPE html>
@@ -394,6 +395,22 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
       <button class="btn btn-ok" onclick="saveOtaPw()">Speichern</button>
     </div>
     <div id="otaMsg" style="margin-top:.75rem;font-size:.85rem"></div>
+    <hr style="border-color:var(--border);margin:1.5rem 0">
+    <h2 style="margin-bottom:1rem">GitHub OTA – Automatisches Update</h2>
+    <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
+      Pr&uuml;ft den aktuellen GitHub Release und flasht die neue Firmware direkt.
+    </p>
+    <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
+      <button class="btn" onclick="checkGithubRelease()">&#x1F50D; Pr&uuml;fen</button>
+      <button class="btn btn-ok" id="ghOtaFlash" onclick="flashGithubRelease()" style="display:none">&#x26A1; Installieren</button>
+      <span id="ghOtaMsg" style="font-size:.85rem;color:var(--muted)"></span>
+    </div>
+    <div id="ghOtaProgress" style="display:none;margin-top:1rem">
+      <div style="background:var(--border);border-radius:99px;height:8px;overflow:hidden">
+        <div id="ghOtaBar" style="background:var(--accent);height:100%;width:0%;transition:width .3s"></div>
+      </div>
+      <p id="ghOtaStatus" style="font-size:.8rem;color:var(--muted);margin-top:.4rem"></p>
+    </div>
     <hr style="border-color:var(--border);margin:1.5rem 0">
     <h2 style="margin-bottom:1rem">Ger&auml;t &amp; Server-Sync</h2>
     <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
@@ -939,6 +956,48 @@ async function saveOtaPw(){
   else{msg.style.color='var(--danger)';msg.textContent='Fehler';}
 }
 
+// ── GitHub OTA ────────────────────────────────────────────────
+let _ghOtaUrl='';
+async function checkGithubRelease(){
+  const msg=document.getElementById('ghOtaMsg');
+  const btn=document.getElementById('ghOtaFlash');
+  msg.style.color='var(--muted)';msg.textContent='Prüfe GitHub…';btn.style.display='none';
+  try{
+    const d=await fetch('/api/github-release').then(r=>r.json());
+    if(d.error){msg.style.color='var(--danger)';msg.textContent='Fehler: '+d.error;return;}
+    _ghOtaUrl=d.url||'';
+    msg.style.color='var(--ok)';
+    msg.textContent='Verfügbar: '+d.tag+' ('+d.size+')';
+    btn.style.display='';
+  }catch(e){msg.style.color='var(--danger)';msg.textContent='Netzwerkfehler';}
+}
+async function flashGithubRelease(){
+  if(!_ghOtaUrl)return;
+  const prog=document.getElementById('ghOtaProgress');
+  const bar=document.getElementById('ghOtaBar');
+  const stat=document.getElementById('ghOtaStatus');
+  const msg=document.getElementById('ghOtaMsg');
+  prog.style.display='block';bar.style.width='10%';
+  stat.textContent='Lade Firmware herunter und flashe…';
+  msg.textContent='';
+  try{
+    const r=await fetch('/api/github-ota',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({url:_ghOtaUrl})});
+    const d=await r.json();
+    if(r.ok&&d.ok){
+      bar.style.width='100%';
+      stat.textContent='✓ Fertig! Gerät startet neu…';
+      msg.style.color='var(--ok)';msg.textContent='Update erfolgreich.';
+    }else{
+      bar.style.width='0%';
+      stat.textContent='Fehler: '+(d.error||r.status);
+      msg.style.color='var(--danger)';
+    }
+  }catch(e){bar.style.width='0%';stat.textContent='Netzwerkfehler: '+e.message;
+    msg.style.color='var(--danger)';}
+}
+
 // ── Diagnose ──────────────────────────────────────────────────
 async function testBuzzer(){
   const msg=document.getElementById('buzzerMsg');
@@ -1482,6 +1541,92 @@ void WebInterface::begin() {
             p.putString("password", pw);
             p.end();
             req->send(200, "application/json", "{\"ok\":true}");
+        }
+    );
+
+    // ── GitHub OTA ───────────────────────────────────────────
+    _server.on("/api/github-release", HTTP_GET, [](AsyncWebServerRequest *req) {
+        WiFiClientSecure client; client.setInsecure();
+        HTTPClient https;
+        // GitHub API: latest release for this repo
+        String apiUrl = "https://api.github.com/repos/zendonir/esp-lebensmittel-scan/releases/latest";
+        if (!https.begin(client, apiUrl)) {
+            req->send(503, "application/json", "{\"error\":\"begin failed\"}"); return;
+        }
+        https.addHeader("User-Agent", "ESP32-Lebensmittel");
+        https.addHeader("Accept",     "application/vnd.github+json");
+        int code = https.GET();
+        if (code != 200) {
+            String err = "{\"error\":\"HTTP " + String(code) + "\"}";
+            https.end(); req->send(200, "application/json", err); return;
+        }
+        String body = https.getString();
+        https.end();
+
+        JsonDocument doc;
+        if (deserializeJson(doc, body)) {
+            req->send(200, "application/json", "{\"error\":\"JSON parse\"}"); return;
+        }
+        String tag = doc["tag_name"] | String("?");
+        String url, sizeStr;
+        for (JsonObject a : doc["assets"].as<JsonArray>()) {
+            String name = a["name"] | String("");
+            if (name.endsWith(".bin")) {
+                url     = a["browser_download_url"] | String("");
+                int sz  = a["size"] | 0;
+                sizeStr = String(sz / 1024) + " KB";
+                break;
+            }
+        }
+        if (url.isEmpty()) {
+            req->send(200, "application/json", "{\"error\":\"No .bin asset\"}"); return;
+        }
+        JsonDocument out;
+        out["tag"]  = tag;
+        out["url"]  = url;
+        out["size"] = sizeStr;
+        String s; serializeJson(out, s);
+        req->send(200, "application/json", s);
+    });
+
+    _server.on("/api/github-ota", HTTP_POST,
+        [](AsyncWebServerRequest *req) {},
+        nullptr,
+        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonDocument doc;
+            if (deserializeJson(doc, (const char*)data, len)) {
+                req->send(400, "application/json", "{\"error\":\"JSON\"}"); return;
+            }
+            String url = doc["url"] | String("");
+            if (url.isEmpty()) {
+                req->send(400, "application/json", "{\"error\":\"no url\"}"); return;
+            }
+            // Run OTA in a background task to allow response to be sent first
+            req->send(200, "application/json", "{\"ok\":true}");
+
+            // Delay slightly then start OTA
+            static String _otaUrl;
+            _otaUrl = url;
+            xTaskCreate([](void *) {
+                vTaskDelay(pdMS_TO_TICKS(200));
+                WiFiClientSecure client; client.setInsecure();
+                HTTPClient https;
+                // Follow redirect: GitHub releases redirect to S3
+                https.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+                if (!https.begin(client, _otaUrl)) { vTaskDelete(nullptr); return; }
+                https.addHeader("User-Agent", "ESP32-Lebensmittel");
+                int code = https.GET();
+                if (code != 200) { https.end(); vTaskDelete(nullptr); return; }
+                int sz = https.getSize();
+                if (!Update.begin(sz > 0 ? sz : UPDATE_SIZE_UNKNOWN)) {
+                    https.end(); vTaskDelete(nullptr); return;
+                }
+                WiFiClient *stream = https.getStreamPtr();
+                Update.writeStream(*stream);
+                https.end();
+                if (Update.end(true)) ESP.restart();
+                vTaskDelete(nullptr);
+            }, "ghota", 8192, nullptr, 1, nullptr);
         }
     );
 
