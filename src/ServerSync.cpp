@@ -62,10 +62,12 @@ String ServerSync::buildItemPayload(const String &type, const InventoryItem &ite
 
 bool ServerSync::registerDevice() {
     JsonDocument doc;
-    doc["device_id"]   = _cfg.deviceId;
-    doc["device_name"] = _cfg.deviceName;
-    doc["device_room"] = _cfg.deviceRoom;
-    doc["ip"]          = WiFi.localIP().toString();
+    doc["device_id"]    = _cfg.deviceId;
+    doc["device_name"]  = _cfg.deviceName;
+    doc["device_room"]  = _cfg.deviceRoom;
+    doc["ip"]           = WiFi.localIP().toString();
+    if (_cfg.householdId > 0)
+        doc["household_id"] = _cfg.householdId;
     String body; serializeJson(doc, body);
     return httpPost("/api/devices", body);
 }
@@ -90,18 +92,20 @@ bool ServerSync::httpPost(const String &path, const String &body) {
 ServerSync::Config ServerSync::loadConfig() {
     Config c;
     Preferences p; p.begin("sync", true);
-    c.serverUrl  = p.getString("url",    "");
-    c.deviceName = p.getString("name",   "Lebensmittel Scanner");
-    c.deviceRoom = p.getString("room",   "");
-    c.deviceId   = WiFi.macAddress();
+    c.serverUrl   = p.getString("url",    "");
+    c.deviceName  = p.getString("name",   "Lebensmittel Scanner");
+    c.deviceRoom  = p.getString("room",   "");
+    c.householdId = p.getInt("household", 0);
+    c.deviceId    = WiFi.macAddress();
     p.end();
     return c;
 }
 
 void ServerSync::saveConfig(const Config &cfg) {
     Preferences p; p.begin("sync", false);
-    p.putString("url",  cfg.serverUrl);
-    p.putString("name", cfg.deviceName);
-    p.putString("room", cfg.deviceRoom);
+    p.putString("url",      cfg.serverUrl);
+    p.putString("name",     cfg.deviceName);
+    p.putString("room",     cfg.deviceRoom);
+    p.putInt("household",   cfg.householdId);
     p.end();
 }

@@ -558,3 +558,83 @@ void DisplayManager::showQtyInput(const String &productName, int qty) {
                     "OK", COLOR_BTN_OK, COLOR_TEXT, g_fontCfg.btn);
     _gfx->flush();
 }
+
+// ── Haushalt-Auswahl ─────────────────────────────────────────
+
+void DisplayManager::showHouseholdSelect(const std::vector<String> &names, int myIdx, int selIdx) {
+    _gfx->fillScreen(COLOR_BG);
+    drawHeader("Haushalte");
+
+    int n = (int)names.size();
+    if (n == 0) {
+        textCenter("Kein Server konfiguriert", W / 2, H / 2, g_fontCfg.body, COLOR_SUBTEXT);
+        drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H,
+                        "< Zurueck", COLOR_SURFACE, COLOR_SUBTEXT, g_fontCfg.small);
+        _gfx->flush();
+        return;
+    }
+
+    int startY = 54;
+    int rowH   = min(60, (TBTN_SECONDARY_Y - startY) / max(1, n));
+
+    for (int i = 0; i < n && i < 6; i++) {
+        int16_t y   = startY + i * rowH;
+        bool isMine = (i == myIdx);
+        bool isSel  = (i == selIdx);
+        uint16_t bg = isSel ? COLOR_ACCENT : (isMine ? COLOR_SURFACE : COLOR_BG);
+        uint16_t fg = isSel ? COLOR_BG     : (isMine ? COLOR_TEXT    : COLOR_SUBTEXT);
+        _gfx->fillRoundRect(8, y + 4, W - 16, rowH - 8, 10, bg);
+        String label = names[i];
+        if (isMine) label += " (dieses Geraet)";
+        textCenter(label, W / 2, y + rowH / 2, g_fontCfg.body, fg, bg);
+    }
+
+    drawTouchButton(TBTN_X, TBTN_SECONDARY_Y, TBTN_W, TBTN_H,
+                    "Oeffnen", COLOR_BTN_OK, COLOR_TEXT, g_fontCfg.btn);
+    drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H,
+                    "< Zurueck", COLOR_SURFACE, COLOR_SUBTEXT, g_fontCfg.small);
+    _gfx->flush();
+}
+
+// ── Haushalt-Inventar (read-only) ────────────────────────────
+
+void DisplayManager::showHouseholdInventory(const String &hhName,
+                                             const std::vector<String> &itemNames,
+                                             const std::vector<int> &daysLeft,
+                                             int offset, int total) {
+    _gfx->fillScreen(COLOR_BG);
+    _gfx->fillRect(0, 0, W, SUB_HDR, COLOR_HEADER);
+    textCenter(hhName, W / 2, SUB_HDR / 2, g_fontCfg.header, COLOR_TEXT, COLOR_HEADER);
+
+    int vis = min((int)itemNames.size(), LIST_MAX_VIS);
+    for (int i = 0; i < vis; i++) {
+        int16_t ry  = SUB_HDR + i * LIST_ITEM_H;
+        bool even   = (i % 2 == 0);
+        uint16_t bg = even ? COLOR_SURFACE : COLOR_BG;
+        _gfx->fillRect(0, ry, W, LIST_ITEM_H, bg);
+
+        int dl = daysLeft[i];
+        uint16_t clr;
+        if      (dl < 0)  clr = 0xF800;
+        else if (dl < 3)  clr = 0xFD20;
+        else              clr = COLOR_TEXT;
+
+        textLeft(itemNames[i], 10, ry + LIST_ITEM_H / 2, g_fontCfg.body, clr, bg);
+        String dlStr = (dl < 0) ? "abg." : (dl == 0 ? "heute" : String(dl) + "d");
+        textCenter(dlStr, W - 30, ry + LIST_ITEM_H / 2, g_fontCfg.small, clr, bg);
+    }
+
+    if (total > LIST_MAX_VIS) {
+        String pg = String(offset / LIST_MAX_VIS + 1) + "/" +
+                    String((total + LIST_MAX_VIS - 1) / LIST_MAX_VIS);
+        textCenter(pg, W / 2, TBTN_SECONDARY_Y - 16, g_fontCfg.small, COLOR_SUBTEXT);
+    }
+
+    drawTouchButton(TBTN_X, TBTN_SECONDARY_Y, (TBTN_W - 8) / 2, TBTN_H,
+                    "< Vor", COLOR_SURFACE, COLOR_SUBTEXT, g_fontCfg.small);
+    drawTouchButton(TBTN_X + (TBTN_W + 8) / 2, TBTN_SECONDARY_Y, (TBTN_W - 8) / 2, TBTN_H,
+                    "Vor >", COLOR_SURFACE, COLOR_SUBTEXT, g_fontCfg.small);
+    drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H,
+                    "< Zurueck", COLOR_SURFACE, COLOR_SUBTEXT, g_fontCfg.small);
+    _gfx->flush();
+}

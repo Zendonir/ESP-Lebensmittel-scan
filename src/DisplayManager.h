@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino_GFX_Library.h>
+#include <vector>
 #include "config.h"
 #include "FoodAPI.h"
 #include "CustomProducts.h"
@@ -90,6 +91,12 @@ public:
                            const String &expiry, int qty, int daysLeft);
     void showAPMode(const String &ssid, const String &password, const String &ip);
     void showQtyInput(const String &productName, int qty);
+
+    // Haushalt-Auswahl: Liste aller Haushalte, myIdx = eigener Haushalt
+    void showHouseholdSelect(const std::vector<String> &names, int myIdx, int selIdx);
+    // Haushalt-Inventar: Artikel-Liste eines fremden Haushalts
+    void showHouseholdInventory(const String &hhName, const std::vector<String> &itemNames,
+                                const std::vector<int> &daysLeft, int offset, int total);
 
 private:
     Arduino_DataBus *_bus;
