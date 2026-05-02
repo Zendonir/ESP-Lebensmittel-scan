@@ -95,16 +95,17 @@ private:
     Arduino_CO5300  *_panel;
     Arduino_Canvas  *_gfx;
 
-    void textCenter(const String &s, int16_t cx, int16_t cy, uint8_t sz,
+    void applyFont(uint8_t px);
+    void textCenter(const String &s, int16_t cx, int16_t cy, uint8_t px,
                     uint16_t color, uint16_t bg = COLOR_BG);
-    void textLeft(const String &s, int16_t x, int16_t y, uint8_t sz,
+    void textLeft(const String &s, int16_t x, int16_t y, uint8_t px,
                   uint16_t color, uint16_t bg = COLOR_BG);
-    int16_t textWidth(const String &s, uint8_t sz);
+    int16_t textWidth(const String &s, uint8_t px);
 
     void drawHeader(const String &title, uint16_t bgColor = COLOR_HEADER);
     void drawStatusBar(const String &title, uint16_t titleColor, bool showBack, bool wifiOk);
     void drawTouchButton(int16_t x, int16_t y, int16_t w, int16_t h,
                          const String &label, uint16_t bg, uint16_t fg,
-                         uint8_t textSz = 2);
+                         uint8_t textPx = 16);
     String daysLabel(int days);
 };

@@ -422,37 +422,37 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;max-width:440px">
       <label style="font-size:.85rem;color:var(--muted)">&#x1F4D1; &Uuml;berschriften / Titel
         <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
-          <input type="number" id="fszTitle" min="8" max="32" step="8" style="width:70px">
+          <input type="number" id="fszTitle" min="8" max="32" step="1" style="width:70px">
           <span style="color:var(--muted);font-size:.8rem">px</span>
         </div>
       </label>
       <label style="font-size:.85rem;color:var(--muted)">&#x1F4DD; Haupttext / Namen
         <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
-          <input type="number" id="fszBody" min="8" max="32" step="8" style="width:70px">
+          <input type="number" id="fszBody" min="8" max="32" step="1" style="width:70px">
           <span style="color:var(--muted);font-size:.8rem">px</span>
         </div>
       </label>
       <label style="font-size:.85rem;color:var(--muted)">&#x1F50D; Kleine Hinweistexte
         <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
-          <input type="number" id="fszSmall" min="8" max="32" step="8" style="width:70px">
+          <input type="number" id="fszSmall" min="8" max="32" step="1" style="width:70px">
           <span style="color:var(--muted);font-size:.8rem">px</span>
         </div>
       </label>
       <label style="font-size:.85rem;color:var(--muted)">&#x1F522; Hervorgehobene Zahlen
         <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
-          <input type="number" id="fszValue" min="8" max="32" step="8" style="width:70px">
+          <input type="number" id="fszValue" min="8" max="32" step="1" style="width:70px">
           <span style="color:var(--muted);font-size:.8rem">px</span>
         </div>
       </label>
       <label style="font-size:.85rem;color:var(--muted)">&#x1F522; Ziffernblock-Tasten
         <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
-          <input type="number" id="fszKey" min="8" max="32" step="8" style="width:70px">
+          <input type="number" id="fszKey" min="8" max="32" step="1" style="width:70px">
           <span style="color:var(--muted);font-size:.8rem">px</span>
         </div>
       </label>
       <label style="font-size:.85rem;color:var(--muted)">&#x1F518; Button-Beschriftungen
         <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
-          <input type="number" id="fszBtn" min="8" max="32" step="8" style="width:70px">
+          <input type="number" id="fszBtn" min="8" max="32" step="1" style="width:70px">
           <span style="color:var(--muted);font-size:.8rem">px</span>
         </div>
       </label>
@@ -805,7 +805,7 @@ async function loadFontSizes(){
 }
 async function saveFontSizes(){
   const msg=document.getElementById('fszMsg');
-  const clamp=v=>{const n=Math.round(parseInt(v)/8)*8;return n<8?8:n>32?32:n;};
+  const clamp=v=>{const n=Math.round(parseInt(v));return n<8?8:n>32?32:n;};
   const body={
     title:clamp(document.getElementById('fszTitle').value),
     body:clamp(document.getElementById('fszBody').value),
@@ -1117,7 +1117,7 @@ void WebInterface::begin() {
             if (deserializeJson(doc, (const char*)data, len)) {
                 req->send(400, "application/json", "{\"error\":\"JSON\"}"); return;
             }
-            auto clamp = [](int v) -> uint8_t { v = (v/8)*8; return v < 8 ? 8 : v > 32 ? 32 : (uint8_t)v; };
+            auto clamp = [](int v) -> uint8_t { return v < 8 ? 8 : v > 32 ? 32 : (uint8_t)v; };
             g_fontCfg.title = clamp(doc["title"] | 16);
             g_fontCfg.body  = clamp(doc["body"]  | 16);
             g_fontCfg.small = clamp(doc["small"] |  8);
