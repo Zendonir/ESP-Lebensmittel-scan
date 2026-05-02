@@ -399,13 +399,18 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     <hr style="border-color:var(--border);margin:1.5rem 0">
     <h2 style="margin-bottom:1rem">GitHub OTA – Automatisches Update</h2>
     <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
-      Pr&uuml;ft den aktuellen GitHub Release und flasht die neue Firmware direkt.
+      L&auml;dt alle verf&uuml;gbaren Firmware-Versionen von GitHub und flasht die gew&auml;hlte Version direkt.
     </p>
-    <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
-      <button class="btn" onclick="checkGithubRelease()">&#x1F50D; Pr&uuml;fen</button>
+    <div style="display:flex;gap:.75rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:.75rem">
+      <label style="font-size:.85rem;color:var(--muted)">Version
+        <select id="ghVersionSelect" style="display:block;width:260px;margin-top:.3rem" disabled>
+          <option value="">– Versionen laden –</option>
+        </select>
+      </label>
+      <button class="btn" onclick="loadGithubReleases()">&#x1F504; Laden</button>
       <button class="btn btn-ok" id="ghOtaFlash" onclick="flashGithubRelease()" style="display:none">&#x26A1; Installieren</button>
-      <span id="ghOtaMsg" style="font-size:.85rem;color:var(--muted)"></span>
     </div>
+    <span id="ghOtaMsg" style="font-size:.85rem;color:var(--muted)"></span>
     <div id="ghOtaProgress" style="display:none;margin-top:1rem">
       <div style="background:var(--border);border-radius:99px;height:8px;overflow:hidden">
         <div id="ghOtaBar" style="background:var(--accent);height:100%;width:0%;transition:width .3s"></div>
@@ -1002,18 +1007,29 @@ async function saveOtaPw(){
 
 // ── GitHub OTA ────────────────────────────────────────────────
 let _ghOtaUrl='';
-async function checkGithubRelease(){
+async function loadGithubReleases(){
+  const sel=document.getElementById('ghVersionSelect');
   const msg=document.getElementById('ghOtaMsg');
   const btn=document.getElementById('ghOtaFlash');
-  msg.style.color='var(--muted)';msg.textContent='Prüfe GitHub…';btn.style.display='none';
+  msg.style.color='var(--muted)';msg.textContent='Lade Versionen…';
+  sel.disabled=true;btn.style.display='none';_ghOtaUrl='';
   try{
-    const d=await fetch('/api/github-release').then(r=>r.json());
-    if(d.error){msg.style.color='var(--danger)';msg.textContent='Fehler: '+d.error;return;}
-    _ghOtaUrl=d.url||'';
-    msg.style.color='var(--ok)';
-    msg.textContent='Verfügbar: '+d.tag+' ('+d.size+')';
+    const list=await fetch('/api/github-releases').then(r=>r.json());
+    if(list.error){msg.style.color='var(--danger)';msg.textContent='Fehler: '+list.error;return;}
+    if(!list.length){msg.textContent='Keine Releases mit Firmware gefunden.';return;}
+    sel.innerHTML='';
+    list.forEach(r=>{
+      const o=document.createElement('option');
+      o.value=r.url;
+      o.textContent=r.tag+(r.size?' ('+r.size+')':'');
+      sel.appendChild(o);
+    });
+    sel.disabled=false;
+    _ghOtaUrl=sel.value;
+    msg.style.color='var(--ok)';msg.textContent=list.length+' Version(en) verfügbar.';
     btn.style.display='';
-  }catch(e){msg.style.color='var(--danger)';msg.textContent='Netzwerkfehler';}
+    sel.onchange=()=>{_ghOtaUrl=sel.value;};
+  }catch(e){msg.style.color='var(--danger)';msg.textContent='Netzwerkfehler: '+e.message;}
 }
 async function flashGithubRelease(){
   if(!_ghOtaUrl)return;
@@ -1619,11 +1635,11 @@ void WebInterface::begin() {
     );
 
     // ── GitHub OTA ───────────────────────────────────────────
-    _server.on("/api/github-release", HTTP_GET, [](AsyncWebServerRequest *req) {
+    _server.on("/api/github-releases", HTTP_GET, [](AsyncWebServerRequest *req) {
         WiFiClientSecure client; client.setInsecure();
         HTTPClient https;
-        // GitHub API: latest release for this repo
-        String apiUrl = "https://api.github.com/repos/zendonir/esp-lebensmittel-scan/releases/latest";
+        // GitHub API: alle Releases (max. erste Seite = 30)
+        String apiUrl = "https://api.github.com/repos/zendonir/esp-lebensmittel-scan/releases?per_page=20";
         if (!https.begin(client, apiUrl)) {
             req->send(503, "application/json", "{\"error\":\"begin failed\"}"); return;
         }
@@ -1641,24 +1657,29 @@ void WebInterface::begin() {
         if (deserializeJson(doc, body)) {
             req->send(200, "application/json", "{\"error\":\"JSON parse\"}"); return;
         }
-        String tag = doc["tag_name"] | String("?");
-        String url, sizeStr;
-        for (JsonObject a : doc["assets"].as<JsonArray>()) {
-            String name = a["name"] | String("");
-            if (name.endsWith(".bin")) {
-                url     = a["browser_download_url"] | String("");
-                int sz  = a["size"] | 0;
-                sizeStr = String(sz / 1024) + " KB";
-                break;
-            }
-        }
-        if (url.isEmpty()) {
-            req->send(200, "application/json", "{\"error\":\"No .bin asset\"}"); return;
-        }
+
         JsonDocument out;
-        out["tag"]  = tag;
-        out["url"]  = url;
-        out["size"] = sizeStr;
+        JsonArray arr = out.to<JsonArray>();
+        for (JsonObject rel : doc.as<JsonArray>()) {
+            String tag = rel["tag_name"] | String("");
+            if (tag.isEmpty()) continue;
+            // .bin-Asset suchen
+            String url, sizeStr;
+            for (JsonObject a : rel["assets"].as<JsonArray>()) {
+                String name = a["name"] | String("");
+                if (name.endsWith(".bin")) {
+                    url     = a["browser_download_url"] | String("");
+                    int sz  = a["size"] | 0;
+                    sizeStr = String(sz / 1024) + " KB";
+                    break;
+                }
+            }
+            if (url.isEmpty()) continue;  // Release ohne .bin überspringen
+            JsonObject entry = arr.add<JsonObject>();
+            entry["tag"]  = tag;
+            entry["url"]  = url;
+            entry["size"] = sizeStr;
+        }
         String s; serializeJson(out, s);
         req->send(200, "application/json", s);
     });
