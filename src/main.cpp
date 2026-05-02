@@ -440,7 +440,13 @@ void setup() {
     Serial.printf("[Display] begin()=%d\n", dispOk);
     display.showBooting("Display + Touch OK"); delay(300);
 
-    scanner.begin();
+    if (BarcodeScanner::loadBTMode()) {
+        String bleName = BarcodeScanner::loadBTName();
+        display.showBooting("BLE-Scanner: " + (bleName.isEmpty() ? "beliebig" : bleName));
+        scanner.beginBLE(bleName);
+    } else {
+        scanner.begin();
+    }
     display.showBooting("Scanner OK"); delay(200);
 
     printer.begin();
@@ -600,8 +606,18 @@ void loop() {
             for (const auto &cat : g_categories)
                 catCounts.push_back(inventory.countByCategory(cat.name));
             int warnCount = inventory.expiringIn(WARNING_DAYS) + inventory.expiredCount();
-            display.showCategoryGrid(catCounts, warnCount, WiFi.status() == WL_CONNECTED);
+            int btStatus  = scanner.isBLEMode()
+                            ? (scanner.bleConnected() ? 2 : 1)
+                            : 0;
+            display.showCategoryGrid(catCounts, warnCount,
+                                     WiFi.status() == WL_CONNECTED, btStatus);
             screenDirty = false;
+        }
+        // Wenn BLE-Modus aktiv: Screen neu zeichnen wenn Verbindungsstatus wechselt
+        if (scanner.isBLEMode()) {
+            static bool _lastBleConn = false;
+            bool conn = scanner.bleConnected();
+            if (conn != _lastBleConn) { _lastBleConn = conn; screenDirty = true; }
         }
         // Swipe-Down → Haushalt-Browser (nur wenn Server konfiguriert)
         if (gest == Gesture::SWIPE_DOWN && serverSync.isConfigured()) {

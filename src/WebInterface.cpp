@@ -1,6 +1,7 @@
 #include "WebInterface.h"
 #include "config.h"
 #include "FontConfig.h"
+#include "BarcodeScanner.h"
 extern bool g_useNumpad;
 #include "CategoryManager.h"
 #include "StorageStats.h"
@@ -10,6 +11,7 @@ extern bool g_useNumpad;
 #include <ArduinoJson.h>
 #include <Update.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <time.h>
 
 static const char OTA_PAGE_HTML[] = R"HTML(<!DOCTYPE html>
@@ -395,6 +397,22 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     </div>
     <div id="otaMsg" style="margin-top:.75rem;font-size:.85rem"></div>
     <hr style="border-color:var(--border);margin:1.5rem 0">
+    <h2 style="margin-bottom:1rem">GitHub OTA – Automatisches Update</h2>
+    <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
+      Pr&uuml;ft den aktuellen GitHub Release und flasht die neue Firmware direkt.
+    </p>
+    <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
+      <button class="btn" onclick="checkGithubRelease()">&#x1F50D; Pr&uuml;fen</button>
+      <button class="btn btn-ok" id="ghOtaFlash" onclick="flashGithubRelease()" style="display:none">&#x26A1; Installieren</button>
+      <span id="ghOtaMsg" style="font-size:.85rem;color:var(--muted)"></span>
+    </div>
+    <div id="ghOtaProgress" style="display:none;margin-top:1rem">
+      <div style="background:var(--border);border-radius:99px;height:8px;overflow:hidden">
+        <div id="ghOtaBar" style="background:var(--accent);height:100%;width:0%;transition:width .3s"></div>
+      </div>
+      <p id="ghOtaStatus" style="font-size:.8rem;color:var(--muted);margin-top:.4rem"></p>
+    </div>
+    <hr style="border-color:var(--border);margin:1.5rem 0">
     <h2 style="margin-bottom:1rem">Ger&auml;t &amp; Server-Sync</h2>
     <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
       Ger&auml;tename und Raum erscheinen im zentralen Server-Dashboard.
@@ -430,6 +448,28 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
       <button class="btn btn-ok" style="width:fit-content" onclick="saveDevConfig()">Speichern</button>
     </div>
     <div id="devMsg" style="margin-top:.75rem;font-size:.85rem"></div>
+    <hr style="border-color:var(--border);margin:1.5rem 0">
+    <h2 style="margin-bottom:1rem">Barcode-Scanner</h2>
+    <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
+      Eingebauter UART-Scanner (GM861) oder externer BLE-HID-Scanner (z.&nbsp;B.&nbsp;Inateck BCST-23).
+      Am Scanner muss vorher &bdquo;BLE HID&ldquo; aktiviert werden (QR-Code im Handbuch).
+      &Auml;nderungen wirken nach Neustart.
+    </p>
+    <div style="display:flex;flex-direction:column;gap:.75rem;max-width:440px">
+      <label style="font-size:.85rem;color:var(--muted)">Scanner-Typ
+        <select id="scannerMode" style="display:block;margin-top:.3rem;width:260px"
+                onchange="document.getElementById('btNameRow').style.display=this.value==='bt'?'flex':'none'">
+          <option value="uart">Eingebaut (UART / GM861)</option>
+          <option value="bt">BLE HID (externer Scanner)</option>
+        </select>
+      </label>
+      <label id="btNameRow" style="font-size:.85rem;color:var(--muted);display:none">Ger&auml;tename-Filter (leer&nbsp;= beliebiger HID-Scanner)
+        <input type="text" id="btDevName" maxlength="32" placeholder="z.B. BCST-23"
+               style="display:block;width:260px;margin-top:.3rem">
+      </label>
+      <button class="btn btn-ok" style="width:fit-content" onclick="saveScannerCfg()">Speichern &amp; Neustart</button>
+    </div>
+    <div id="scannerMsg" style="margin-top:.75rem;font-size:.85rem"></div>
     <hr style="border-color:var(--border);margin:1.5rem 0">
     <h2 style="margin-bottom:1rem">Schriftgr&ouml;&szlig;en am Ger&auml;t</h2>
     <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
@@ -514,7 +554,7 @@ function switchTab(id,btn){
   if(id==='mqtt'){loadMqtt();loadTelegram();}
   if(id==='shop')loadShop();
   if(id==='stats')loadStats();
-  if(id==='system'){loadOtaPw();loadDevConfig();loadFontSizes();}
+  if(id==='system'){loadOtaPw();loadDevConfig();loadScannerCfg();loadFontSizes();}
   if(id==='scanlogs')loadScanlogs();
 }
 async function loadWifi(){
@@ -840,6 +880,27 @@ async function saveDevConfig(){
   else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
 }
 
+// ── Scanner-Konfiguration ─────────────────────────────────────
+async function loadScannerCfg(){
+  try{const d=await fetch('/api/scanner-config').then(r=>r.json());
+    document.getElementById('scannerMode').value=d.bt?'bt':'uart';
+    document.getElementById('btDevName').value=d.btName||'';
+    document.getElementById('btNameRow').style.display=d.bt?'flex':'none';
+  }catch(e){}
+}
+async function saveScannerCfg(){
+  const msg=document.getElementById('scannerMsg');
+  const bt=(document.getElementById('scannerMode').value==='bt');
+  const btName=document.getElementById('btDevName').value.trim();
+  const r=await fetch('/api/scanner-config',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({bt,btName})});
+  if(r.ok){
+    msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert. Gerät startet neu…';
+    setTimeout(()=>location.reload(),4000);
+  }else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
+}
+
 // ── Schriftgrößen ─────────────────────────────────────────────
 async function loadFontSizes(){
   try{const d=await fetch('/api/font-config').then(r=>r.json());
@@ -937,6 +998,48 @@ async function saveOtaPw(){
     headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
   if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert. Wirkung nach Neustart.';}
   else{msg.style.color='var(--danger)';msg.textContent='Fehler';}
+}
+
+// ── GitHub OTA ────────────────────────────────────────────────
+let _ghOtaUrl='';
+async function checkGithubRelease(){
+  const msg=document.getElementById('ghOtaMsg');
+  const btn=document.getElementById('ghOtaFlash');
+  msg.style.color='var(--muted)';msg.textContent='Prüfe GitHub…';btn.style.display='none';
+  try{
+    const d=await fetch('/api/github-release').then(r=>r.json());
+    if(d.error){msg.style.color='var(--danger)';msg.textContent='Fehler: '+d.error;return;}
+    _ghOtaUrl=d.url||'';
+    msg.style.color='var(--ok)';
+    msg.textContent='Verfügbar: '+d.tag+' ('+d.size+')';
+    btn.style.display='';
+  }catch(e){msg.style.color='var(--danger)';msg.textContent='Netzwerkfehler';}
+}
+async function flashGithubRelease(){
+  if(!_ghOtaUrl)return;
+  const prog=document.getElementById('ghOtaProgress');
+  const bar=document.getElementById('ghOtaBar');
+  const stat=document.getElementById('ghOtaStatus');
+  const msg=document.getElementById('ghOtaMsg');
+  prog.style.display='block';bar.style.width='10%';
+  stat.textContent='Lade Firmware herunter und flashe…';
+  msg.textContent='';
+  try{
+    const r=await fetch('/api/github-ota',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({url:_ghOtaUrl})});
+    const d=await r.json();
+    if(r.ok&&d.ok){
+      bar.style.width='100%';
+      stat.textContent='✓ Fertig! Gerät startet neu…';
+      msg.style.color='var(--ok)';msg.textContent='Update erfolgreich.';
+    }else{
+      bar.style.width='0%';
+      stat.textContent='Fehler: '+(d.error||r.status);
+      msg.style.color='var(--danger)';
+    }
+  }catch(e){bar.style.width='0%';stat.textContent='Netzwerkfehler: '+e.message;
+    msg.style.color='var(--danger)';}
 }
 
 // ── Diagnose ──────────────────────────────────────────────────
@@ -1144,6 +1247,36 @@ void WebInterface::begin() {
             p2.end();
             g_useNumpad = numpad;
             req->send(200, "application/json", "{\"ok\":true}");
+        }
+    );
+
+    // ── Scanner-Konfiguration ────────────────────────────────
+    _server.on("/api/scanner-config", HTTP_GET, [](AsyncWebServerRequest *req) {
+        Preferences p; p.begin("scanner", true);
+        bool   bt     = p.getBool("bt",       false);
+        String btName = p.getString("btname", "");
+        p.end();
+        JsonDocument doc;
+        doc["bt"]     = bt;
+        doc["btName"] = btName;
+        String out; serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+    _server.on("/api/scanner-config", HTTP_POST,
+        [](AsyncWebServerRequest *req) {},
+        nullptr,
+        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonDocument doc;
+            if (deserializeJson(doc, (const char*)data, len)) {
+                req->send(400, "application/json", "{\"error\":\"JSON\"}"); return;
+            }
+            bool   bt     = doc["bt"]     | false;
+            String btName = doc["btName"] | String("");
+            BarcodeScanner::saveScannerConfig(bt, btName);
+            req->send(200, "application/json", "{\"ok\":true}");
+            // Neustart nach kurzer Verzögerung
+            xTaskCreate([](void*){ vTaskDelay(pdMS_TO_TICKS(500)); ESP.restart(); vTaskDelete(nullptr); },
+                        "rst", 2048, nullptr, 1, nullptr);
         }
     );
 
@@ -1482,6 +1615,92 @@ void WebInterface::begin() {
             p.putString("password", pw);
             p.end();
             req->send(200, "application/json", "{\"ok\":true}");
+        }
+    );
+
+    // ── GitHub OTA ───────────────────────────────────────────
+    _server.on("/api/github-release", HTTP_GET, [](AsyncWebServerRequest *req) {
+        WiFiClientSecure client; client.setInsecure();
+        HTTPClient https;
+        // GitHub API: latest release for this repo
+        String apiUrl = "https://api.github.com/repos/zendonir/esp-lebensmittel-scan/releases/latest";
+        if (!https.begin(client, apiUrl)) {
+            req->send(503, "application/json", "{\"error\":\"begin failed\"}"); return;
+        }
+        https.addHeader("User-Agent", "ESP32-Lebensmittel");
+        https.addHeader("Accept",     "application/vnd.github+json");
+        int code = https.GET();
+        if (code != 200) {
+            String err = "{\"error\":\"HTTP " + String(code) + "\"}";
+            https.end(); req->send(200, "application/json", err); return;
+        }
+        String body = https.getString();
+        https.end();
+
+        JsonDocument doc;
+        if (deserializeJson(doc, body)) {
+            req->send(200, "application/json", "{\"error\":\"JSON parse\"}"); return;
+        }
+        String tag = doc["tag_name"] | String("?");
+        String url, sizeStr;
+        for (JsonObject a : doc["assets"].as<JsonArray>()) {
+            String name = a["name"] | String("");
+            if (name.endsWith(".bin")) {
+                url     = a["browser_download_url"] | String("");
+                int sz  = a["size"] | 0;
+                sizeStr = String(sz / 1024) + " KB";
+                break;
+            }
+        }
+        if (url.isEmpty()) {
+            req->send(200, "application/json", "{\"error\":\"No .bin asset\"}"); return;
+        }
+        JsonDocument out;
+        out["tag"]  = tag;
+        out["url"]  = url;
+        out["size"] = sizeStr;
+        String s; serializeJson(out, s);
+        req->send(200, "application/json", s);
+    });
+
+    _server.on("/api/github-ota", HTTP_POST,
+        [](AsyncWebServerRequest *req) {},
+        nullptr,
+        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonDocument doc;
+            if (deserializeJson(doc, (const char*)data, len)) {
+                req->send(400, "application/json", "{\"error\":\"JSON\"}"); return;
+            }
+            String url = doc["url"] | String("");
+            if (url.isEmpty()) {
+                req->send(400, "application/json", "{\"error\":\"no url\"}"); return;
+            }
+            // Run OTA in a background task to allow response to be sent first
+            req->send(200, "application/json", "{\"ok\":true}");
+
+            // Delay slightly then start OTA
+            static String _otaUrl;
+            _otaUrl = url;
+            xTaskCreate([](void *) {
+                vTaskDelay(pdMS_TO_TICKS(200));
+                WiFiClientSecure client; client.setInsecure();
+                HTTPClient https;
+                // Follow redirect: GitHub releases redirect to S3
+                https.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+                if (!https.begin(client, _otaUrl)) { vTaskDelete(nullptr); return; }
+                https.addHeader("User-Agent", "ESP32-Lebensmittel");
+                int code = https.GET();
+                if (code != 200) { https.end(); vTaskDelete(nullptr); return; }
+                int sz = https.getSize();
+                if (!Update.begin(sz > 0 ? sz : UPDATE_SIZE_UNKNOWN)) {
+                    https.end(); vTaskDelete(nullptr); return;
+                }
+                WiFiClient *stream = https.getStreamPtr();
+                Update.writeStream(*stream);
+                https.end();
+                if (Update.end(true)) ESP.restart();
+                vTaskDelete(nullptr);
+            }, "ghota", 8192, nullptr, 1, nullptr);
         }
     );
 
