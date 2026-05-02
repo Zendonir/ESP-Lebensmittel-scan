@@ -1,6 +1,7 @@
 #include "WebInterface.h"
 #include "config.h"
 #include "FontConfig.h"
+#include "BarcodeScanner.h"
 extern bool g_useNumpad;
 #include "CategoryManager.h"
 #include "StorageStats.h"
@@ -448,6 +449,28 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     </div>
     <div id="devMsg" style="margin-top:.75rem;font-size:.85rem"></div>
     <hr style="border-color:var(--border);margin:1.5rem 0">
+    <h2 style="margin-bottom:1rem">Barcode-Scanner</h2>
+    <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
+      Eingebauter UART-Scanner (GM861) oder externer Bluetooth-Scanner (SPP-Modus, z.B.&nbsp;Inateck BCST-23).
+      Am Scanner muss vorher &bdquo;Bluetooth SPP&ldquo; aktiviert werden (QR-Code im Handbuch scannen).
+      &Auml;nderungen wirken nach Neustart.
+    </p>
+    <div style="display:flex;flex-direction:column;gap:.75rem;max-width:440px">
+      <label style="font-size:.85rem;color:var(--muted)">Scanner-Typ
+        <select id="scannerMode" style="display:block;margin-top:.3rem;width:260px"
+                onchange="document.getElementById('btNameRow').style.display=this.value==='bt'?'flex':'none'">
+          <option value="uart">Eingebaut (UART / GM861)</option>
+          <option value="bt">Bluetooth SPP (externer Scanner)</option>
+        </select>
+      </label>
+      <label id="btNameRow" style="font-size:.85rem;color:var(--muted);display:none">BT-Gerätename (ESP32 advertised als…)
+        <input type="text" id="btDevName" maxlength="32" value="Lager-Scanner"
+               style="display:block;width:260px;margin-top:.3rem">
+      </label>
+      <button class="btn btn-ok" style="width:fit-content" onclick="saveScannerCfg()">Speichern &amp; Neustart</button>
+    </div>
+    <div id="scannerMsg" style="margin-top:.75rem;font-size:.85rem"></div>
+    <hr style="border-color:var(--border);margin:1.5rem 0">
     <h2 style="margin-bottom:1rem">Schriftgr&ouml;&szlig;en am Ger&auml;t</h2>
     <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
       Pixelh&ouml;he der Schrift: 8&thinsp;px, 16&thinsp;px, 24&thinsp;px oder 32&thinsp;px (Vielfaches von 8).
@@ -531,7 +554,7 @@ function switchTab(id,btn){
   if(id==='mqtt'){loadMqtt();loadTelegram();}
   if(id==='shop')loadShop();
   if(id==='stats')loadStats();
-  if(id==='system'){loadOtaPw();loadDevConfig();loadFontSizes();}
+  if(id==='system'){loadOtaPw();loadDevConfig();loadScannerCfg();loadFontSizes();}
   if(id==='scanlogs')loadScanlogs();
 }
 async function loadWifi(){
@@ -855,6 +878,27 @@ async function saveDevConfig(){
     body:JSON.stringify({name,room,serverUrl,dateInput,householdId})});
   if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert.';}
   else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
+}
+
+// ── Scanner-Konfiguration ─────────────────────────────────────
+async function loadScannerCfg(){
+  try{const d=await fetch('/api/scanner-config').then(r=>r.json());
+    document.getElementById('scannerMode').value=d.bt?'bt':'uart';
+    document.getElementById('btDevName').value=d.btName||'Lager-Scanner';
+    document.getElementById('btNameRow').style.display=d.bt?'flex':'none';
+  }catch(e){}
+}
+async function saveScannerCfg(){
+  const msg=document.getElementById('scannerMsg');
+  const bt=(document.getElementById('scannerMode').value==='bt');
+  const btName=document.getElementById('btDevName').value.trim()||'Lager-Scanner';
+  const r=await fetch('/api/scanner-config',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({bt,btName})});
+  if(r.ok){
+    msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert. Gerät startet neu…';
+    setTimeout(()=>location.reload(),4000);
+  }else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
 }
 
 // ── Schriftgrößen ─────────────────────────────────────────────
@@ -1203,6 +1247,37 @@ void WebInterface::begin() {
             p2.end();
             g_useNumpad = numpad;
             req->send(200, "application/json", "{\"ok\":true}");
+        }
+    );
+
+    // ── Scanner-Konfiguration ────────────────────────────────
+    _server.on("/api/scanner-config", HTTP_GET, [](AsyncWebServerRequest *req) {
+        Preferences p; p.begin("scanner", true);
+        bool   bt     = p.getBool("bt",       false);
+        String btName = p.getString("btname", "Lager-Scanner");
+        p.end();
+        JsonDocument doc;
+        doc["bt"]     = bt;
+        doc["btName"] = btName;
+        String out; serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+    _server.on("/api/scanner-config", HTTP_POST,
+        [](AsyncWebServerRequest *req) {},
+        nullptr,
+        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonDocument doc;
+            if (deserializeJson(doc, (const char*)data, len)) {
+                req->send(400, "application/json", "{\"error\":\"JSON\"}"); return;
+            }
+            bool   bt     = doc["bt"]     | false;
+            String btName = doc["btName"] | String("Lager-Scanner");
+            if (btName.isEmpty()) btName = "Lager-Scanner";
+            BarcodeScanner::saveScannerConfig(bt, btName);
+            req->send(200, "application/json", "{\"ok\":true}");
+            // Neustart nach kurzer Verzögerung
+            xTaskCreate([](void*){ vTaskDelay(pdMS_TO_TICKS(500)); ESP.restart(); vTaskDelete(nullptr); },
+                        "rst", 2048, nullptr, 1, nullptr);
         }
     );
 

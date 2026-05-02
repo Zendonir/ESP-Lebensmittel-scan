@@ -131,11 +131,20 @@ String DisplayManager::daysLabel(int days) {
 // ── Hauptscreen: Kategorie-Grid ───────────────────────────────
 
 void DisplayManager::showCategoryGrid(const std::vector<int> &catInvCounts,
-                                       int warnCount, bool wifiOk) {
+                                       int warnCount, bool wifiOk, int btStatus) {
     _gfx->fillScreen(COLOR_BG);
 
+    // WiFi-Indikator
     uint16_t wc = wifiOk ? COLOR_OK : COLOR_DANGER;
     _gfx->fillCircle(W - 8, 8, 4, wc);
+
+    // BT-Indikator (nur wenn BT-Modus aktiv)
+    if (btStatus > 0) {
+        uint16_t bc = (btStatus == 2) ? COLOR_OK : COLOR_WARN;
+        _gfx->fillCircle(W - 20, 8, 4, bc);
+        textLeft("BT", W - 34, 1, g_fontCfg.small, bc, COLOR_BG);
+    }
+
     struct tm ti; char tbuf[6] = "--:--";
     if (getLocalTime(&ti, 0))
         snprintf(tbuf, sizeof(tbuf), "%02d:%02d", ti.tm_hour, ti.tm_min);

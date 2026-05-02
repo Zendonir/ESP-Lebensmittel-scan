@@ -440,7 +440,13 @@ void setup() {
     Serial.printf("[Display] begin()=%d\n", dispOk);
     display.showBooting("Display + Touch OK"); delay(300);
 
-    scanner.begin();
+    if (BarcodeScanner::loadBTMode()) {
+        String btName = BarcodeScanner::loadBTName();
+        display.showBooting("BT-Scanner: " + btName);
+        scanner.beginBT(btName);
+    } else {
+        scanner.begin();
+    }
     display.showBooting("Scanner OK"); delay(200);
 
     printer.begin();
@@ -600,8 +606,18 @@ void loop() {
             for (const auto &cat : g_categories)
                 catCounts.push_back(inventory.countByCategory(cat.name));
             int warnCount = inventory.expiringIn(WARNING_DAYS) + inventory.expiredCount();
-            display.showCategoryGrid(catCounts, warnCount, WiFi.status() == WL_CONNECTED);
+            int btStatus  = scanner.isBTMode()
+                            ? (scanner.btConnected() ? 2 : 1)
+                            : 0;
+            display.showCategoryGrid(catCounts, warnCount,
+                                     WiFi.status() == WL_CONNECTED, btStatus);
             screenDirty = false;
+        }
+        // Wenn BT-Modus aktiv: Screen regelmäßig neu zeichnen (Verbindungsstatus)
+        if (scanner.isBTMode()) {
+            static bool _lastBtConn = false;
+            bool conn = scanner.btConnected();
+            if (conn != _lastBtConn) { _lastBtConn = conn; screenDirty = true; }
         }
         // Swipe-Down → Haushalt-Browser (nur wenn Server konfiguriert)
         if (gest == Gesture::SWIPE_DOWN && serverSync.isConfigured()) {
