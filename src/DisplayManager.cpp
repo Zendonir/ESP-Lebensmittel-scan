@@ -604,9 +604,9 @@ void DisplayManager::showHouseholdInventory(const String &hhName,
                                              int offset, int total) {
     _gfx->fillScreen(COLOR_BG);
     _gfx->fillRect(0, 0, W, SUB_HDR, COLOR_HEADER);
-    textCenter(hhName, W / 2, SUB_HDR / 2, g_fontCfg.header, COLOR_TEXT, COLOR_HEADER);
+    textCenter(hhName, W / 2, SUB_HDR / 2, g_fontCfg.title, COLOR_TEXT, COLOR_HEADER);
 
-    int vis = min((int)itemNames.size(), LIST_MAX_VIS);
+    int vis = min((int)itemNames.size(), (int)LIST_MAX_VIS);
     for (int i = 0; i < vis; i++) {
         int16_t ry  = SUB_HDR + i * LIST_ITEM_H;
         bool even   = (i % 2 == 0);
