@@ -501,7 +501,7 @@ void DisplayManager::showDateEntryNumpad(const DateInput &d, const String &produ
         {COLOR_SURFACE,  COLOR_SURFACE, COLOR_SURFACE},
         {COLOR_SURFACE,  COLOR_SURFACE, COLOR_SURFACE},
         {COLOR_SURFACE,  COLOR_SURFACE, COLOR_SURFACE},
-        {COLOR_BTN_BACK, COLOR_SURFACE, field == 2 ? COLOR_BTN_OK : COLOR_ACCENT}
+        {COLOR_BTN_BACK, COLOR_SURFACE, (uint16_t)(field == 2 ? COLOR_BTN_OK : COLOR_ACCENT)}
     };
 
     for (int row = 0; row < 4; row++) {
