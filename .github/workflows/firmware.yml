@@ -6,6 +6,12 @@ on:
       - main
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release-Version (z.B. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
 
 jobs:
   build:
@@ -48,10 +54,19 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     permissions:
       contents: write
     steps:
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Download firmware artifact
         uses: actions/download-artifact@v4
         with:
@@ -61,13 +76,14 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
           files: dist/firmware.bin
           generate_release_notes: true
-          name: "Firmware ${{ github.ref_name }}"
+          name: "Firmware ${{ steps.version.outputs.tag }}"
           body: |
-            ## Firmware ${{ github.ref_name }}
+            ## Firmware ${{ steps.version.outputs.tag }}
 
             Flash die `firmware.bin` über die Weboberfläche des Geräts
             (System → OTA Update → Firmware flashen) oder direkt via PlatformIO.
 
-            **OTA-Update aus der Weboberfläche:** System → GitHub OTA → "Prüfen & Installieren"
+            **OTA-Update aus der Weboberfläche:** System → GitHub OTA → „Prüfen & Installieren“
