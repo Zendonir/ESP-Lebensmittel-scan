@@ -451,8 +451,8 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     <hr style="border-color:var(--border);margin:1.5rem 0">
     <h2 style="margin-bottom:1rem">Barcode-Scanner</h2>
     <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
-      Eingebauter UART-Scanner (GM861) oder externer Bluetooth-Scanner (SPP-Modus, z.B.&nbsp;Inateck BCST-23).
-      Am Scanner muss vorher &bdquo;Bluetooth SPP&ldquo; aktiviert werden (QR-Code im Handbuch scannen).
+      Eingebauter UART-Scanner (GM861) oder externer BLE-HID-Scanner (z.&nbsp;B.&nbsp;Inateck BCST-23).
+      Am Scanner muss vorher &bdquo;BLE HID&ldquo; aktiviert werden (QR-Code im Handbuch).
       &Auml;nderungen wirken nach Neustart.
     </p>
     <div style="display:flex;flex-direction:column;gap:.75rem;max-width:440px">
@@ -460,11 +460,11 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
         <select id="scannerMode" style="display:block;margin-top:.3rem;width:260px"
                 onchange="document.getElementById('btNameRow').style.display=this.value==='bt'?'flex':'none'">
           <option value="uart">Eingebaut (UART / GM861)</option>
-          <option value="bt">Bluetooth SPP (externer Scanner)</option>
+          <option value="bt">BLE HID (externer Scanner)</option>
         </select>
       </label>
-      <label id="btNameRow" style="font-size:.85rem;color:var(--muted);display:none">BT-Gerätename (ESP32 advertised als…)
-        <input type="text" id="btDevName" maxlength="32" value="Lager-Scanner"
+      <label id="btNameRow" style="font-size:.85rem;color:var(--muted);display:none">Ger&auml;tename-Filter (leer&nbsp;= beliebiger HID-Scanner)
+        <input type="text" id="btDevName" maxlength="32" placeholder="z.B. BCST-23"
                style="display:block;width:260px;margin-top:.3rem">
       </label>
       <button class="btn btn-ok" style="width:fit-content" onclick="saveScannerCfg()">Speichern &amp; Neustart</button>
@@ -884,14 +884,14 @@ async function saveDevConfig(){
 async function loadScannerCfg(){
   try{const d=await fetch('/api/scanner-config').then(r=>r.json());
     document.getElementById('scannerMode').value=d.bt?'bt':'uart';
-    document.getElementById('btDevName').value=d.btName||'Lager-Scanner';
+    document.getElementById('btDevName').value=d.btName||'';
     document.getElementById('btNameRow').style.display=d.bt?'flex':'none';
   }catch(e){}
 }
 async function saveScannerCfg(){
   const msg=document.getElementById('scannerMsg');
   const bt=(document.getElementById('scannerMode').value==='bt');
-  const btName=document.getElementById('btDevName').value.trim()||'Lager-Scanner';
+  const btName=document.getElementById('btDevName').value.trim();
   const r=await fetch('/api/scanner-config',{method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({bt,btName})});
@@ -1254,7 +1254,7 @@ void WebInterface::begin() {
     _server.on("/api/scanner-config", HTTP_GET, [](AsyncWebServerRequest *req) {
         Preferences p; p.begin("scanner", true);
         bool   bt     = p.getBool("bt",       false);
-        String btName = p.getString("btname", "Lager-Scanner");
+        String btName = p.getString("btname", "");
         p.end();
         JsonDocument doc;
         doc["bt"]     = bt;
@@ -1271,8 +1271,7 @@ void WebInterface::begin() {
                 req->send(400, "application/json", "{\"error\":\"JSON\"}"); return;
             }
             bool   bt     = doc["bt"]     | false;
-            String btName = doc["btName"] | String("Lager-Scanner");
-            if (btName.isEmpty()) btName = "Lager-Scanner";
+            String btName = doc["btName"] | String("");
             BarcodeScanner::saveScannerConfig(bt, btName);
             req->send(200, "application/json", "{\"ok\":true}");
             // Neustart nach kurzer Verzögerung

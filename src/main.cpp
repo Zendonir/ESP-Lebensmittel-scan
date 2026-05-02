@@ -441,9 +441,9 @@ void setup() {
     display.showBooting("Display + Touch OK"); delay(300);
 
     if (BarcodeScanner::loadBTMode()) {
-        String btName = BarcodeScanner::loadBTName();
-        display.showBooting("BT-Scanner: " + btName);
-        scanner.beginBT(btName);
+        String bleName = BarcodeScanner::loadBTName();
+        display.showBooting("BLE-Scanner: " + (bleName.isEmpty() ? "beliebig" : bleName));
+        scanner.beginBLE(bleName);
     } else {
         scanner.begin();
     }
@@ -606,18 +606,18 @@ void loop() {
             for (const auto &cat : g_categories)
                 catCounts.push_back(inventory.countByCategory(cat.name));
             int warnCount = inventory.expiringIn(WARNING_DAYS) + inventory.expiredCount();
-            int btStatus  = scanner.isBTMode()
-                            ? (scanner.btConnected() ? 2 : 1)
+            int btStatus  = scanner.isBLEMode()
+                            ? (scanner.bleConnected() ? 2 : 1)
                             : 0;
             display.showCategoryGrid(catCounts, warnCount,
                                      WiFi.status() == WL_CONNECTED, btStatus);
             screenDirty = false;
         }
-        // Wenn BT-Modus aktiv: Screen regelmäßig neu zeichnen (Verbindungsstatus)
-        if (scanner.isBTMode()) {
-            static bool _lastBtConn = false;
-            bool conn = scanner.btConnected();
-            if (conn != _lastBtConn) { _lastBtConn = conn; screenDirty = true; }
+        // Wenn BLE-Modus aktiv: Screen neu zeichnen wenn Verbindungsstatus wechselt
+        if (scanner.isBLEMode()) {
+            static bool _lastBleConn = false;
+            bool conn = scanner.bleConnected();
+            if (conn != _lastBleConn) { _lastBleConn = conn; screenDirty = true; }
         }
         // Swipe-Down → Haushalt-Browser (nur wenn Server konfiguriert)
         if (gest == Gesture::SWIPE_DOWN && serverSync.isConfigured()) {
