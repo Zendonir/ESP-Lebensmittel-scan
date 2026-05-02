@@ -13,7 +13,8 @@ public:
     //   storageDate – Einlagerdatum "DD.MM.YYYY"
     //   expiryDate  – Haltbarkeitsdatum "DD.MM.YYYY" (kann leer sein)
     void printLabel(const String &name, const String &labelCode,
-                    const String &storageDate, const String &expiryDate);
+                    const String &storageDate, const String &expiryDate,
+                    int qty = 1);
 
 private:
     HardwareSerial &_serial;

@@ -89,6 +89,7 @@ public:
     void showInventoryItem(int index, int total, const String &name,
                            const String &expiry, int qty, int daysLeft);
     void showAPMode(const String &ssid, const String &password, const String &ip);
+    void showQtyInput(const String &productName, int qty);
 
 private:
     Arduino_DataBus *_bus;

@@ -33,7 +33,8 @@ enum class State {
     MAIN,             // Hauptscreen: Kategorie-Grid
     PRODUCT_LIST,     // Produktliste einer Kategorie
     FETCHING,         // Barcode-Lookup (Open Food Facts)
-    ENTER_DATE,       // Haltbarkeitsdatum eingeben (Numpad)
+    ENTER_DATE,       // Haltbarkeitsdatum eingeben (nur Barcode-Produkte / manuell)
+    ENTER_QTY,        // Anzahl / Portionen eingeben
     SAVING,           // In Inventar speichern + Label-Code generieren
     PRINTING,         // Etikett drucken
     SUCCESS,          // Eingelagert-Bestätigung
@@ -115,6 +116,8 @@ bool          screenDirty     = true;
 unsigned long lastActivity    = 0;
 bool          g_useNumpad     = false;  // Datumseingabe-Modus (geladen aus NVS)
 FontConfig    g_fontCfg;               // Schriftgrößen (geladen aus NVS)
+int           currentQty      = 1;     // Anzahl für ENTER_QTY / SAVING
+bool          currentIsManual = false; // true = aus Kategorie-Liste (kein Barcode)
 
 void setState(State s) { state = s; stateEnter = millis(); screenDirty = true; }
 
@@ -565,16 +568,21 @@ void loop() {
             int idx = mainOffset + (ty - SUB_HDR) / LIST_ITEM_H;
             if (idx < (int)listProducts.size()) {
                 const auto &p = listProducts[idx];
-                currentProduct = { true, p.barcode, p.name, p.brand, "", "" };
-                currentBarcode = p.barcode;
+                currentProduct  = { true, p.barcode, p.name, p.brand, "", "" };
+                currentBarcode  = p.barcode;
+                currentIsManual = true;
+                currentQty      = 1;
                 if (p.defaultDays > 0) {
+                    // MHD automatisch berechnen — kein Datum-Dialog
                     time_t future = time(nullptr) + (time_t)p.defaultDays * 86400;
                     struct tm *ft = localtime(&future);
                     dateInput = { ft->tm_mday, ft->tm_mon+1, ft->tm_year+1900, FIELD_DAY };
+                    setState(p.askQty ? State::ENTER_QTY : State::SAVING);
                 } else {
+                    // defaultDays == 0 → manuelles Datum eingeben
                     initDateToday();
+                    setState(State::ENTER_DATE);
                 }
-                setState(State::ENTER_DATE);
                 break;
             }
         }
@@ -601,8 +609,39 @@ void loop() {
         } else {
             currentProduct = { false, currentBarcode, "Unbekannt (" + currentBarcode + ")" };
         }
+        currentIsManual = false;
+        currentQty      = 1;
         initDateToday();
         setState(State::ENTER_DATE);
+        break;
+    }
+
+    // ── ENTER_QTY ────────────────────────────────────────────
+    case State::ENTER_QTY: {
+        if (screenDirty) {
+            display.showQtyInput(currentProduct.name, currentQty);
+            screenDirty = false;
+        }
+        // Zurück → Produktliste
+        if (hardBack || hit(TBTN_X, TBTN_SECONDARY_Y, TBTN_W, TBTN_H)) {
+            setState(State::PRODUCT_LIST); break;
+        }
+        // Minus
+        if (hit(8, 145, 90, 90)) {
+            if (currentQty > 1) { currentQty--; screenDirty = true; }
+            buzzTick();
+            break;
+        }
+        // Plus
+        if (hit(182, 145, 90, 90)) {
+            if (currentQty < 99) { currentQty++; screenDirty = true; }
+            buzzTick();
+            break;
+        }
+        // OK
+        if (hit(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H)) {
+            buzzOk(); setState(State::SAVING); break;
+        }
         break;
     }
 
@@ -622,7 +661,11 @@ void loop() {
             else             display.showDateEntry(dateInput, currentProduct.name, wifiConn);
         }
 
-        if (hardBack) { swipeActive = false; setState(State::PRODUCT_LIST); break; }
+        if (hardBack) {
+            swipeActive = false;
+            setState(currentIsManual ? State::PRODUCT_LIST : State::MAIN);
+            break;
+        }
 
         // ── Ziffernblock-Zweig ────────────────────────────────
         if (g_useNumpad) {
@@ -683,8 +726,11 @@ void loop() {
 
         if (tapped) {
             if (ty >= DRUM_BTN_Y) {
-                if (tx < DISPLAY_W / 2) { swipeActive = false; setState(State::PRODUCT_LIST); break; }
-                else                    { swipeActive = false; setState(State::SAVING);        break; }
+                if (tx < DISPLAY_W / 2) {
+                    swipeActive = false;
+                    setState(currentIsManual ? State::PRODUCT_LIST : State::MAIN);
+                    break;
+                } else { swipeActive = false; setState(State::SAVING); break; }
             } else if (ty >= DRUM_ARRDWN_Y) {
                 int c = constrain((int)(tx / DRUM_COL_W), 0, 2);
                 if      (c == 0) dateInput.day   = constrain(dateInput.day   - 1, 1, 31);
@@ -738,7 +784,7 @@ void loop() {
                             ? g_categories[currentCatIndex].name : "";
         item.expiryDate   = dateInputToStr(dateInput);
         item.addedDate    = todayStr();
-        item.quantity     = 1;
+        item.quantity     = currentQty;
         item.labelBarcode = labelCode;
         if (inventory.addItem(item)) {
             lastAddedItem = item;
@@ -766,7 +812,8 @@ void loop() {
                 lastAddedItem.name,
                 lastAddedItem.labelBarcode,
                 isoToDisplay(lastAddedItem.addedDate),
-                lastAddedItem.expiryDate.isEmpty() ? "" : isoToDisplay(lastAddedItem.expiryDate)
+                lastAddedItem.expiryDate.isEmpty() ? "" : isoToDisplay(lastAddedItem.expiryDate),
+                lastAddedItem.quantity
             );
         }
         if (millis()-stateEnter > 2200) {
