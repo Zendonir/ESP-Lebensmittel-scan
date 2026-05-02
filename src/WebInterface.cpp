@@ -9,6 +9,7 @@ extern bool g_useNumpad;
 #include <Preferences.h>
 #include <ArduinoJson.h>
 #include <Update.h>
+#include <HTTPClient.h>
 #include <time.h>
 
 static const char OTA_PAGE_HTML[] = R"HTML(<!DOCTYPE html>
@@ -410,7 +411,15 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
       </label>
       <label style="font-size:.85rem;color:var(--muted)">Server-URL
         <input type="text" id="devServer" placeholder="http://192.168.1.100:8000" maxlength="80"
-               style="display:block;width:100%;margin-top:.3rem">
+               style="display:block;width:100%;margin-top:.3rem"
+               oninput="devServerChanged()">
+      </label>
+      <label style="font-size:.85rem;color:var(--muted)">Haushalt
+        <div style="display:flex;gap:.5rem;align-items:center;margin-top:.3rem">
+          <select id="devHousehold" style="flex:1"></select>
+          <button class="btn" style="width:auto;padding:.4rem .8rem" onclick="loadHouseholds()">&#x21BA;</button>
+        </div>
+        <span style="font-size:.75rem;color:var(--muted)">Diesem Ger&auml;t zugewiesener Haushalt</span>
       </label>
       <label style="font-size:.85rem;color:var(--muted)">Datumseingabe am Ger&auml;t
         <select id="dateInputMode" style="display:block;margin-top:.3rem;width:200px">
@@ -789,21 +798,44 @@ async function addShopItem(){
 }
 
 // ── Gerät & Server-Sync ───────────────────────────────────────
+let _devHouseholds=[];
+async function loadHouseholds(){
+  const sel=document.getElementById('devHousehold');
+  const cur=sel.value;
+  sel.innerHTML='<option value="0">-- kein Haushalt --</option>';
+  _devHouseholds=[];
+  try{
+    const arr=await fetch('/api/household-options').then(r=>r.json());
+    _devHouseholds=arr;
+    arr.forEach(h=>{
+      const o=document.createElement('option');
+      o.value=h.id;o.textContent=h.name;sel.appendChild(o);});
+    if(cur)sel.value=cur;
+  }catch(e){}
+}
+function devServerChanged(){
+  document.getElementById('devHousehold').innerHTML='<option value="0">-- kein Haushalt --</option>';
+}
 async function loadDevConfig(){
   try{const d=await fetch('/api/device-config').then(r=>r.json());
     document.getElementById('devName').value=d.name||'';
     document.getElementById('devRoom').value=d.room||'';
     document.getElementById('devServer').value=d.serverUrl||'';
-    document.getElementById('dateInputMode').value=d.dateInput||'drum';}catch(e){}
+    document.getElementById('dateInputMode').value=d.dateInput||'drum';
+    await loadHouseholds();
+    document.getElementById('devHousehold').value=d.householdId||0;
+  }catch(e){}
 }
 async function saveDevConfig(){
   const name=document.getElementById('devName').value.trim();
   const room=document.getElementById('devRoom').value.trim();
   const serverUrl=document.getElementById('devServer').value.trim();
   const dateInput=document.getElementById('dateInputMode').value;
+  const householdId=parseInt(document.getElementById('devHousehold').value)||0;
   const msg=document.getElementById('devMsg');
   const r=await fetch('/api/device-config',{method:'POST',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify({name,room,serverUrl,dateInput})});
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name,room,serverUrl,dateInput,householdId})});
   if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert.';}
   else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
 }
@@ -1076,17 +1108,19 @@ void WebInterface::begin() {
         String name = p.getString("name", "Lebensmittel Scanner");
         String room = p.getString("room", "");
         String url  = p.getString("url",  "");
+        int    hid  = p.getInt("household", 0);
         p.end();
         Preferences p2; p2.begin("dev", true);
         bool numpad = p2.getBool("numpad", false);
         p2.end();
         JsonDocument doc;
-        doc["name"]      = name;
-        doc["room"]      = room;
-        doc["serverUrl"] = url;
-        doc["mac"]       = WiFi.macAddress();
-        doc["ip"]        = WiFi.localIP().toString();
-        doc["dateInput"] = numpad ? "numpad" : "drum";
+        doc["name"]        = name;
+        doc["room"]        = room;
+        doc["serverUrl"]   = url;
+        doc["householdId"] = hid;
+        doc["mac"]         = WiFi.macAddress();
+        doc["ip"]          = WiFi.localIP().toString();
+        doc["dateInput"]   = numpad ? "numpad" : "drum";
         String out; serializeJson(doc, out);
         req->send(200, "application/json", out);
     });
@@ -1099,9 +1133,10 @@ void WebInterface::begin() {
                 req->send(400, "application/json", "{\"error\":\"JSON\"}"); return;
             }
             Preferences p; p.begin("sync", false);
-            p.putString("name", doc["name"] | "Lebensmittel Scanner");
-            p.putString("room", doc["room"] | "");
-            p.putString("url",  doc["serverUrl"] | "");
+            p.putString("name",      doc["name"]      | "Lebensmittel Scanner");
+            p.putString("room",      doc["room"]       | "");
+            p.putString("url",       doc["serverUrl"]  | "");
+            p.putInt("household",    doc["householdId"] | 0);
             p.end();
             bool numpad = (String(doc["dateInput"] | "drum") == "numpad");
             Preferences p2; p2.begin("dev", false);
@@ -1111,6 +1146,26 @@ void WebInterface::begin() {
             req->send(200, "application/json", "{\"ok\":true}");
         }
     );
+
+    // ── Haushalte vom Server laden ───────────────────────────
+    _server.on("/api/household-options", HTTP_GET, [](AsyncWebServerRequest *req) {
+        Preferences p; p.begin("sync", true);
+        String url = p.getString("url", "");
+        p.end();
+        if (url.isEmpty()) {
+            req->send(200, "application/json", "[]"); return;
+        }
+        HTTPClient http;
+        http.setTimeout(4000);
+        if (!http.begin(url + "/api/households")) {
+            req->send(503, "application/json", "[]"); return;
+        }
+        int code = http.GET();
+        if (code != 200) { http.end(); req->send(200, "application/json", "[]"); return; }
+        String body = http.getString();
+        http.end();
+        req->send(200, "application/json", body);
+    });
 
     // ── Schriftgrößen ────────────────────────────────────────
     _server.on("/api/font-config", HTTP_GET, [](AsyncWebServerRequest *req) {

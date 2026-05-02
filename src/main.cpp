@@ -40,8 +40,10 @@ enum class State {
     SUCCESS,          // Eingelagert-Bestätigung
     ERROR,
     RETRIEVE,         // Label-Barcode gescannt → Auslagerungs-Bestätigung
-    INVENTORY_BROWSE, // Inventar durchblättern
-    POWER_SAVE,       // Display aus, Scanner schläft
+    INVENTORY_BROWSE,    // Inventar durchblättern
+    HOUSEHOLD_SELECT,    // Haushalt-Auswahl (Swipe-Down auf Main)
+    HOUSEHOLD_INVENTORY, // Inventar eines fremden Haushalts (read-only)
+    POWER_SAVE,          // Display aus, Scanner schläft
 };
 
 // ── Globale Objekte ───────────────────────────────────────────
@@ -118,6 +120,16 @@ bool          g_useNumpad     = false;  // Datumseingabe-Modus (geladen aus NVS)
 FontConfig    g_fontCfg;               // Schriftgrößen (geladen aus NVS)
 int           currentQty      = 1;     // Anzahl für ENTER_QTY / SAVING
 bool          currentIsManual = false; // true = aus Kategorie-Liste (kein Barcode)
+
+// Haushalt-Browser
+struct HouseholdInfo { int id; String name; };
+struct RemoteItem    { String name; int daysLeft; };
+static std::vector<HouseholdInfo> g_households;
+static std::vector<RemoteItem>    g_hhItems;
+static int  g_myHouseholdIdx  = -1; // Index in g_households für dieses Gerät
+static int  g_selHouseholdIdx =  0; // Aktuell ausgewählt im Browser
+static int  g_hhInvOffset     =  0;
+static int  g_hhItemTotal     =  0;
 
 void setState(State s) { state = s; stateEnter = millis(); screenDirty = true; }
 
@@ -347,6 +359,66 @@ String generateLabelCode() {
     return buf;
 }
 
+// ── Haushalt-Hilfsfunktionen ──────────────────────────────────
+
+static String httpGet(const String &url) {
+    HTTPClient http;
+    http.setTimeout(4000);
+    if (!http.begin(url)) return "";
+    int code = http.GET();
+    if (code != 200) { http.end(); return ""; }
+    String body = http.getString();
+    http.end();
+    return body;
+}
+
+static void fetchHouseholds() {
+    g_households.clear();
+    g_myHouseholdIdx = -1;
+
+    auto cfg = ServerSync::loadConfig();
+    if (cfg.serverUrl.isEmpty()) return;
+
+    String body = httpGet(cfg.serverUrl + "/api/households");
+    if (body.isEmpty()) return;
+
+    JsonDocument doc;
+    if (deserializeJson(doc, body) != DeserializationError::Ok) return;
+    JsonArray arr = doc.as<JsonArray>();
+    for (JsonObject h : arr) {
+        HouseholdInfo hi;
+        hi.id   = h["id"]   | 0;
+        hi.name = h["name"] | String("");
+        if (cfg.householdId > 0 && hi.id == cfg.householdId)
+            g_myHouseholdIdx = (int)g_households.size();
+        g_households.push_back(hi);
+    }
+}
+
+static void fetchHouseholdInventory(int householdId, int offset) {
+    g_hhItems.clear();
+    g_hhItemTotal = 0;
+
+    auto cfg = ServerSync::loadConfig();
+    if (cfg.serverUrl.isEmpty()) return;
+
+    String url = cfg.serverUrl + "/api/inventory?household_id=" + String(householdId)
+               + "&limit=8&skip=" + String(offset);
+    String body = httpGet(url);
+    if (body.isEmpty()) return;
+
+    JsonDocument doc;
+    if (deserializeJson(doc, body) != DeserializationError::Ok) return;
+    JsonArray arr = doc["items"] | doc.as<JsonArray>();
+    g_hhItemTotal = doc["total"] | (int)arr.size();
+    for (JsonObject it : arr) {
+        RemoteItem ri;
+        ri.name     = it["name"]     | String("?");
+        ri.daysLeft = it["days_left"] | 9999;
+        g_hhItems.push_back(ri);
+    }
+}
+
 // ── setup() ───────────────────────────────────────────────────
 
 void setup() {
@@ -530,6 +602,13 @@ void loop() {
             int warnCount = inventory.expiringIn(WARNING_DAYS) + inventory.expiredCount();
             display.showCategoryGrid(catCounts, warnCount, WiFi.status() == WL_CONNECTED);
             screenDirty = false;
+        }
+        // Swipe-Down → Haushalt-Browser (nur wenn Server konfiguriert)
+        if (gest == Gesture::SWIPE_DOWN && serverSync.isConfigured()) {
+            fetchHouseholds();
+            g_selHouseholdIdx = max(0, g_myHouseholdIdx);
+            setState(State::HOUSEHOLD_SELECT);
+            break;
         }
         // Tap auf Kategorie-Tile
         if (tapped && ty > CAT_HDR) {
@@ -892,6 +971,81 @@ void loop() {
         }
         if (hit(TBTN_X, INV_BACK_Y, TBTN_W, TBTN_H) || hardBack || gest==Gesture::LONG_PRESS)
             setState(State::MAIN);
+        break;
+    }
+
+    // ── HOUSEHOLD_SELECT ─────────────────────────────────────
+    case State::HOUSEHOLD_SELECT: {
+        if (screenDirty) {
+            std::vector<String> names;
+            for (const auto &h : g_households) names.push_back(h.name);
+            display.showHouseholdSelect(names, g_myHouseholdIdx, g_selHouseholdIdx);
+            screenDirty = false;
+        }
+        // Tap auf Zeile
+        if (tapped) {
+            int startY = 54;
+            int n = max(1, (int)g_households.size());
+            int rowH = min(60, (TBTN_SECONDARY_Y - startY) / n);
+            int idx  = (ty - startY) / rowH;
+            if (ty >= startY && idx >= 0 && idx < n && idx < (int)g_households.size()) {
+                g_selHouseholdIdx = idx;
+                screenDirty = true;
+                break;
+            }
+        }
+        // "Öffnen"
+        if (hit(TBTN_X, TBTN_SECONDARY_Y, TBTN_W, TBTN_H)) {
+            if (!g_households.empty()) {
+                g_hhInvOffset = 0;
+                fetchHouseholdInventory(g_households[g_selHouseholdIdx].id, 0);
+                setState(State::HOUSEHOLD_INVENTORY);
+            }
+            break;
+        }
+        // Zurück
+        if (hit(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H) || hardBack)
+            setState(State::MAIN);
+        break;
+    }
+
+    // ── HOUSEHOLD_INVENTORY ──────────────────────────────────
+    case State::HOUSEHOLD_INVENTORY: {
+        static constexpr int HH_PAGE = 8;
+        if (screenDirty) {
+            String hhName = (g_selHouseholdIdx < (int)g_households.size())
+                            ? g_households[g_selHouseholdIdx].name : "Haushalt";
+            std::vector<String> names;
+            std::vector<int>    days;
+            for (const auto &ri : g_hhItems) {
+                names.push_back(ri.name);
+                days.push_back(ri.daysLeft);
+            }
+            display.showHouseholdInventory(hhName, names, days, g_hhInvOffset, g_hhItemTotal);
+            screenDirty = false;
+        }
+        // Prev-Page (<)
+        if (hit(TBTN_X, TBTN_SECONDARY_Y, (TBTN_W - 8) / 2, TBTN_H)) {
+            if (g_hhInvOffset >= HH_PAGE) {
+                g_hhInvOffset -= HH_PAGE;
+                fetchHouseholdInventory(g_households[g_selHouseholdIdx].id, g_hhInvOffset);
+                screenDirty = true;
+            }
+            break;
+        }
+        // Next-Page (>)
+        if (hit(TBTN_X + (TBTN_W + 8) / 2, TBTN_SECONDARY_Y, (TBTN_W - 8) / 2, TBTN_H)) {
+            if (g_hhInvOffset + HH_PAGE < g_hhItemTotal) {
+                g_hhInvOffset += HH_PAGE;
+                fetchHouseholdInventory(g_households[g_selHouseholdIdx].id, g_hhInvOffset);
+                screenDirty = true;
+            }
+            break;
+        }
+        // Zurück
+        if (hit(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H) || hardBack) {
+            setState(State::HOUSEHOLD_SELECT);
+        }
         break;
     }
 

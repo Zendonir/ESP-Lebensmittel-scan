@@ -10,6 +10,7 @@ public:
         String deviceId;     // MAC-Adresse
         String deviceName;
         String deviceRoom;
+        int    householdId = 0;
     };
 
     bool begin(const Config &cfg);
