@@ -1,5 +1,6 @@
 #include "WebInterface.h"
 #include "config.h"
+#include "UIConfig.h"
 #include "FontConfig.h"
 #include "BarcodeScanner.h"
 extern bool g_useNumpad;
@@ -122,6 +123,7 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
   <button onclick="switchTab('stats',this)">&#x1F4CA; Statistik</button>
   <button onclick="switchTab('system',this)">&#x1F4BE; System</button>
   <button onclick="switchTab('scanlogs',this)">&#x1F4A0; Scans</button>
+  <button onclick="switchTab('design',this)">&#x1F3A8; Design</button>
   <button onclick="location.href='/ota'" style="margin-left:auto">&#x2B06; OTA</button>
 </nav>
 <div id="inv" class="panel active">
@@ -546,6 +548,65 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
   </div>
   <div id="scanlogsEmpty" class="empty" style="display:none">Noch keine Scans aufgezeichnet</div>
 </div>
+
+<div id="design" class="panel">
+<div style="padding:1.5rem;max-width:900px">
+<h2 style="margin-bottom:1.25rem">&#x1F3A8; Design &amp; Farben</h2>
+
+<p style="font-size:.85rem;color:var(--muted);margin-bottom:1rem">Alle &Auml;nderungen werden sofort auf dem Ger&auml;t angezeigt.</p>
+
+<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.5rem">
+  <button class="btn-ghost" onclick="applyTheme('amoled')">&#x1F311; AMOLED Dark</button>
+  <button class="btn-ghost" onclick="applyTheme('ocean')">&#x1F30A; Ozean</button>
+  <button class="btn-ghost" onclick="applyTheme('forest')">&#x1F333; Wald</button>
+  <button class="btn-ghost" onclick="applyTheme('sunset')">&#x1F305; Sonnenuntergang</button>
+  <button class="btn-ghost" onclick="applyTheme('light')">&#x2600; Hell</button>
+</div>
+
+<div style="display:flex;gap:2rem;flex-wrap:wrap;align-items:flex-start">
+
+  <div style="flex:1;min-width:280px">
+    <p style="font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem">Farben</p>
+    <div id="colorPickers" style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem"></div>
+
+    <div style="margin-top:1.25rem">
+      <label style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:.3rem">Helligkeit</label>
+      <div style="display:flex;gap:.75rem;align-items:center">
+        <input type="range" id="uiBrightness" min="50" max="255" value="220"
+               style="flex:1" oninput="document.getElementById('brightVal').textContent=this.value;updatePreview()">
+        <span id="brightVal" style="font-size:.85rem;min-width:30px">220</span>
+      </div>
+    </div>
+
+    <div style="margin-top:1rem;display:flex;gap:1rem">
+      <label style="font-size:.85rem;color:var(--muted);flex:1">&#x26A0; Warnung ab (Tage)
+        <input type="number" id="uiWarnDays" min="1" max="60"
+               style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
+      </label>
+      <label style="font-size:.85rem;color:var(--muted);flex:1">&#x1F534; Kritisch ab (Tage)
+        <input type="number" id="uiDangerDays" min="1" max="30"
+               style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
+      </label>
+    </div>
+
+    <div style="margin-top:1.5rem;display:flex;gap:.75rem;flex-wrap:wrap">
+      <button class="btn btn-ok" onclick="saveDesign()">&#x1F4BE; Speichern &amp; Anwenden</button>
+      <button class="btn-ghost" onclick="loadDesign()">&#x21BA; Zur&uuml;cksetzen</button>
+    </div>
+    <p id="designMsg" style="font-size:.85rem;margin-top:.6rem"></p>
+  </div>
+
+  <div style="flex:0 0 auto">
+    <p style="font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem">Vorschau (Ger&auml;t)</p>
+    <svg id="devicePreview" width="170" height="275"
+         viewBox="0 0 280 456"
+         style="border-radius:14px;border:2px solid var(--border);display:block">
+    </svg>
+  </div>
+
+</div>
+</div>
+</div>
 <script>
 let catColorMap={};  // name→hex, wird nach loadCats() befüllt
 function catHex(name){return catColorMap[name]||'#333';}
@@ -561,6 +622,7 @@ function switchTab(id,btn){
   if(id==='stats')loadStats();
   if(id==='system'){loadOtaPw();loadDevConfig();loadScannerCfg();loadFontSizes();}
   if(id==='scanlogs')loadScanlogs();
+  if(id==='design')loadDesign();
 }
 async function loadWifi(){
   try{const r=await fetch('/api/wifi-config');const d=await r.json();
@@ -1131,6 +1193,127 @@ async function loadScanlogs(){
       return `<tr><td>${time}</td><td style="font-family:monospace;font-size:.85rem">${s.barcode}</td></tr>`;
     }).join('');
   }catch(e){console.error(e);}
+}
+
+// ── Design-Editor ─────────────────────────────────────────────
+const _colorFields=[
+  {key:'bg',      label:'Hintergrund'},
+  {key:'text',    label:'Text'},
+  {key:'subtext', label:'Hinweistext'},
+  {key:'ok',      label:'Grün / OK'},
+  {key:'warn',    label:'Warnung'},
+  {key:'danger',  label:'Gefahr / Rot'},
+  {key:'accent',  label:'Akzent / Cyan'},
+  {key:'header',  label:'Kopfzeile'},
+  {key:'surface', label:'Oberfläche'},
+  {key:'btn_ok',  label:'Button OK'},
+  {key:'btn_back',label:'Button Zurück'},
+];
+const _themes={
+  amoled:{bg:'#000000',text:'#FFFFFF',subtext:'#808080',ok:'#00FC00',warn:'#FF6800',
+    danger:'#FF0000',accent:'#00FFFF',header:'#0C1213',surface:'#0C1861',
+    btn_ok:'#003000',btn_back:'#142250',brightness:220,warning_days:7,danger_days:3},
+  ocean:{bg:'#0A1628',text:'#D0E8FF',subtext:'#5080A0',ok:'#00CC88',warn:'#FF9900',
+    danger:'#FF4444',accent:'#4488FF',header:'#0D2040',surface:'#122030',
+    btn_ok:'#0A3020',btn_back:'#0A2040',brightness:200,warning_days:7,danger_days:3},
+  forest:{bg:'#0A1408',text:'#D0FFD0',subtext:'#608060',ok:'#00FF44',warn:'#FFAA00',
+    danger:'#FF2222',accent:'#44FF88',header:'#0C1C08',surface:'#122010',
+    btn_ok:'#0A3010',btn_back:'#1A3010',brightness:200,warning_days:7,danger_days:3},
+  sunset:{bg:'#120808',text:'#FFE8E0',subtext:'#806060',ok:'#00CC66',warn:'#FF8800',
+    danger:'#FF2222',accent:'#FF6644',header:'#1C1008',surface:'#1A1010',
+    btn_ok:'#0A2810',btn_back:'#2A1408',brightness:210,warning_days:7,danger_days:3},
+  light:{bg:'#F0F0F0',text:'#111111',subtext:'#666666',ok:'#008800',warn:'#AA6600',
+    danger:'#CC0000',accent:'#0066CC',header:'#DDDDDD',surface:'#E8E8E8',
+    btn_ok:'#006600',btn_back:'#444444',brightness:255,warning_days:7,danger_days:3},
+};
+let _uiVals={};
+function _buildColorPickers(){
+  const grid=document.getElementById('colorPickers');
+  grid.innerHTML=_colorFields.map(f=>
+    `<label style="font-size:.8rem;color:var(--muted)">${f.label}
+      <div style="display:flex;gap:.5rem;align-items:center;margin-top:.25rem">
+        <input type="color" id="uc_${f.key}" style="width:40px;height:32px;border:none;cursor:pointer;background:none"
+               oninput="_uiVals['${f.key}']=this.value;updatePreview()">
+        <span id="ucv_${f.key}" style="font-size:.75rem;font-family:monospace"></span>
+      </div></label>`
+  ).join('');
+}
+function _setColor(key,hex){
+  _uiVals[key]=hex;
+  const el=document.getElementById('uc_'+key);
+  const lbl=document.getElementById('ucv_'+key);
+  if(el){el.value=hex;}
+  if(lbl){lbl.textContent=hex.toUpperCase();}
+}
+function applyTheme(name){
+  const t=_themes[name];if(!t)return;
+  Object.entries(t).forEach(([k,v])=>{
+    if(typeof v==='string')_setColor(k,v);
+    else _uiVals[k]=v;
+  });
+  document.getElementById('uiBrightness').value=t.brightness||220;
+  document.getElementById('brightVal').textContent=t.brightness||220;
+  document.getElementById('uiWarnDays').value=t.warning_days||7;
+  document.getElementById('uiDangerDays').value=t.danger_days||3;
+  updatePreview();
+}
+function updatePreview(){
+  const v=_uiVals;
+  const svg=document.getElementById('devicePreview');
+  const cat=[v.ok||'#00FF00',v.warn||'#FF8800',v.accent||'#00FFFF',
+             v.danger||'#FF0000','#8844AA','#886600','#446688','#224488'];
+  const tiles=[
+    {n:'Fleisch',c:cat[0]},{n:'Gefluegel',c:'#CC8800'},
+    {n:'Fisch',c:'#2255CC'},{n:'Gemüse',c:cat[1]},
+    {n:'Obst',c:'#CC6600'},{n:'Fertig',c:'#7733BB'},
+    {n:'Backwaren',c:'#998800'},{n:'Sonstiges',c:'#556677'},
+  ];
+  let tileSvg='';
+  const gap=6,tw=131,th=95,hdr=44;
+  tiles.forEach((t,i)=>{
+    const col=i%2,row=Math.floor(i/2);
+    const tx=gap+col*(tw+gap),ty=hdr+gap+row*(th+gap);
+    const short=t.n.length<=8;
+    tileSvg+=`<rect x="${tx}" y="${ty}" width="${tw}" height="${th}" rx="12" fill="${t.c}"/>
+    <text x="${tx+tw/2}" y="${ty+th/2+8}" text-anchor="middle"
+          font-size="${short?22:17}" fill="white" font-family="sans-serif" font-weight="bold">${t.n}</text>`;
+  });
+  svg.innerHTML=`
+    <rect width="280" height="456" fill="${v.bg||'#000'}"/>
+    <rect width="280" height="${hdr}" fill="${v.header||'#0C1213'}"/>
+    <text x="140" y="${hdr/2+7}" text-anchor="middle" fill="${v.text||'#FFF'}" font-size="16" font-family="sans-serif" font-weight="600">Kategorien</text>
+    ${tileSvg}
+    <rect x="8" y="400" width="264" height="48" rx="10" fill="${v.btn_ok||'#003000'}"/>
+    <text x="140" y="431" text-anchor="middle" fill="${v.text||'#FFF'}" font-size="18" font-family="sans-serif" font-weight="bold">OK</text>
+  `;
+}
+async function loadDesign(){
+  _buildColorPickers();
+  try{
+    const d=await fetch('/api/ui-config').then(r=>r.json());
+    if(d.error){document.getElementById('designMsg').textContent='Fehler: '+d.error;return;}
+    _colorFields.forEach(f=>_setColor(f.key,d[f.key]||'#000000'));
+    document.getElementById('uiBrightness').value=d.brightness||220;
+    document.getElementById('brightVal').textContent=d.brightness||220;
+    document.getElementById('uiWarnDays').value=d.warning_days||7;
+    document.getElementById('uiDangerDays').value=d.danger_days||3;
+    updatePreview();
+  }catch(e){document.getElementById('designMsg').textContent='Ladefehler: '+e.message;}
+}
+async function saveDesign(){
+  const msg=document.getElementById('designMsg');
+  msg.style.color='var(--muted)';msg.textContent='Speichern…';
+  const body=Object.fromEntries(_colorFields.map(f=>[f.key,_uiVals[f.key]||'#000000']));
+  body.brightness=parseInt(document.getElementById('uiBrightness').value)||220;
+  body.warning_days=parseInt(document.getElementById('uiWarnDays').value)||7;
+  body.danger_days=parseInt(document.getElementById('uiDangerDays').value)||3;
+  try{
+    const r=await fetch('/api/ui-config',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(d.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert! Gerät aktualisiert.';}
+    else{msg.style.color='var(--danger)';msg.textContent='Fehler: '+(d.error||'?');}
+  }catch(e){msg.style.color='var(--danger)';msg.textContent='Netzwerkfehler: '+e.message;}
 }
 
 loadInv();
@@ -1806,6 +1989,56 @@ void WebInterface::begin() {
     );
 
     // Scan logs endpoint
+    // ── UI-Design-Config ─────────────────────────────────────────
+    _server.on("/api/ui-config", HTTP_GET, [](AsyncWebServerRequest *req) {
+        JsonDocument doc;
+        doc["bg"]          = rgb565ToHex(g_uiCfg.bg);
+        doc["text"]        = rgb565ToHex(g_uiCfg.text);
+        doc["subtext"]     = rgb565ToHex(g_uiCfg.subtext);
+        doc["ok"]          = rgb565ToHex(g_uiCfg.ok);
+        doc["warn"]        = rgb565ToHex(g_uiCfg.warn);
+        doc["danger"]      = rgb565ToHex(g_uiCfg.danger);
+        doc["accent"]      = rgb565ToHex(g_uiCfg.accent);
+        doc["header"]      = rgb565ToHex(g_uiCfg.header);
+        doc["surface"]     = rgb565ToHex(g_uiCfg.surface);
+        doc["btn_ok"]      = rgb565ToHex(g_uiCfg.btn_ok);
+        doc["btn_back"]    = rgb565ToHex(g_uiCfg.btn_back);
+        doc["brightness"]  = g_uiCfg.brightness;
+        doc["warning_days"]= g_uiCfg.warning_days;
+        doc["danger_days"] = g_uiCfg.danger_days;
+        String s; serializeJson(doc, s);
+        req->send(200, "application/json", s);
+    });
+
+    _server.on("/api/ui-config", HTTP_POST,
+        [](AsyncWebServerRequest *req) {},
+        nullptr,
+        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t, size_t) {
+            JsonDocument doc;
+            if (deserializeJson(doc, (const char*)data, len)) {
+                req->send(400, "application/json", "{\"error\":\"JSON\"}"); return;
+            }
+            if (doc["bg"].is<String>())      g_uiCfg.bg      = hexToRGB565(doc["bg"].as<String>());
+            if (doc["text"].is<String>())    g_uiCfg.text    = hexToRGB565(doc["text"].as<String>());
+            if (doc["subtext"].is<String>()) g_uiCfg.subtext = hexToRGB565(doc["subtext"].as<String>());
+            if (doc["ok"].is<String>())      g_uiCfg.ok      = hexToRGB565(doc["ok"].as<String>());
+            if (doc["warn"].is<String>())    g_uiCfg.warn    = hexToRGB565(doc["warn"].as<String>());
+            if (doc["danger"].is<String>())  g_uiCfg.danger  = hexToRGB565(doc["danger"].as<String>());
+            if (doc["accent"].is<String>())  g_uiCfg.accent  = hexToRGB565(doc["accent"].as<String>());
+            if (doc["header"].is<String>())  g_uiCfg.header  = hexToRGB565(doc["header"].as<String>());
+            if (doc["surface"].is<String>()) g_uiCfg.surface = hexToRGB565(doc["surface"].as<String>());
+            if (doc["btn_ok"].is<String>())  g_uiCfg.btn_ok  = hexToRGB565(doc["btn_ok"].as<String>());
+            if (doc["btn_back"].is<String>())g_uiCfg.btn_back= hexToRGB565(doc["btn_back"].as<String>());
+            if (!doc["brightness"].isNull()) g_uiCfg.brightness  = doc["brightness"].as<uint8_t>();
+            if (!doc["warning_days"].isNull())g_uiCfg.warning_days=doc["warning_days"].as<uint8_t>();
+            if (!doc["danger_days"].isNull()) g_uiCfg.danger_days =doc["danger_days"].as<uint8_t>();
+            saveUIConfig();
+            extern void applyUIBrightness();
+            applyUIBrightness();
+            req->send(200, "application/json", "{\"ok\":true}");
+        }
+    );
+
     _server.on("/api/scanlogs", HTTP_GET, [](AsyncWebServerRequest *req) {
         extern String getScanLogsJSON();
         req->send(200, "application/json", getScanLogsJSON());

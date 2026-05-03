@@ -7,6 +7,7 @@
 #include <PubSubClient.h>
 #include <time.h>
 #include "config.h"
+#include "UIConfig.h"
 #include "FontConfig.h"
 #include "BarcodeScanner.h"
 #include "DisplayManager.h"
@@ -419,6 +420,11 @@ static void fetchHouseholdInventory(int householdId, int offset) {
     }
 }
 
+// ── Helfer für WebInterface (Helligkeit sofort anwenden) ──────
+void applyUIBrightness() {
+    display.setBrightness(g_uiCfg.brightness);
+}
+
 // ── setup() ───────────────────────────────────────────────────
 
 void setup() {
@@ -468,6 +474,8 @@ void setup() {
     }
 
     { Preferences p; p.begin("dev", true); g_useNumpad = p.getBool("numpad", false); p.end(); }
+    loadUIConfig();
+    display.setBrightness(g_uiCfg.brightness);
     loadFontConfig();
 
     lastActivity = millis();

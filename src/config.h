@@ -88,10 +88,10 @@
 #define MAX_CACHE_ENTRIES     50
 
 // ============================================================
-//  Ablaufwarnungen (Tage)
+//  Ablaufwarnungen (Tage) – aus g_uiCfg
 // ============================================================
-#define WARNING_DAYS    7
-#define DANGER_DAYS     3
+#define WARNING_DAYS    (g_uiCfg.warning_days)
+#define DANGER_DAYS     (g_uiCfg.danger_days)
 
 // ============================================================
 //  NTP / Zeitzone
@@ -101,20 +101,21 @@
 #define TZ_STRING    "CET-1CEST,M3.5.0,M10.5.0/3"
 
 // ============================================================
-//  Display-Farben (RGB565, AMOLED: schwarz = Pixel aus)
+//  Display-Farben – aus NVS laden (UIConfig.h)
 // ============================================================
-#define COLOR_BG        0x0000
-#define COLOR_TEXT      0xFFFF
-#define COLOR_SUBTEXT   0x8410
-#define COLOR_OK        0x07E0
-#define COLOR_WARN      0xFD20
-#define COLOR_DANGER    0xF800
-#define COLOR_ACCENT    0x07FF
-#define COLOR_HEADER    0x1926
-#define COLOR_SELECTED  0x0B60
-#define COLOR_SURFACE   0x18C3
-#define COLOR_BTN_OK    0x0640
-#define COLOR_BTN_BACK  0x2945
+#include "UIConfig.h"
+#define COLOR_BG        (g_uiCfg.bg)
+#define COLOR_TEXT      (g_uiCfg.text)
+#define COLOR_SUBTEXT   (g_uiCfg.subtext)
+#define COLOR_OK        (g_uiCfg.ok)
+#define COLOR_WARN      (g_uiCfg.warn)
+#define COLOR_DANGER    (g_uiCfg.danger)
+#define COLOR_ACCENT    (g_uiCfg.accent)
+#define COLOR_HEADER    (g_uiCfg.header)
+#define COLOR_SELECTED  (g_uiCfg.surface)
+#define COLOR_SURFACE   (g_uiCfg.surface)
+#define COLOR_BTN_OK    (g_uiCfg.btn_ok)
+#define COLOR_BTN_BACK  (g_uiCfg.btn_back)
 
 // ============================================================
 //  KY-006 Passiv-Buzzer
