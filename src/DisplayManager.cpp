@@ -95,8 +95,15 @@ void DisplayManager::drawHeader(const String &title, uint16_t bg) {
 void DisplayManager::drawTouchButton(int16_t x, int16_t y, int16_t w, int16_t h,
                                       const String &label, uint16_t bg, uint16_t fg,
                                       uint8_t sz) {
-    _gfx->fillRoundRect(x, y, w, h, 10, bg);
-    textCenter(label, x + w / 2, y + h / 2, sz, fg, bg);
+    _gfx->fillRoundRect(x, y, w, h, g_uiCfg.btn_radius, bg);
+    // Transparent text background: button is already drawn, avoid corner artifacts
+    applyFont(sz);
+    _gfx->setTextColor(fg);
+    int16_t x1, y1; uint16_t tw, th;
+    _gfx->getTextBounds(label.c_str(), 0, 100, &x1, &y1, &tw, &th);
+    _gfx->setCursor(x + w / 2 - (int16_t)tw / 2 - x1,
+                    y + h / 2 - (int16_t)th / 2 - y1 + 100);
+    _gfx->print(label);
 }
 
 // ── Status-/Navigationsleiste ──────────────────────────────────
@@ -105,13 +112,14 @@ void DisplayManager::drawStatusBar(const String &title, uint16_t titleColor,
                                     bool showBack, bool wifiOk) {
     _gfx->fillRect(0, 0, W, SUB_HDR, COLOR_BG);
 
-    uint16_t wc = wifiOk ? COLOR_OK : COLOR_DANGER;
-    _gfx->fillCircle(W - 8, 8, 4, wc);
+    _gfx->fillCircle(W - 8, 8, 4, wifiOk ? COLOR_OK : COLOR_DANGER);
 
-    struct tm ti; char tbuf[6] = "--:--";
-    if (getLocalTime(&ti, 0))
-        snprintf(tbuf, sizeof(tbuf), "%02d:%02d", ti.tm_hour, ti.tm_min);
-    textLeft(tbuf, 6, 2, g_fontCfg.small, COLOR_SUBTEXT);
+    if (g_uiCfg.show_clock) {
+        struct tm ti; char tbuf[6] = "--:--";
+        if (getLocalTime(&ti, 0))
+            snprintf(tbuf, sizeof(tbuf), "%02d:%02d", ti.tm_hour, ti.tm_min);
+        textLeft(tbuf, 6, 2, g_fontCfg.small, COLOR_SUBTEXT);
+    }
 
     if (showBack)
         textLeft("< Zuruck", 6, SUB_HDR / 2 + 2, g_fontCfg.small, COLOR_TEXT);
@@ -134,21 +142,20 @@ void DisplayManager::showCategoryGrid(const std::vector<int> &catInvCounts,
                                        int warnCount, bool wifiOk, int btStatus) {
     _gfx->fillScreen(COLOR_BG);
 
-    // WiFi-Indikator
-    uint16_t wc = wifiOk ? COLOR_OK : COLOR_DANGER;
-    _gfx->fillCircle(W - 8, 8, 4, wc);
+    _gfx->fillCircle(W - 8, 8, 4, wifiOk ? COLOR_OK : COLOR_DANGER);
 
-    // BT-Indikator (nur wenn BT-Modus aktiv)
     if (btStatus > 0) {
         uint16_t bc = (btStatus == 2) ? COLOR_OK : COLOR_WARN;
         _gfx->fillCircle(W - 20, 8, 4, bc);
         textLeft("BT", W - 34, 1, g_fontCfg.small, bc, COLOR_BG);
     }
 
-    struct tm ti; char tbuf[6] = "--:--";
-    if (getLocalTime(&ti, 0))
-        snprintf(tbuf, sizeof(tbuf), "%02d:%02d", ti.tm_hour, ti.tm_min);
-    textLeft(tbuf, 6, 2, g_fontCfg.small, COLOR_SUBTEXT);
+    if (g_uiCfg.show_clock) {
+        struct tm ti; char tbuf[6] = "--:--";
+        if (getLocalTime(&ti, 0))
+            snprintf(tbuf, sizeof(tbuf), "%02d:%02d", ti.tm_hour, ti.tm_min);
+        textLeft(tbuf, 6, 2, g_fontCfg.small, COLOR_SUBTEXT);
+    }
     textCenter("Kategorien", W / 2, CAT_HDR / 2, g_fontCfg.title, COLOR_TEXT);
     _gfx->drawFastHLine(0, CAT_HDR, W, COLOR_SURFACE);
 
@@ -159,18 +166,11 @@ void DisplayManager::showCategoryGrid(const std::vector<int> &catInvCounts,
         int16_t ty = CAT_HDR + CAT_GAP + row * (CAT_TILE_H + CAT_GAP);
 
         uint16_t bg = g_categories[i].bgColor;
-        _gfx->fillRoundRect(tx, ty, CAT_TILE_W, CAT_TILE_H, 12, bg);
-
-        int cnt = (i < (int)catInvCounts.size()) ? catInvCounts[i] : 0;
-        if (cnt > 0) {
-            uint16_t badgeBg = (warnCount > 0) ? COLOR_WARN : COLOR_ACCENT;
-            _gfx->fillCircle(tx + CAT_TILE_W - 12, ty + 12, 11, badgeBg);
-            String cs = cnt > 99 ? "9+" : String(cnt);
-            textCenter(cs, tx + CAT_TILE_W - 12, ty + 8, g_fontCfg.small, COLOR_BG, badgeBg);
-        }
+        _gfx->fillRoundRect(tx, ty, CAT_TILE_W, CAT_TILE_H, g_uiCfg.btn_radius, bg);
 
         String name = g_categories[i].name;
-        uint8_t tsz = (name.length() <= 9) ? g_fontCfg.body : prevPx(g_fontCfg.body);
+        uint8_t tsz = g_fontCfg.btn;
+        if (name.length() > 9 && tsz > 16) tsz = prevPx(tsz);
         if (name.length() > 20) name = name.substring(0, 20);
         textCenter(name, tx + CAT_TILE_W / 2, ty + CAT_TILE_H / 2, tsz, 0xFFFF, bg);
     }
@@ -198,18 +198,19 @@ void DisplayManager::showProductList(const String &catName, uint16_t catColor,
         const auto &p = products[offset + i];
         int16_t iy = SUB_HDR + i * LIST_ITEM_H;
 
-        _gfx->fillRoundRect(4, iy + 2, W - 8, LIST_ITEM_H - 4, 6, COLOR_SURFACE);
+        _gfx->fillRoundRect(4, iy + 2, W - 8, LIST_ITEM_H - 4, LIST_RADIUS, COLOR_SURFACE);
 
+        int16_t textY = iy + LIST_ITEM_H / 2 - 8;
         String name = p.name.length() > 26 ? p.name.substring(0, 26) : p.name;
-        textLeft(name, 14, iy + 10, g_fontCfg.body, COLOR_TEXT, COLOR_SURFACE);
+        textLeft(name, 14, textY, g_fontCfg.body, COLOR_TEXT, COLOR_SURFACE);
 
         if (p.defaultDays > 0) {
             String d = String(p.defaultDays) + "d";
-            textLeft(d, W - 38 - textWidth(d, g_fontCfg.small), iy + 16,
+            textLeft(d, W - 38 - textWidth(d, g_fontCfg.small), textY + 4,
                      g_fontCfg.small, COLOR_ACCENT, COLOR_SURFACE);
         }
 
-        textLeft(">", W - 20, iy + 10, g_fontCfg.body, COLOR_SUBTEXT, COLOR_SURFACE);
+        textLeft(">", W - 20, textY, g_fontCfg.body, COLOR_SUBTEXT, COLOR_SURFACE);
     }
 
     if ((int)products.size() > LIST_MAX_VIS) {
@@ -385,10 +386,11 @@ void DisplayManager::showSuccess(const String &productName, const String &date, 
     textCenter(pn,           W / 2, H/2 + 20, g_fontCfg.body,  COLOR_TEXT);
     textCenter("MHD: "+date, W / 2, H/2 + 50, g_fontCfg.small, COLOR_SUBTEXT);
     if (showReprint) {
+        uint8_t splitSz = min(g_fontCfg.btn, (uint8_t)24);
         drawTouchButton(TBTN_X,                      TBTN_SECONDARY_Y, (TBTN_W - 4) / 2, TBTN_H,
-                        "Nochmal", COLOR_BTN_BACK, COLOR_TEXT, g_fontCfg.small);
+                        "Nochmal", COLOR_BTN_BACK, COLOR_TEXT, splitSz);
         drawTouchButton(TBTN_X + (TBTN_W + 4) / 2, TBTN_SECONDARY_Y, (TBTN_W - 4) / 2, TBTN_H,
-                        "Weiter",  COLOR_BTN_OK,   COLOR_TEXT, g_fontCfg.btn);
+                        "Weiter",  COLOR_BTN_OK,   COLOR_TEXT, splitSz);
     }
     _gfx->flush();
 }

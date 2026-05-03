@@ -7,6 +7,7 @@
 #include <PubSubClient.h>
 #include <time.h>
 #include "config.h"
+#include "UIConfig.h"
 #include "FontConfig.h"
 #include "BarcodeScanner.h"
 #include "DisplayManager.h"
@@ -288,9 +289,9 @@ void telegramSend(const String &text) {
 // ── Buzzer-Feedback ───────────────────────────────────────────
 #if defined(BUZZER_PIN) && BUZZER_PIN >= 0
 inline void buzz(uint16_t freq = 2000, uint32_t dur = 80)  { tone(BUZZER_PIN, freq, dur); }
-inline void buzzOk()    { buzz(2200, 80); }
-inline void buzzError() { buzz(600, 300); }
-inline void buzzTick()  { buzz(120, 12); }  // leises dumpfes Tippen
+inline void buzzOk()    { if (g_uiCfg.sound_ok)  buzz(2200, 80); }
+inline void buzzError() { if (g_uiCfg.sound_err) buzz(600, 300); }
+inline void buzzTick()  { buzz(120, 12); }
 #else
 inline void buzz(uint16_t = 0, uint32_t = 0) {}
 inline void buzzOk()    {}
@@ -317,7 +318,13 @@ String dateInputToStr(const DateInput &d) {
     char buf[12]; snprintf(buf, sizeof(buf), "%04d-%02d-%02d", d.year, d.month, d.day); return buf;
 }
 String dateInputDisplay(const DateInput &d) {
-    char buf[12]; snprintf(buf, sizeof(buf), "%02d.%02d.%04d", d.day, d.month, d.year); return buf;
+    char buf[12];
+    switch (g_uiCfg.date_format) {
+        case 1:  snprintf(buf, sizeof(buf), "%02d/%02d/%04d", d.month, d.day, d.year); break;
+        case 2:  snprintf(buf, sizeof(buf), "%04d-%02d-%02d", d.year, d.month, d.day); break;
+        default: snprintf(buf, sizeof(buf), "%02d.%02d.%04d", d.day, d.month, d.year); break;
+    }
+    return buf;
 }
 
 void initDateToday() {
@@ -419,6 +426,12 @@ static void fetchHouseholdInventory(int householdId, int offset) {
     }
 }
 
+// ── Helfer für WebInterface (Helligkeit sofort anwenden) ──────
+void applyUIBrightness() {
+    display.setBrightness(g_uiCfg.brightness);
+}
+
+
 // ── setup() ───────────────────────────────────────────────────
 
 void setup() {
@@ -468,6 +481,8 @@ void setup() {
     }
 
     { Preferences p; p.begin("dev", true); g_useNumpad = p.getBool("numpad", false); p.end(); }
+    loadUIConfig();
+    display.setBrightness(g_uiCfg.brightness);
     loadFontConfig();
 
     lastActivity = millis();
@@ -548,7 +563,8 @@ void loop() {
     if (state != State::POWER_SAVE &&
         state != State::BOOTING   &&
         state != State::WIFI_CONNECTING &&
-        millis() - lastActivity > POWER_SAVE_MS) {
+        g_uiCfg.power_save_min > 0 &&
+        millis() - lastActivity > (unsigned long)g_uiCfg.power_save_min * 60000UL) {
         display.setBrightness(0);
         scanner.disable();
         setState(State::POWER_SAVE);
