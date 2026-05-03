@@ -112,13 +112,14 @@ void DisplayManager::drawStatusBar(const String &title, uint16_t titleColor,
                                     bool showBack, bool wifiOk) {
     _gfx->fillRect(0, 0, W, SUB_HDR, COLOR_BG);
 
-    uint16_t wc = wifiOk ? COLOR_OK : COLOR_DANGER;
-    _gfx->fillCircle(W - 8, 8, 4, wc);
+    _gfx->fillCircle(W - 8, 8, 4, wifiOk ? COLOR_OK : COLOR_DANGER);
 
-    struct tm ti; char tbuf[6] = "--:--";
-    if (getLocalTime(&ti, 0))
-        snprintf(tbuf, sizeof(tbuf), "%02d:%02d", ti.tm_hour, ti.tm_min);
-    textLeft(tbuf, 6, 2, g_fontCfg.small, COLOR_SUBTEXT);
+    if (g_uiCfg.show_clock) {
+        struct tm ti; char tbuf[6] = "--:--";
+        if (getLocalTime(&ti, 0))
+            snprintf(tbuf, sizeof(tbuf), "%02d:%02d", ti.tm_hour, ti.tm_min);
+        textLeft(tbuf, 6, 2, g_fontCfg.small, COLOR_SUBTEXT);
+    }
 
     if (showBack)
         textLeft("< Zuruck", 6, SUB_HDR / 2 + 2, g_fontCfg.small, COLOR_TEXT);
@@ -141,12 +142,13 @@ void DisplayManager::showCategoryGrid(const std::vector<int> &catInvCounts,
                                        int warnCount, bool wifiOk) {
     _gfx->fillScreen(COLOR_BG);
 
-    uint16_t wc = wifiOk ? COLOR_OK : COLOR_DANGER;
-    _gfx->fillCircle(W - 8, 8, 4, wc);
-    struct tm ti; char tbuf[6] = "--:--";
-    if (getLocalTime(&ti, 0))
-        snprintf(tbuf, sizeof(tbuf), "%02d:%02d", ti.tm_hour, ti.tm_min);
-    textLeft(tbuf, 6, 2, g_fontCfg.small, COLOR_SUBTEXT);
+    _gfx->fillCircle(W - 8, 8, 4, wifiOk ? COLOR_OK : COLOR_DANGER);
+    if (g_uiCfg.show_clock) {
+        struct tm ti; char tbuf[6] = "--:--";
+        if (getLocalTime(&ti, 0))
+            snprintf(tbuf, sizeof(tbuf), "%02d:%02d", ti.tm_hour, ti.tm_min);
+        textLeft(tbuf, 6, 2, g_fontCfg.small, COLOR_SUBTEXT);
+    }
     textCenter("Kategorien", W / 2, CAT_HDR / 2, g_fontCfg.title, COLOR_TEXT);
     _gfx->drawFastHLine(0, CAT_HDR, W, COLOR_SURFACE);
 
@@ -189,7 +191,7 @@ void DisplayManager::showProductList(const String &catName, uint16_t catColor,
         const auto &p = products[offset + i];
         int16_t iy = SUB_HDR + i * LIST_ITEM_H;
 
-        _gfx->fillRoundRect(4, iy + 2, W - 8, LIST_ITEM_H - 4, 6, COLOR_SURFACE);
+        _gfx->fillRoundRect(4, iy + 2, W - 8, LIST_ITEM_H - 4, LIST_RADIUS, COLOR_SURFACE);
 
         int16_t textY = iy + LIST_ITEM_H / 2 - 8;
         String name = p.name.length() > 26 ? p.name.substring(0, 26) : p.name;

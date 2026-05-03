@@ -105,6 +105,10 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
   .mono{font-family:monospace;font-size:.8rem;color:var(--muted);}
   .cat-group-header td{background:var(--surface);font-size:.8rem;
                        color:var(--muted);padding:.4rem 1rem;font-weight:600;}
+  .dtab{background:none;border:1px solid var(--border);color:var(--muted);
+        padding:.4rem .9rem;border-radius:.4rem;cursor:pointer;font-size:.85rem;}
+  .dtab:hover{border-color:var(--accent);color:var(--accent);}
+  .dtab-active{border-color:var(--accent);color:var(--accent);background:rgba(59,130,246,.08);}
   @media(max-width:640px){
     .stats{gap:.5rem;} .stat-card{min-width:100px;}
     .table-wrap{padding:0 .75rem 2rem;} .toolbar{padding:.5rem .75rem;}
@@ -550,84 +554,150 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
 </div>
 
 <div id="design" class="panel">
-<div style="padding:1.5rem;max-width:900px">
-<h2 style="margin-bottom:1.25rem">&#x1F3A8; Design &amp; Farben</h2>
+<div style="padding:1.5rem;max-width:1050px">
+<h2 style="margin-bottom:1rem">&#x1F3A8; Design &amp; Konfiguration</h2>
 
-<p style="font-size:.85rem;color:var(--muted);margin-bottom:1rem">Alle &Auml;nderungen werden sofort auf dem Ger&auml;t angezeigt.</p>
-
-<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.5rem">
-  <button class="btn-ghost" onclick="applyTheme('amoled')">&#x1F311; AMOLED Dark</button>
-  <button class="btn-ghost" onclick="applyTheme('ocean')">&#x1F30A; Ozean</button>
-  <button class="btn-ghost" onclick="applyTheme('forest')">&#x1F333; Wald</button>
-  <button class="btn-ghost" onclick="applyTheme('sunset')">&#x1F305; Sonnenuntergang</button>
-  <button class="btn-ghost" onclick="applyTheme('light')">&#x2600; Hell</button>
+<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:1.5rem;padding-bottom:.75rem;border-bottom:1px solid var(--border)">
+  <button id="dt-themes"   class="dtab dtab-active" onclick="switchDTab('themes',this)">&#x1F3A8; Themes</button>
+  <button id="dt-colors"   class="dtab" onclick="switchDTab('colors',this)">&#x1F308; Farben</button>
+  <button id="dt-layout"   class="dtab" onclick="switchDTab('layout',this)">&#x1F4D0; Layout</button>
+  <button id="dt-behavior" class="dtab" onclick="switchDTab('behavior',this)">&#x2699;&#xFE0F; Verhalten</button>
+  <button id="dt-portex"   class="dtab" onclick="switchDTab('portex',this)">&#x1F4E4; Export/Import</button>
 </div>
 
 <div style="display:flex;gap:2rem;flex-wrap:wrap;align-items:flex-start">
+<div style="flex:1;min-width:280px">
 
-  <div style="flex:1;min-width:280px">
-    <p style="font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem">Farben</p>
-    <div id="colorPickers" style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem"></div>
+<div id="dsec-themes">
+  <p style="font-size:.8rem;color:var(--muted);margin-bottom:.75rem">Vordefiniertes Thema w&auml;hlen &mdash; danach <strong>Speichern</strong> klicken.</p>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+    <button class="btn-ghost" onclick="applyTheme('amoled')">&#x1F311; AMOLED</button>
+    <button class="btn-ghost" onclick="applyTheme('ocean')">&#x1F30A; Ozean</button>
+    <button class="btn-ghost" onclick="applyTheme('forest')">&#x1F333; Wald</button>
+    <button class="btn-ghost" onclick="applyTheme('sunset')">&#x1F305; Sonnenuntergang</button>
+    <button class="btn-ghost" onclick="applyTheme('light')">&#x2600;&#xFE0F; Hell</button>
+    <button class="btn-ghost" onclick="applyTheme('neon')">&#x26A1; Neon</button>
+    <button class="btn-ghost" onclick="applyTheme('candy')">&#x1F36C; Candy</button>
+    <button class="btn-ghost" onclick="applyTheme('mocha')">&#x2615; Mocha</button>
+  </div>
+</div>
 
-    <div style="margin-top:1.25rem">
-      <p style="font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem">Layout</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
-        <label style="font-size:.85rem;color:var(--muted)">Button-H&ouml;he (px)
-          <input type="number" id="uiTbtnH" min="32" max="80" style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
-        </label>
-        <label style="font-size:.85rem;color:var(--muted)">Button-Radius (px)
-          <input type="number" id="uiBtnRadius" min="0" max="24" style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
-        </label>
-        <label style="font-size:.85rem;color:var(--muted)">Kategorie-Spalten
-          <select id="uiCatCols" style="display:block;width:100%;margin-top:.3rem" onchange="updatePreview()">
-            <option value="1">1 Spalte</option>
-            <option value="2" selected>2 Spalten</option>
-            <option value="3">3 Spalten</option>
-          </select>
-        </label>
-        <label style="font-size:.85rem;color:var(--muted)">Kachel-Abstand (px)
-          <input type="number" id="uiCatGap" min="2" max="20" style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
-        </label>
-        <label style="font-size:.85rem;color:var(--muted)">Listen-Zeilen-H&ouml;he (px)
-          <input type="number" id="uiListItemH" min="40" max="100" style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
-        </label>
+<div id="dsec-colors" hidden>
+  <p style="font-size:.8rem;color:var(--muted);margin-bottom:.75rem">Alle Anzeigefarben individuell anpassen</p>
+  <div id="colorPickers" style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem"></div>
+</div>
+
+<div id="dsec-layout" hidden>
+  <p style="font-size:.8rem;color:var(--muted);margin-bottom:.75rem">Abmessungen, Abst&auml;nde &amp; Erscheinungsbild</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+    <label style="font-size:.85rem;color:var(--muted)">Button-H&ouml;he (px)
+      <input type="number" id="uiTbtnH" min="32" max="80" style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
+    </label>
+    <label style="font-size:.85rem;color:var(--muted)">Button-Abstand (px)
+      <input type="number" id="uiTbtnMargin" min="0" max="20" style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
+    </label>
+    <label style="font-size:.85rem;color:var(--muted)">Button-Radius
+      <input type="number" id="uiBtnRadius" min="0" max="28" style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
+    </label>
+    <label style="font-size:.85rem;color:var(--muted)">Listen-Radius
+      <input type="number" id="uiListRadius" min="0" max="24" style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
+    </label>
+    <label style="font-size:.85rem;color:var(--muted)">Kategorie-Spalten
+      <select id="uiCatCols" style="display:block;width:100%;margin-top:.3rem" onchange="updatePreview()">
+        <option value="1">1 Spalte</option>
+        <option value="2" selected>2 Spalten</option>
+        <option value="3">3 Spalten</option>
+      </select>
+    </label>
+    <label style="font-size:.85rem;color:var(--muted)">Kachel-Abstand (px)
+      <input type="number" id="uiCatGap" min="2" max="20" style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
+    </label>
+    <label style="font-size:.85rem;color:var(--muted)">Zeilen-H&ouml;he (px)
+      <input type="number" id="uiListItemH" min="40" max="100" style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
+    </label>
+    <label style="font-size:.85rem;color:var(--muted)">Kategorieheader-H. (px)
+      <input type="number" id="uiCatHdrH" min="30" max="70" style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
+    </label>
+    <label style="font-size:.85rem;color:var(--muted)">Subheader-H. (px)
+      <input type="number" id="uiSubHdrH" min="40" max="80" style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
+    </label>
+  </div>
+  <div style="margin-top:1rem">
+    <label style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:.3rem">Helligkeit</label>
+    <div style="display:flex;gap:.75rem;align-items:center">
+      <input type="range" id="uiBrightness" min="50" max="255" value="220"
+             style="flex:1" oninput="document.getElementById('brightVal').textContent=this.value;updatePreview()">
+      <span id="brightVal" style="font-size:.85rem;min-width:30px">220</span>
+    </div>
+  </div>
+</div>
+
+<div id="dsec-behavior" hidden>
+  <p style="font-size:.8rem;color:var(--muted);margin-bottom:.75rem">Anzeige- &amp; Systemverhalten</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+    <label style="font-size:.85rem;color:var(--muted)">&#x26A0;&#xFE0F; Warnung ab (Tage)
+      <input type="number" id="uiWarnDays" min="1" max="60" style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
+    </label>
+    <label style="font-size:.85rem;color:var(--muted)">&#x1F534; Kritisch ab (Tage)
+      <input type="number" id="uiDangerDays" min="1" max="30" style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
+    </label>
+    <label style="font-size:.85rem;color:var(--muted)">Stromsparmodus (Min, 0=nie)
+      <input type="number" id="uiPowerSaveMin" min="0" max="60" style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
+    </label>
+    <label style="font-size:.85rem;color:var(--muted)">Datumsformat
+      <select id="uiDateFmt" style="display:block;width:100%;margin-top:.3rem" onchange="updatePreview()">
+        <option value="0">DD.MM.YYYY (Deutsch)</option>
+        <option value="1">MM/DD/YYYY (US)</option>
+        <option value="2">YYYY-MM-DD (ISO)</option>
+      </select>
+    </label>
+    <label style="font-size:.85rem;color:var(--muted)">Uhr anzeigen
+      <select id="uiShowClock" style="display:block;width:100%;margin-top:.3rem" onchange="updatePreview()">
+        <option value="1">Ja</option>
+        <option value="0">Nein</option>
+      </select>
+    </label>
+    <div style="font-size:.85rem;color:var(--muted)">Signalton (Buzzer)
+      <div style="display:flex;gap:.75rem;margin-top:.5rem;align-items:center">
+        <label style="display:flex;gap:.35rem;align-items:center"><input type="checkbox" id="uiSoundOk"> &#x2705; Erfolg</label>
+        <label style="display:flex;gap:.35rem;align-items:center"><input type="checkbox" id="uiSoundErr"> &#x274C; Fehler</label>
       </div>
     </div>
-
-    <div style="margin-top:1.25rem">
-      <label style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:.3rem">Helligkeit</label>
-      <div style="display:flex;gap:.75rem;align-items:center">
-        <input type="range" id="uiBrightness" min="50" max="255" value="220"
-               style="flex:1" oninput="document.getElementById('brightVal').textContent=this.value;updatePreview()">
-        <span id="brightVal" style="font-size:.85rem;min-width:30px">220</span>
-      </div>
-    </div>
-
-    <div style="margin-top:1rem;display:flex;gap:1rem">
-      <label style="font-size:.85rem;color:var(--muted);flex:1">&#x26A0; Warnung ab (Tage)
-        <input type="number" id="uiWarnDays" min="1" max="60"
-               style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
-      </label>
-      <label style="font-size:.85rem;color:var(--muted);flex:1">&#x1F534; Kritisch ab (Tage)
-        <input type="number" id="uiDangerDays" min="1" max="30"
-               style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
-      </label>
-    </div>
-
-    <div style="margin-top:1.5rem;display:flex;gap:.75rem;flex-wrap:wrap">
-      <button class="btn btn-ok" onclick="saveDesign()">&#x1F4BE; Speichern &amp; Anwenden</button>
-      <button class="btn-ghost" onclick="loadDesign()">&#x21BA; Zur&uuml;cksetzen</button>
-    </div>
-    <p id="designMsg" style="font-size:.85rem;margin-top:.6rem"></p>
   </div>
+</div>
 
-  <div style="flex:0 0 auto">
-    <p style="font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem">Vorschau (Ger&auml;t)</p>
-    <svg id="devicePreview" width="170" height="275"
-         viewBox="0 0 280 456"
-         style="border-radius:14px;border:2px solid var(--border);display:block">
-    </svg>
+<div id="dsec-portex" hidden>
+  <p style="font-size:.8rem;color:var(--muted);margin-bottom:.75rem">Aktuelles Theme als JSON-Datei sichern oder ein gespeichertes laden</p>
+  <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:1rem">
+    <button class="btn btn-ok" onclick="exportThemeJSON()">&#x1F4E5; Als JSON exportieren</button>
+    <label class="btn-ghost" style="cursor:pointer;display:inline-block">&#x1F4E4; JSON importieren
+      <input type="file" id="importFile" accept=".json" style="display:none" onchange="importThemeJSON(this)">
+    </label>
   </div>
+  <textarea id="themeJsonPreview" rows="10" readonly
+    style="width:100%;font-size:.72rem;font-family:monospace;background:var(--surface);color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:.5rem;resize:vertical"></textarea>
+</div>
+
+<div style="margin-top:1.5rem;display:flex;gap:.75rem;flex-wrap:wrap;padding-top:1rem;border-top:1px solid var(--border)">
+  <button class="btn btn-ok" onclick="saveDesign()">&#x1F4BE; Speichern &amp; Anwenden</button>
+  <button class="btn-ghost" onclick="loadDesign()">&#x21BA; Zur&uuml;cksetzen</button>
+</div>
+<p id="designMsg" style="font-size:.85rem;margin-top:.6rem"></p>
+
+</div>
+
+<div style="flex:0 0 auto">
+  <p style="font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">Vorschau</p>
+  <div style="display:flex;gap:.35rem;margin-bottom:.5rem;flex-wrap:wrap">
+    <button id="pvbtn-cats" class="btn-ghost dtab-active" onclick="setPreviewMode('cats',this)" style="font-size:.75rem;padding:.2rem .6rem">Kategorien</button>
+    <button id="pvbtn-list" class="btn-ghost" onclick="setPreviewMode('list',this)" style="font-size:.75rem;padding:.2rem .6rem">Produkte</button>
+    <button id="pvbtn-date" class="btn-ghost" onclick="setPreviewMode('date',this)" style="font-size:.75rem;padding:.2rem .6rem">Datum</button>
+  </div>
+  <svg id="devicePreview" width="170" height="275"
+       viewBox="0 0 280 456"
+       style="border-radius:14px;border:2px solid var(--border);display:block">
+  </svg>
+</div>
 
 </div>
 </div>
@@ -1222,38 +1292,96 @@ async function loadScanlogs(){
 
 // ── Design-Editor ─────────────────────────────────────────────
 const _colorFields=[
-  {key:'bg',      label:'Hintergrund'},
-  {key:'text',    label:'Text'},
-  {key:'subtext', label:'Hinweistext'},
-  {key:'ok',      label:'Grün / OK'},
-  {key:'warn',    label:'Warnung'},
-  {key:'danger',  label:'Gefahr / Rot'},
-  {key:'accent',  label:'Akzent / Cyan'},
-  {key:'header',  label:'Kopfzeile'},
-  {key:'surface', label:'Oberfläche'},
-  {key:'btn_ok',  label:'Button OK'},
-  {key:'btn_back',label:'Button Zurück'},
+  {key:'bg',       label:'Hintergrund'},
+  {key:'text',     label:'Text'},
+  {key:'subtext',  label:'Hinweistext'},
+  {key:'ok',       label:'Grün / OK'},
+  {key:'warn',     label:'Warnung'},
+  {key:'danger',   label:'Gefahr / Rot'},
+  {key:'accent',   label:'Akzent / Cyan'},
+  {key:'header',   label:'Kopfzeile'},
+  {key:'surface',  label:'Oberfläche'},
+  {key:'btn_ok',   label:'Button OK'},
+  {key:'btn_back', label:'Button Zurück'},
 ];
 const _themes={
   amoled:{bg:'#000000',text:'#FFFFFF',subtext:'#808080',ok:'#00FC00',warn:'#FF6800',
     danger:'#FF0000',accent:'#00FFFF',header:'#0C1213',surface:'#0C1861',
-    btn_ok:'#003000',btn_back:'#142250',brightness:220,warning_days:7,danger_days:3,tbtn_h:48,btn_radius:10,cat_cols:2,cat_gap:6,list_item_h:64},
+    btn_ok:'#003000',btn_back:'#142250',
+    brightness:220,warning_days:7,danger_days:3,
+    tbtn_h:48,btn_radius:10,tbtn_margin:8,list_radius:6,
+    cat_cols:2,cat_gap:6,list_item_h:64,cat_hdr_h:44,sub_hdr_h:54,
+    power_save_min:10,date_format:0,show_clock:1,sound_ok:1,sound_err:1},
   ocean:{bg:'#0A1628',text:'#D0E8FF',subtext:'#5080A0',ok:'#00CC88',warn:'#FF9900',
     danger:'#FF4444',accent:'#4488FF',header:'#0D2040',surface:'#122030',
-    btn_ok:'#0A3020',btn_back:'#0A2040',brightness:200,warning_days:7,danger_days:3,tbtn_h:48,btn_radius:10,cat_cols:2,cat_gap:6,list_item_h:64},
+    btn_ok:'#0A3020',btn_back:'#0A2040',
+    brightness:200,warning_days:7,danger_days:3,
+    tbtn_h:48,btn_radius:12,tbtn_margin:8,list_radius:8,
+    cat_cols:2,cat_gap:6,list_item_h:64,cat_hdr_h:44,sub_hdr_h:54,
+    power_save_min:10,date_format:0,show_clock:1,sound_ok:1,sound_err:1},
   forest:{bg:'#0A1408',text:'#D0FFD0',subtext:'#608060',ok:'#00FF44',warn:'#FFAA00',
     danger:'#FF2222',accent:'#44FF88',header:'#0C1C08',surface:'#122010',
-    btn_ok:'#0A3010',btn_back:'#1A3010',brightness:200,warning_days:7,danger_days:3,tbtn_h:48,btn_radius:10,cat_cols:2,cat_gap:6,list_item_h:64},
+    btn_ok:'#0A3010',btn_back:'#1A3010',
+    brightness:200,warning_days:7,danger_days:3,
+    tbtn_h:48,btn_radius:10,tbtn_margin:8,list_radius:6,
+    cat_cols:2,cat_gap:8,list_item_h:64,cat_hdr_h:44,sub_hdr_h:54,
+    power_save_min:10,date_format:0,show_clock:1,sound_ok:1,sound_err:1},
   sunset:{bg:'#120808',text:'#FFE8E0',subtext:'#806060',ok:'#00CC66',warn:'#FF8800',
     danger:'#FF2222',accent:'#FF6644',header:'#1C1008',surface:'#1A1010',
-    btn_ok:'#0A2810',btn_back:'#2A1408',brightness:210,warning_days:7,danger_days:3,tbtn_h:48,btn_radius:10,cat_cols:2,cat_gap:6,list_item_h:64},
+    btn_ok:'#0A2810',btn_back:'#2A1408',
+    brightness:210,warning_days:7,danger_days:3,
+    tbtn_h:48,btn_radius:10,tbtn_margin:8,list_radius:6,
+    cat_cols:2,cat_gap:6,list_item_h:64,cat_hdr_h:44,sub_hdr_h:54,
+    power_save_min:10,date_format:0,show_clock:1,sound_ok:1,sound_err:1},
   light:{bg:'#F0F0F0',text:'#111111',subtext:'#666666',ok:'#008800',warn:'#AA6600',
     danger:'#CC0000',accent:'#0066CC',header:'#DDDDDD',surface:'#E8E8E8',
-    btn_ok:'#006600',btn_back:'#444444',brightness:255,warning_days:7,danger_days:3,tbtn_h:48,btn_radius:10,cat_cols:2,cat_gap:6,list_item_h:64},
+    btn_ok:'#006600',btn_back:'#444444',
+    brightness:255,warning_days:7,danger_days:3,
+    tbtn_h:48,btn_radius:8,tbtn_margin:8,list_radius:6,
+    cat_cols:2,cat_gap:6,list_item_h:64,cat_hdr_h:44,sub_hdr_h:54,
+    power_save_min:10,date_format:0,show_clock:1,sound_ok:1,sound_err:1},
+  neon:{bg:'#050510',text:'#E0E0FF',subtext:'#6060A0',ok:'#00FF88',warn:'#FFCC00',
+    danger:'#FF2266',accent:'#BB44FF',header:'#0A0A20',surface:'#10103A',
+    btn_ok:'#004433',btn_back:'#1A0A30',
+    brightness:220,warning_days:7,danger_days:3,
+    tbtn_h:52,btn_radius:14,tbtn_margin:8,list_radius:10,
+    cat_cols:2,cat_gap:6,list_item_h:64,cat_hdr_h:44,sub_hdr_h:54,
+    power_save_min:10,date_format:0,show_clock:1,sound_ok:1,sound_err:1},
+  candy:{bg:'#1A0520',text:'#FFE0FF',subtext:'#A060A0',ok:'#44FF88',warn:'#FFAA22',
+    danger:'#FF3366',accent:'#FF66CC',header:'#280A35',surface:'#2A0A38',
+    btn_ok:'#0A4422',btn_back:'#380A44',
+    brightness:210,warning_days:7,danger_days:3,
+    tbtn_h:52,btn_radius:24,tbtn_margin:10,list_radius:12,
+    cat_cols:2,cat_gap:8,list_item_h:68,cat_hdr_h:48,sub_hdr_h:56,
+    power_save_min:10,date_format:0,show_clock:1,sound_ok:1,sound_err:1},
+  mocha:{bg:'#1C1410',text:'#F0E8D8',subtext:'#907060',ok:'#88CC44',warn:'#E8A030',
+    danger:'#CC3322',accent:'#D08844',header:'#241A12',surface:'#2A2018',
+    btn_ok:'#224411',btn_back:'#3A2818',
+    brightness:200,warning_days:7,danger_days:3,
+    tbtn_h:48,btn_radius:10,tbtn_margin:8,list_radius:6,
+    cat_cols:2,cat_gap:6,list_item_h:64,cat_hdr_h:44,sub_hdr_h:54,
+    power_save_min:10,date_format:0,show_clock:1,sound_ok:1,sound_err:1},
 };
 let _uiVals={};
+let _previewMode='cats';
+function switchDTab(id,btn){
+  ['themes','colors','layout','behavior','portex'].forEach(s=>{
+    const el=document.getElementById('dsec-'+s);
+    if(el)el.hidden=(s!==id);
+  });
+  document.querySelectorAll('.dtab').forEach(b=>b.classList.remove('dtab-active'));
+  if(btn)btn.classList.add('dtab-active');
+  if(id==='portex')_refreshExportPreview();
+}
+function setPreviewMode(mode,btn){
+  _previewMode=mode;
+  document.querySelectorAll('[id^="pvbtn-"]').forEach(b=>b.classList.remove('dtab-active'));
+  if(btn)btn.classList.add('dtab-active');
+  updatePreview();
+}
 function _buildColorPickers(){
   const grid=document.getElementById('colorPickers');
+  if(!grid||grid.children.length)return;
   grid.innerHTML=_colorFields.map(f=>
     `<label style="font-size:.8rem;color:var(--muted)">${f.label}
       <div style="display:flex;gap:.5rem;align-items:center;margin-top:.25rem">
@@ -1267,60 +1395,203 @@ function _setColor(key,hex){
   _uiVals[key]=hex;
   const el=document.getElementById('uc_'+key);
   const lbl=document.getElementById('ucv_'+key);
-  if(el){el.value=hex;}
-  if(lbl){lbl.textContent=hex.toUpperCase();}
+  if(el)el.value=hex;
+  if(lbl)lbl.textContent=hex.toUpperCase();
 }
+function _gi(id){return document.getElementById(id);}
+function _giv(id,def){const el=_gi(id);return el?el.value:def;}
+function _siv(id,v){const el=_gi(id);if(el)el.value=v;}
 function applyTheme(name){
   const t=_themes[name];if(!t)return;
-  Object.entries(t).forEach(([k,v])=>{
-    if(typeof v==='string')_setColor(k,v);
-    else _uiVals[k]=v;
-  });
-  document.getElementById('uiBrightness').value=t.brightness||220;
-  document.getElementById('brightVal').textContent=t.brightness||220;
-  document.getElementById('uiWarnDays').value=t.warning_days||7;
-  document.getElementById('uiDangerDays').value=t.danger_days||3;
-  if(t.tbtn_h)    {document.getElementById('uiTbtnH').value=t.tbtn_h;}
-  if(t.btn_radius){document.getElementById('uiBtnRadius').value=t.btn_radius;}
-  if(t.cat_cols)  {document.getElementById('uiCatCols').value=t.cat_cols;}
-  if(t.cat_gap)   {document.getElementById('uiCatGap').value=t.cat_gap;}
-  if(t.list_item_h){document.getElementById('uiListItemH').value=t.list_item_h;}
+  _buildColorPickers();
+  Object.entries(t).forEach(([k,v])=>{if(typeof v==='string')_setColor(k,v);else _uiVals[k]=v;});
+  _siv('uiBrightness',t.brightness||220);
+  _gi('brightVal').textContent=t.brightness||220;
+  _siv('uiWarnDays',t.warning_days||7);
+  _siv('uiDangerDays',t.danger_days||3);
+  _siv('uiTbtnH',t.tbtn_h||48);
+  _siv('uiBtnRadius',t.btn_radius||10);
+  _siv('uiTbtnMargin',t.tbtn_margin||8);
+  _siv('uiListRadius',t.list_radius||6);
+  _siv('uiCatCols',t.cat_cols||2);
+  _siv('uiCatGap',t.cat_gap||6);
+  _siv('uiListItemH',t.list_item_h||64);
+  _siv('uiCatHdrH',t.cat_hdr_h||44);
+  _siv('uiSubHdrH',t.sub_hdr_h||54);
+  _siv('uiPowerSaveMin',t.power_save_min||10);
+  _siv('uiDateFmt',t.date_format||0);
+  _siv('uiShowClock',t.show_clock!==undefined?t.show_clock:1);
+  const sok=_gi('uiSoundOk');const ser=_gi('uiSoundErr');
+  if(sok)sok.checked=!!(t.sound_ok!==undefined?t.sound_ok:1);
+  if(ser)ser.checked=!!(t.sound_err!==undefined?t.sound_err:1);
   updatePreview();
+}
+function _buildPreviewCats(v){
+  const cols=parseInt(_giv('uiCatCols',2));
+  const gap=parseInt(_giv('uiCatGap',6));
+  const hdr=parseInt(_giv('uiCatHdrH',44));
+  const btnH=parseInt(_giv('uiTbtnH',48));
+  const btnM=parseInt(_giv('uiTbtnMargin',8));
+  const btnR=parseInt(_giv('uiBtnRadius',10));
+  const showClk=_giv('uiShowClock',1)!=='0';
+  const rows=Math.ceil(8/cols);
+  const tw=Math.floor((280-(cols+1)*gap)/cols);
+  const th=Math.floor((456-hdr-(rows+1)*gap)/rows);
+  const tiles=[
+    {n:'Fleisch',c:'#CC4422'},{n:'Gefluegel',c:'#CC8800'},
+    {n:'Fisch',c:'#2255CC'},{n:'Gemüse',c:'#228822'},
+    {n:'Obst',c:'#CC6600'},{n:'Fertig',c:'#7733BB'},
+    {n:'Backwaren',c:'#998800'},{n:'Sonstiges',c:'#556677'},
+  ];
+  let s='';
+  tiles.forEach((t,i)=>{
+    const col=i%cols,row=Math.floor(i/cols);
+    const tx=gap+col*(tw+gap),ty=hdr+gap+row*(th+gap);
+    s+=`<rect x="${tx}" y="${ty}" width="${tw}" height="${th}" rx="${btnR}" fill="${t.c}"/>
+    <text x="${tx+tw/2}" y="${ty+th/2+7}" text-anchor="middle" font-size="${t.n.length>8?15:20}" fill="white" font-family="sans-serif" font-weight="bold">${t.n}</text>`;
+  });
+  const clkSvg=showClk?`<text x="6" y="14" font-size="11" fill="${v.subtext||'#808080'}" font-family="monospace">12:34</text>`:'';
+  return `<rect width="280" height="456" fill="${v.bg||'#000'}"/>
+    <rect width="280" height="${hdr}" fill="${v.header||'#0C1213'}"/>
+    <text x="140" y="${hdr/2+7}" text-anchor="middle" fill="${v.text||'#FFF'}" font-size="16" font-family="sans-serif" font-weight="600">Kategorien</text>
+    <circle cx="272" cy="8" r="4" fill="${v.ok||'#00FF00'}"/>
+    ${clkSvg}${s}`;
+}
+function _buildPreviewList(v){
+  const sub=parseInt(_giv('uiSubHdrH',54));
+  const itemH=parseInt(_giv('uiListItemH',64));
+  const lr=parseInt(_giv('uiListRadius',6));
+  const btnH=parseInt(_giv('uiTbtnH',48));
+  const btnM=parseInt(_giv('uiTbtnMargin',8));
+  const btnR=parseInt(_giv('uiBtnRadius',10));
+  const showClk=_giv('uiShowClock',1)!=='0';
+  const items=['Milch 1L','Butter 250g','Joghurt','Käse','Sahne'];
+  const days=[14,3,1,-1,7];
+  const dayCol=(d)=>d<0?(v.danger||'#FF0000'):d<=(parseInt(_giv('uiDangerDays',3)))?(v.danger||'#FF0000'):d<=(parseInt(_giv('uiWarnDays',7)))?(v.warn||'#FFAA00'):(v.ok||'#00FF00');
+  const vis=Math.min(items.length,Math.floor((456-sub-btnH-8)/itemH));
+  let s='';
+  for(let i=0;i<vis;i++){
+    const iy=sub+i*itemH;
+    s+=`<rect x="4" y="${iy+2}" width="272" height="${itemH-4}" rx="${lr}" fill="${v.surface||'#181818'}"/>
+    <text x="14" y="${iy+itemH/2+5}" font-size="14" fill="${v.text||'#FFF'}" font-family="sans-serif">${items[i]}</text>
+    <text x="258" y="${iy+itemH/2+5}" text-anchor="end" font-size="12" fill="${dayCol(days[i])}" font-family="sans-serif">${days[i]<0?'abgel.':days[i]+'d'}</text>`;
+  }
+  const clkSvg=showClk?`<text x="6" y="14" font-size="11" fill="${v.subtext||'#808080'}" font-family="monospace">12:34</text>`:'';
+  return `<rect width="280" height="456" fill="${v.bg||'#000'}"/>
+    <rect width="280" height="${sub}" fill="${v.bg||'#000'}"/>
+    <line x1="0" y1="${sub}" x2="280" y2="${sub}" stroke="${v.surface||'#333'}" stroke-width="1"/>
+    <text x="50" y="${sub/2+7}" font-size="13" fill="${v.text||'#FFF'}" font-family="sans-serif">&lt; Zurück</text>
+    <text x="140" y="${sub/2+7}" text-anchor="middle" font-size="16" fill="${v.accent||'#00FFFF'}" font-family="sans-serif" font-weight="600">Milchprodukte</text>
+    <circle cx="272" cy="8" r="4" fill="${v.ok||'#00FF00'}"/>
+    ${clkSvg}${s}
+    <rect x="${btnM}" y="${456-btnH-8}" width="${280-2*btnM}" height="${btnH}" rx="${btnR}" fill="${v.btn_back||'#1A2250'}"/>
+    <text x="140" y="${456-btnH/2-8+7}" text-anchor="middle" font-size="15" fill="${v.text||'#FFF'}" font-family="sans-serif">← Zurück</text>`;
+}
+function _buildPreviewDate(v){
+  const sub=parseInt(_giv('uiSubHdrH',54));
+  const btnH=parseInt(_giv('uiTbtnH',48));
+  const btnM=parseInt(_giv('uiTbtnMargin',8));
+  const btnR=parseInt(_giv('uiBtnRadius',10));
+  const dfmt=parseInt(_giv('uiDateFmt',0));
+  const dateStr=dfmt===1?'12/31/2025':dfmt===2?'2025-12-31':'31.12.2025';
+  const dateH=72;const npTop=sub+dateH;const npColW=Math.floor(280/3);
+  const npRowH=Math.floor((456-npTop)/4);
+  const keys=['1','2','3','4','5','6','7','8','9','⌫','0','✓'];
+  const kbg=(k)=>k==='✓'?(v.btn_ok||'#003000'):k==='⌫'?(v.btn_back||'#1A2250'):(v.surface||'#181818');
+  let s='';
+  keys.forEach((k,i)=>{
+    const col=i%3,row=Math.floor(i/3);
+    const kx=col*npColW+2,ky=npTop+row*npRowH+2,kw=npColW-4,kh=npRowH-4;
+    s+=`<rect x="${kx}" y="${ky}" width="${kw}" height="${kh}" rx="${btnR}" fill="${kbg(k)}"/>
+    <text x="${kx+kw/2}" y="${ky+kh/2+7}" text-anchor="middle" font-size="20" fill="${v.text||'#FFF'}" font-family="sans-serif" font-weight="600">${k}</text>`;
+  });
+  return `<rect width="280" height="456" fill="${v.bg||'#000'}"/>
+    <rect width="280" height="${sub}" fill="${v.bg||'#000'}"/>
+    <text x="140" y="${sub/2+7}" text-anchor="middle" font-size="16" fill="${v.text||'#FFF'}" font-family="sans-serif" font-weight="600">Datum eingeben</text>
+    <rect width="280" height="${dateH}" y="${sub}" fill="${v.surface||'#181818'}"/>
+    <text x="140" y="${sub+dateH/2-8}" text-anchor="middle" font-size="13" fill="${v.subtext||'#808080'}" font-family="sans-serif">Joghurt Natur</text>
+    <text x="140" y="${sub+dateH/2+14}" text-anchor="middle" font-size="22" fill="${v.accent||'#00FFFF'}" font-family="monospace" font-weight="bold">${dateStr}</text>
+    ${s}`;
 }
 function updatePreview(){
   const v=_uiVals;
   const svg=document.getElementById('devicePreview');
-  const cat=[v.ok||'#00FF00',v.warn||'#FF8800',v.accent||'#00FFFF',
-             v.danger||'#FF0000','#8844AA','#886600','#446688','#224488'];
-  const tiles=[
-    {n:'Fleisch',c:cat[0]},{n:'Gefluegel',c:'#CC8800'},
-    {n:'Fisch',c:'#2255CC'},{n:'Gemüse',c:cat[1]},
-    {n:'Obst',c:'#CC6600'},{n:'Fertig',c:'#7733BB'},
-    {n:'Backwaren',c:'#998800'},{n:'Sonstiges',c:'#556677'},
-  ];
-  let tileSvg='';
-  const cols=parseInt(document.getElementById('uiCatCols')?.value||2);
-  const gap=parseInt(document.getElementById('uiCatGap')?.value||6);
-  const rows=Math.ceil(8/cols);
-  const tw=Math.floor((280-(cols+1)*gap)/cols);
-  const th=Math.floor((456-44-(rows+1)*gap)/rows);
-  const hdr=44;
-  tiles.forEach((t,i)=>{
-    const col=i%cols,row=Math.floor(i/cols);
-    const tx=gap+col*(tw+gap),ty=hdr+gap+row*(th+gap);
-    const short=t.n.length<=8;
-    tileSvg+=`<rect x="${tx}" y="${ty}" width="${tw}" height="${th}" rx="12" fill="${t.c}"/>
-    <text x="${tx+tw/2}" y="${ty+th/2+8}" text-anchor="middle"
-          font-size="${short?22:17}" fill="white" font-family="sans-serif" font-weight="bold">${t.n}</text>`;
-  });
-  svg.innerHTML=`
-    <rect width="280" height="456" fill="${v.bg||'#000'}"/>
-    <rect width="280" height="${hdr}" fill="${v.header||'#0C1213'}"/>
-    <text x="140" y="${hdr/2+7}" text-anchor="middle" fill="${v.text||'#FFF'}" font-size="16" font-family="sans-serif" font-weight="600">Kategorien</text>
-    ${tileSvg}
-    <rect x="8" y="400" width="264" height="48" rx="10" fill="${v.btn_ok||'#003000'}"/>
-    <text x="140" y="431" text-anchor="middle" fill="${v.text||'#FFF'}" font-size="18" font-family="sans-serif" font-weight="bold">OK</text>
-  `;
+  if(!svg)return;
+  let inner='';
+  if(_previewMode==='list')inner=_buildPreviewList(v);
+  else if(_previewMode==='date')inner=_buildPreviewDate(v);
+  else inner=_buildPreviewCats(v);
+  svg.innerHTML=inner;
+}
+function _refreshExportPreview(){
+  const d=_collectDesignData();
+  const ta=_gi('themeJsonPreview');
+  if(ta)ta.value=JSON.stringify(d,null,2);
+}
+function _collectDesignData(){
+  const body=Object.fromEntries(_colorFields.map(f=>[f.key,_uiVals[f.key]||'#000000']));
+  body.brightness     =parseInt(_giv('uiBrightness',220));
+  body.tbtn_h         =parseInt(_giv('uiTbtnH',48));
+  body.btn_radius     =parseInt(_giv('uiBtnRadius',10));
+  body.tbtn_margin    =parseInt(_giv('uiTbtnMargin',8));
+  body.list_radius    =parseInt(_giv('uiListRadius',6));
+  body.cat_cols       =parseInt(_giv('uiCatCols',2));
+  body.cat_gap        =parseInt(_giv('uiCatGap',6));
+  body.list_item_h    =parseInt(_giv('uiListItemH',64));
+  body.cat_hdr_h      =parseInt(_giv('uiCatHdrH',44));
+  body.sub_hdr_h      =parseInt(_giv('uiSubHdrH',54));
+  body.warning_days   =parseInt(_giv('uiWarnDays',7));
+  body.danger_days    =parseInt(_giv('uiDangerDays',3));
+  body.power_save_min =parseInt(_giv('uiPowerSaveMin',10));
+  body.date_format    =parseInt(_giv('uiDateFmt',0));
+  body.show_clock     =parseInt(_giv('uiShowClock',1));
+  const sok=_gi('uiSoundOk'),ser=_gi('uiSoundErr');
+  body.sound_ok  =sok&&sok.checked?1:0;
+  body.sound_err =ser&&ser.checked?1:0;
+  return body;
+}
+function exportThemeJSON(){
+  const d=_collectDesignData();
+  const blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='scanner-theme.json';
+  a.click();
+  _refreshExportPreview();
+}
+function importThemeJSON(inp){
+  const file=inp.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const d=JSON.parse(e.target.result);
+      _buildColorPickers();
+      _colorFields.forEach(f=>{if(d[f.key])_setColor(f.key,d[f.key]);});
+      _siv('uiBrightness',d.brightness||220);
+      if(_gi('brightVal'))_gi('brightVal').textContent=d.brightness||220;
+      _siv('uiTbtnH',d.tbtn_h||48);
+      _siv('uiBtnRadius',d.btn_radius||10);
+      _siv('uiTbtnMargin',d.tbtn_margin||8);
+      _siv('uiListRadius',d.list_radius||6);
+      _siv('uiCatCols',d.cat_cols||2);
+      _siv('uiCatGap',d.cat_gap||6);
+      _siv('uiListItemH',d.list_item_h||64);
+      _siv('uiCatHdrH',d.cat_hdr_h||44);
+      _siv('uiSubHdrH',d.sub_hdr_h||54);
+      _siv('uiWarnDays',d.warning_days||7);
+      _siv('uiDangerDays',d.danger_days||3);
+      _siv('uiPowerSaveMin',d.power_save_min||10);
+      _siv('uiDateFmt',d.date_format||0);
+      _siv('uiShowClock',d.show_clock!==undefined?d.show_clock:1);
+      const sok=_gi('uiSoundOk'),ser=_gi('uiSoundErr');
+      if(sok)sok.checked=!!(d.sound_ok!==undefined?d.sound_ok:1);
+      if(ser)ser.checked=!!(d.sound_err!==undefined?d.sound_err:1);
+      updatePreview();_refreshExportPreview();
+      document.getElementById('designMsg').textContent='Theme importiert – jetzt Speichern klicken.';
+    }catch(ex){document.getElementById('designMsg').textContent='Import-Fehler: '+ex.message;}
+  };
+  reader.readAsText(file);
+  inp.value='';
 }
 async function loadDesign(){
   _buildColorPickers();
@@ -1328,30 +1599,32 @@ async function loadDesign(){
     const d=await fetch('/api/ui-config').then(r=>r.json());
     if(d.error){document.getElementById('designMsg').textContent='Fehler: '+d.error;return;}
     _colorFields.forEach(f=>_setColor(f.key,d[f.key]||'#000000'));
-    document.getElementById('uiTbtnH').value     = d.tbtn_h     || 48;
-    document.getElementById('uiBtnRadius').value  = d.btn_radius || 10;
-    document.getElementById('uiCatCols').value    = d.cat_cols   || 2;
-    document.getElementById('uiCatGap').value     = d.cat_gap    || 6;
-    document.getElementById('uiListItemH').value  = d.list_item_h|| 64;
-    document.getElementById('uiBrightness').value=d.brightness||220;
-    document.getElementById('brightVal').textContent=d.brightness||220;
-    document.getElementById('uiWarnDays').value=d.warning_days||7;
-    document.getElementById('uiDangerDays').value=d.danger_days||3;
+    _siv('uiTbtnH',d.tbtn_h||48);
+    _siv('uiBtnRadius',d.btn_radius||10);
+    _siv('uiTbtnMargin',d.tbtn_margin||8);
+    _siv('uiListRadius',d.list_radius||6);
+    _siv('uiCatCols',d.cat_cols||2);
+    _siv('uiCatGap',d.cat_gap||6);
+    _siv('uiListItemH',d.list_item_h||64);
+    _siv('uiCatHdrH',d.cat_hdr_h||44);
+    _siv('uiSubHdrH',d.sub_hdr_h||54);
+    _siv('uiBrightness',d.brightness||220);
+    if(_gi('brightVal'))_gi('brightVal').textContent=d.brightness||220;
+    _siv('uiWarnDays',d.warning_days||7);
+    _siv('uiDangerDays',d.danger_days||3);
+    _siv('uiPowerSaveMin',d.power_save_min||10);
+    _siv('uiDateFmt',d.date_format||0);
+    _siv('uiShowClock',d.show_clock!==undefined?d.show_clock:1);
+    const sok=_gi('uiSoundOk'),ser=_gi('uiSoundErr');
+    if(sok)sok.checked=!!(d.sound_ok!==undefined?d.sound_ok:1);
+    if(ser)ser.checked=!!(d.sound_err!==undefined?d.sound_err:1);
     updatePreview();
   }catch(e){document.getElementById('designMsg').textContent='Ladefehler: '+e.message;}
 }
 async function saveDesign(){
   const msg=document.getElementById('designMsg');
   msg.style.color='var(--muted)';msg.textContent='Speichern…';
-  const body=Object.fromEntries(_colorFields.map(f=>[f.key,_uiVals[f.key]||'#000000']));
-  body.brightness=parseInt(document.getElementById('uiBrightness').value)||220;
-  body.tbtn_h     =parseInt(document.getElementById('uiTbtnH').value)||48;
-  body.btn_radius =parseInt(document.getElementById('uiBtnRadius').value)||10;
-  body.cat_cols   =parseInt(document.getElementById('uiCatCols').value)||2;
-  body.cat_gap    =parseInt(document.getElementById('uiCatGap').value)||6;
-  body.list_item_h=parseInt(document.getElementById('uiListItemH').value)||64;
-  body.warning_days=parseInt(document.getElementById('uiWarnDays').value)||7;
-  body.danger_days=parseInt(document.getElementById('uiDangerDays').value)||3;
+  const body=_collectDesignData();
   try{
     const r=await fetch('/api/ui-config',{method:'POST',
       headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -2051,11 +2324,20 @@ void WebInterface::begin() {
         doc["brightness"]  = g_uiCfg.brightness;
         doc["warning_days"]= g_uiCfg.warning_days;
         doc["danger_days"] = g_uiCfg.danger_days;
-        doc["tbtn_h"]     = g_uiCfg.tbtn_h;
-        doc["btn_radius"] = g_uiCfg.btn_radius;
-        doc["cat_cols"]   = g_uiCfg.cat_cols;
-        doc["cat_gap"]    = g_uiCfg.cat_gap;
-        doc["list_item_h"]= g_uiCfg.list_item_h;
+        doc["tbtn_h"]        = g_uiCfg.tbtn_h;
+        doc["btn_radius"]    = g_uiCfg.btn_radius;
+        doc["tbtn_margin"]   = g_uiCfg.tbtn_margin;
+        doc["list_radius"]   = g_uiCfg.list_radius;
+        doc["cat_cols"]      = g_uiCfg.cat_cols;
+        doc["cat_gap"]       = g_uiCfg.cat_gap;
+        doc["list_item_h"]   = g_uiCfg.list_item_h;
+        doc["cat_hdr_h"]     = g_uiCfg.cat_hdr_h;
+        doc["sub_hdr_h"]     = g_uiCfg.sub_hdr_h;
+        doc["power_save_min"]= g_uiCfg.power_save_min;
+        doc["date_format"]   = g_uiCfg.date_format;
+        doc["show_clock"]    = g_uiCfg.show_clock;
+        doc["sound_ok"]      = g_uiCfg.sound_ok;
+        doc["sound_err"]     = g_uiCfg.sound_err;
         String s; serializeJson(doc, s);
         req->send(200, "application/json", s);
     });
@@ -2082,11 +2364,20 @@ void WebInterface::begin() {
             if (!doc["brightness"].isNull()) g_uiCfg.brightness  = doc["brightness"].as<uint8_t>();
             if (!doc["warning_days"].isNull())g_uiCfg.warning_days=doc["warning_days"].as<uint8_t>();
             if (!doc["danger_days"].isNull()) g_uiCfg.danger_days =doc["danger_days"].as<uint8_t>();
-            if (!doc["tbtn_h"].isNull())      g_uiCfg.tbtn_h     = doc["tbtn_h"].as<uint8_t>();
-            if (!doc["btn_radius"].isNull())   g_uiCfg.btn_radius  = doc["btn_radius"].as<uint8_t>();
-            if (!doc["cat_cols"].isNull())     g_uiCfg.cat_cols    = doc["cat_cols"].as<uint8_t>();
-            if (!doc["cat_gap"].isNull())      g_uiCfg.cat_gap     = doc["cat_gap"].as<uint8_t>();
-            if (!doc["list_item_h"].isNull())  g_uiCfg.list_item_h = doc["list_item_h"].as<uint8_t>();
+            if (!doc["tbtn_h"].isNull())       g_uiCfg.tbtn_h       = doc["tbtn_h"].as<uint8_t>();
+            if (!doc["btn_radius"].isNull())   g_uiCfg.btn_radius   = doc["btn_radius"].as<uint8_t>();
+            if (!doc["tbtn_margin"].isNull())  g_uiCfg.tbtn_margin  = doc["tbtn_margin"].as<uint8_t>();
+            if (!doc["list_radius"].isNull())  g_uiCfg.list_radius  = doc["list_radius"].as<uint8_t>();
+            if (!doc["cat_cols"].isNull())     g_uiCfg.cat_cols     = doc["cat_cols"].as<uint8_t>();
+            if (!doc["cat_gap"].isNull())      g_uiCfg.cat_gap      = doc["cat_gap"].as<uint8_t>();
+            if (!doc["list_item_h"].isNull())  g_uiCfg.list_item_h  = doc["list_item_h"].as<uint8_t>();
+            if (!doc["cat_hdr_h"].isNull())    g_uiCfg.cat_hdr_h    = doc["cat_hdr_h"].as<uint8_t>();
+            if (!doc["sub_hdr_h"].isNull())    g_uiCfg.sub_hdr_h    = doc["sub_hdr_h"].as<uint8_t>();
+            if (!doc["power_save_min"].isNull())g_uiCfg.power_save_min=doc["power_save_min"].as<uint8_t>();
+            if (!doc["date_format"].isNull())  g_uiCfg.date_format  = doc["date_format"].as<uint8_t>();
+            if (!doc["show_clock"].isNull())   g_uiCfg.show_clock   = doc["show_clock"].as<uint8_t>();
+            if (!doc["sound_ok"].isNull())     g_uiCfg.sound_ok     = doc["sound_ok"].as<uint8_t>();
+            if (!doc["sound_err"].isNull())    g_uiCfg.sound_err    = doc["sound_err"].as<uint8_t>();
             saveUIConfig();
             extern void applyUIBrightness();
             applyUIBrightness();
