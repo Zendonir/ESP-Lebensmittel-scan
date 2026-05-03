@@ -23,7 +23,7 @@ static constexpr int16_t CAT_TILE_H    = (DISPLAY_H - CAT_HDR - (CAT_ROWS + 1) *
 
 // ── Produktliste / Unterscreen-Header ────────────────────────
 static constexpr int16_t SUB_HDR       = 54;
-static constexpr int16_t LIST_ITEM_H   = 48;
+static constexpr int16_t LIST_ITEM_H   = 64;
 static constexpr int16_t LIST_MAX_VIS  = (DISPLAY_H - SUB_HDR) / LIST_ITEM_H;
 
 // ── Datumseingabe (▲ Drum Roller ▼) — Hochformat 280×456 ─────

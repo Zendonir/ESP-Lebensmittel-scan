@@ -96,7 +96,14 @@ void DisplayManager::drawTouchButton(int16_t x, int16_t y, int16_t w, int16_t h,
                                       const String &label, uint16_t bg, uint16_t fg,
                                       uint8_t sz) {
     _gfx->fillRoundRect(x, y, w, h, 10, bg);
-    textCenter(label, x + w / 2, y + h / 2, sz, fg, bg);
+    // Transparent text background: button is already drawn, avoid corner artifacts
+    applyFont(sz);
+    _gfx->setTextColor(fg);
+    int16_t x1, y1; uint16_t tw, th;
+    _gfx->getTextBounds(label.c_str(), 0, 100, &x1, &y1, &tw, &th);
+    _gfx->setCursor(x + w / 2 - (int16_t)tw / 2 - x1,
+                    y + h / 2 - (int16_t)th / 2 - y1 + 100);
+    _gfx->print(label);
 }
 
 // ── Status-/Navigationsleiste ──────────────────────────────────
@@ -152,16 +159,9 @@ void DisplayManager::showCategoryGrid(const std::vector<int> &catInvCounts,
         uint16_t bg = g_categories[i].bgColor;
         _gfx->fillRoundRect(tx, ty, CAT_TILE_W, CAT_TILE_H, 12, bg);
 
-        int cnt = (i < (int)catInvCounts.size()) ? catInvCounts[i] : 0;
-        if (cnt > 0) {
-            uint16_t badgeBg = (warnCount > 0) ? COLOR_WARN : COLOR_ACCENT;
-            _gfx->fillCircle(tx + CAT_TILE_W - 12, ty + 12, 11, badgeBg);
-            String cs = cnt > 99 ? "9+" : String(cnt);
-            textCenter(cs, tx + CAT_TILE_W - 12, ty + 8, g_fontCfg.small, COLOR_BG, badgeBg);
-        }
-
         String name = g_categories[i].name;
-        uint8_t tsz = (name.length() <= 9) ? g_fontCfg.body : prevPx(g_fontCfg.body);
+        uint8_t tsz = g_fontCfg.btn;
+        if (name.length() > 9 && tsz > 16) tsz = prevPx(tsz);
         if (name.length() > 20) name = name.substring(0, 20);
         textCenter(name, tx + CAT_TILE_W / 2, ty + CAT_TILE_H / 2, tsz, 0xFFFF, bg);
     }
@@ -191,16 +191,17 @@ void DisplayManager::showProductList(const String &catName, uint16_t catColor,
 
         _gfx->fillRoundRect(4, iy + 2, W - 8, LIST_ITEM_H - 4, 6, COLOR_SURFACE);
 
+        int16_t textY = iy + LIST_ITEM_H / 2 - 8;
         String name = p.name.length() > 26 ? p.name.substring(0, 26) : p.name;
-        textLeft(name, 14, iy + 10, g_fontCfg.body, COLOR_TEXT, COLOR_SURFACE);
+        textLeft(name, 14, textY, g_fontCfg.body, COLOR_TEXT, COLOR_SURFACE);
 
         if (p.defaultDays > 0) {
             String d = String(p.defaultDays) + "d";
-            textLeft(d, W - 38 - textWidth(d, g_fontCfg.small), iy + 16,
+            textLeft(d, W - 38 - textWidth(d, g_fontCfg.small), textY + 4,
                      g_fontCfg.small, COLOR_ACCENT, COLOR_SURFACE);
         }
 
-        textLeft(">", W - 20, iy + 10, g_fontCfg.body, COLOR_SUBTEXT, COLOR_SURFACE);
+        textLeft(">", W - 20, textY, g_fontCfg.body, COLOR_SUBTEXT, COLOR_SURFACE);
     }
 
     if ((int)products.size() > LIST_MAX_VIS) {
@@ -376,10 +377,11 @@ void DisplayManager::showSuccess(const String &productName, const String &date, 
     textCenter(pn,           W / 2, H/2 + 20, g_fontCfg.body,  COLOR_TEXT);
     textCenter("MHD: "+date, W / 2, H/2 + 50, g_fontCfg.small, COLOR_SUBTEXT);
     if (showReprint) {
+        uint8_t splitSz = min(g_fontCfg.btn, (uint8_t)24);
         drawTouchButton(TBTN_X,                      TBTN_SECONDARY_Y, (TBTN_W - 4) / 2, TBTN_H,
-                        "Nochmal", COLOR_BTN_BACK, COLOR_TEXT, g_fontCfg.small);
+                        "Nochmal", COLOR_BTN_BACK, COLOR_TEXT, splitSz);
         drawTouchButton(TBTN_X + (TBTN_W + 4) / 2, TBTN_SECONDARY_Y, (TBTN_W - 4) / 2, TBTN_H,
-                        "Weiter",  COLOR_BTN_OK,   COLOR_TEXT, g_fontCfg.btn);
+                        "Weiter",  COLOR_BTN_OK,   COLOR_TEXT, splitSz);
     }
     _gfx->flush();
 }
