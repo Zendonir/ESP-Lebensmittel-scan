@@ -139,10 +139,17 @@ String DisplayManager::daysLabel(int days) {
 // ── Hauptscreen: Kategorie-Grid ───────────────────────────────
 
 void DisplayManager::showCategoryGrid(const std::vector<int> &catInvCounts,
-                                       int warnCount, bool wifiOk) {
+                                       int warnCount, bool wifiOk, int btStatus) {
     _gfx->fillScreen(COLOR_BG);
 
     _gfx->fillCircle(W - 8, 8, 4, wifiOk ? COLOR_OK : COLOR_DANGER);
+
+    if (btStatus > 0) {
+        uint16_t bc = (btStatus == 2) ? COLOR_OK : COLOR_WARN;
+        _gfx->fillCircle(W - 20, 8, 4, bc);
+        textLeft("BT", W - 34, 1, g_fontCfg.small, bc, COLOR_BG);
+    }
+
     if (g_uiCfg.show_clock) {
         struct tm ti; char tbuf[6] = "--:--";
         if (getLocalTime(&ti, 0))
@@ -496,7 +503,7 @@ void DisplayManager::showDateEntryNumpad(const DateInput &d, const String &produ
         {COLOR_SURFACE,  COLOR_SURFACE, COLOR_SURFACE},
         {COLOR_SURFACE,  COLOR_SURFACE, COLOR_SURFACE},
         {COLOR_SURFACE,  COLOR_SURFACE, COLOR_SURFACE},
-        {COLOR_BTN_BACK, COLOR_SURFACE, field == 2 ? COLOR_BTN_OK : COLOR_ACCENT}
+        {COLOR_BTN_BACK, COLOR_SURFACE, (uint16_t)(field == 2 ? COLOR_BTN_OK : COLOR_ACCENT)}
     };
 
     for (int row = 0; row < 4; row++) {
@@ -608,9 +615,9 @@ void DisplayManager::showHouseholdInventory(const String &hhName,
                                              int offset, int total) {
     _gfx->fillScreen(COLOR_BG);
     _gfx->fillRect(0, 0, W, SUB_HDR, COLOR_HEADER);
-    textCenter(hhName, W / 2, SUB_HDR / 2, g_fontCfg.header, COLOR_TEXT, COLOR_HEADER);
+    textCenter(hhName, W / 2, SUB_HDR / 2, g_fontCfg.title, COLOR_TEXT, COLOR_HEADER);
 
-    int vis = min((int)itemNames.size(), LIST_MAX_VIS);
+    int vis = min((int)itemNames.size(), (int)LIST_MAX_VIS);
     for (int i = 0; i < vis; i++) {
         int16_t ry  = SUB_HDR + i * LIST_ITEM_H;
         bool even   = (i % 2 == 0);

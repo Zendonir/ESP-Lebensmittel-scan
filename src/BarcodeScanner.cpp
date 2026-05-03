@@ -91,14 +91,12 @@ class BLEScanCB : public NimBLEScanCallbacks {
 
         // Alle HID-Report-Characteristics (0x2A4D) abonnieren
         bool ok = false;
-        auto *chars = svc->getCharacteristics(true);
-        if (chars) {
-            for (auto *chr : *chars) {
-                if (chr->getUUID() == NimBLEUUID((uint16_t)0x2A4D) && chr->canNotify()) {
-                    if (chr->subscribe(true, hidNotifyCB)) {
-                        Serial.println("[BLE] HID-Report abonniert");
-                        ok = true;
-                    }
+        const auto &chars = svc->getCharacteristics(true);
+        for (auto *chr : chars) {
+            if (chr->getUUID() == NimBLEUUID((uint16_t)0x2A4D) && chr->canNotify()) {
+                if (chr->subscribe(true, hidNotifyCB)) {
+                    Serial.println("[BLE] HID-Report abonniert");
+                    ok = true;
                 }
             }
         }

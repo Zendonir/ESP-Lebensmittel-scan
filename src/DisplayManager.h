@@ -69,7 +69,9 @@ public:
     void setBrightness(uint8_t val);
 
     // Hauptscreen: Kategorie-Grid
-    void showCategoryGrid(const std::vector<int> &catInvCounts, int warnCount, bool wifiOk);
+    // btStatus: 0 = kein BT-Modus, 1 = BT wartet auf Verbindung, 2 = BT verbunden
+    void showCategoryGrid(const std::vector<int> &catInvCounts, int warnCount,
+                          bool wifiOk, int btStatus = 0);
 
     // Produktliste einer Kategorie
     void showProductList(const String &catName, uint16_t catColor,

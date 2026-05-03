@@ -405,7 +405,7 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     <hr style="border-color:var(--border);margin:1.5rem 0">
     <h2 style="margin-bottom:1rem">GitHub OTA – Automatisches Update</h2>
     <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
-      Verf&uuml;gbare Releases laden und Firmware direkt flashen.
+      L&auml;dt alle verf&uuml;gbaren Firmware-Versionen von GitHub und flasht die gew&auml;hlte Version direkt.
     </p>
     <div style="display:flex;gap:.75rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:.75rem">
       <label style="font-size:.85rem;color:var(--muted)">Version
@@ -1168,15 +1168,12 @@ async function loadGithubReleases(){
   const sel=document.getElementById('ghVersionSelect');
   const msg=document.getElementById('ghOtaMsg');
   const btn=document.getElementById('ghOtaFlash');
-  msg.style.color='var(--muted)';msg.textContent='Lade Releases…';
-  btn.style.display='none';sel.disabled=true;
+  msg.style.color='var(--muted)';msg.textContent='Lade Versionen…';
+  sel.disabled=true;btn.style.display='none';_ghOtaUrl='';
   try{
-    const list=await fetch('/api/github-release').then(r=>r.json());
-    if(!Array.isArray(list)||list.length===0){
-      msg.style.color='var(--danger)';
-      msg.textContent=list&&list.error?'Fehler: '+list.error:'Keine Releases mit Firmware gefunden.';
-      return;
-    }
+    const list=await fetch('/api/github-releases').then(r=>r.json());
+    if(list.error){msg.style.color='var(--danger)';msg.textContent='Fehler: '+list.error;return;}
+    if(!list.length){msg.textContent='Keine Releases mit Firmware gefunden.';return;}
     sel.innerHTML='';
     list.forEach(r=>{
       const o=document.createElement('option');
@@ -1186,10 +1183,9 @@ async function loadGithubReleases(){
     });
     sel.disabled=false;
     _ghOtaUrl=sel.value;
-    sel.onchange=()=>{_ghOtaUrl=sel.value;};
-    msg.style.color='var(--ok)';
-    msg.textContent=list.length+' Release(s) gefunden.';
+    msg.style.color='var(--ok)';msg.textContent=list.length+' Version(en) verfügbar.';
     btn.style.display='';
+    sel.onchange=()=>{_ghOtaUrl=sel.value;};
   }catch(e){msg.style.color='var(--danger)';msg.textContent='Netzwerkfehler: '+e.message;}
 }
 async function flashGithubRelease(){
@@ -2140,10 +2136,10 @@ void WebInterface::begin() {
     );
 
     // ── GitHub OTA ───────────────────────────────────────────
-    _server.on("/api/github-release", HTTP_GET, [](AsyncWebServerRequest *req) {
+    _server.on("/api/github-releases", HTTP_GET, [](AsyncWebServerRequest *req) {
         WiFiClientSecure client; client.setInsecure();
         HTTPClient https;
-        String apiUrl = "https://api.github.com/repos/zendonir/esp-lebensmittel-scan/releases?per_page=10";
+        String apiUrl = "https://api.github.com/repos/zendonir/esp-lebensmittel-scan/releases?per_page=20";
         if (!https.begin(client, apiUrl)) {
             req->send(503, "application/json", "{\"error\":\"begin failed\"}"); return;
         }
@@ -2155,7 +2151,7 @@ void WebInterface::begin() {
             https.end(); req->send(200, "application/json", err); return;
         }
 
-        // Filter: nur tag_name und assets-Felder behalten → spart RAM
+        // Filter: nur benötigte Felder → spart RAM auf dem ESP32
         JsonDocument filter;
         JsonArray fArr = filter.to<JsonArray>();
         JsonObject fObj = fArr.add<JsonObject>();
@@ -2180,6 +2176,7 @@ void WebInterface::begin() {
         for (JsonObject rel : doc.as<JsonArray>()) {
             String tag = rel["tag_name"] | String("");
             if (tag.isEmpty()) continue;
+            // .bin-Asset suchen
             String url, sizeStr;
             for (JsonObject a : rel["assets"].as<JsonArray>()) {
                 String name = a["name"] | String("");
@@ -2190,7 +2187,7 @@ void WebInterface::begin() {
                     break;
                 }
             }
-            if (url.isEmpty()) continue;
+            if (url.isEmpty()) continue;  // Release ohne .bin überspringen
             JsonObject entry = arr.add<JsonObject>();
             entry["tag"]  = tag;
             entry["url"]  = url;

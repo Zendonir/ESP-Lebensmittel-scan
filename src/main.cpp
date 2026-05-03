@@ -431,6 +431,7 @@ void applyUIBrightness() {
     display.setBrightness(g_uiCfg.brightness);
 }
 
+
 // ── setup() ───────────────────────────────────────────────────
 
 void setup() {
