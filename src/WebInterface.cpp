@@ -1194,25 +1194,43 @@ async function flashGithubRelease(){
   const bar=document.getElementById('ghOtaBar');
   const stat=document.getElementById('ghOtaStatus');
   const msg=document.getElementById('ghOtaMsg');
-  prog.style.display='block';bar.style.width='10%';
-  stat.textContent='Lade Firmware herunter und flashe…';
-  msg.textContent='';
+  prog.style.display='block';bar.style.width='2%';
+  stat.textContent='Starte…';msg.textContent='';
+  let pollTimer=null;
+  const stopPoll=()=>{if(pollTimer){clearInterval(pollTimer);pollTimer=null;}};
   try{
     const r=await fetch('/api/github-ota',{method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({url:_ghOtaUrl})});
-    const d=await r.json();
-    if(r.ok&&d.ok){
-      bar.style.width='100%';
-      stat.textContent='✓ Fertig! Gerät startet neu…';
-      msg.style.color='var(--ok)';msg.textContent='Update erfolgreich.';
-    }else{
-      bar.style.width='0%';
-      stat.textContent='Fehler: '+(d.error||r.status);
-      msg.style.color='var(--danger)';
-    }
-  }catch(e){bar.style.width='0%';stat.textContent='Netzwerkfehler: '+e.message;
-    msg.style.color='var(--danger)';}
+    if(!r.ok){stat.textContent='Fehler beim Starten ('+r.status+')';return;}
+    // Poll real progress every 1 s
+    pollTimer=setInterval(async()=>{
+      try{
+        const p=await fetch('/api/ota-progress').then(r=>r.json());
+        bar.style.width=Math.max(2,p.percent||0)+'%';
+        stat.textContent=p.msg||'…';
+        if(p.done){
+          stopPoll();
+          bar.style.width='100%';
+          stat.textContent='✓ Firmware geflasht – Gerät startet neu…';
+          msg.style.color='var(--ok)';msg.textContent='Update erfolgreich!';
+        } else if(p.error){
+          stopPoll();
+          stat.textContent='✗ '+(p.msg||'Unbekannter Fehler');
+          msg.style.color='var(--danger)';msg.textContent='Update fehlgeschlagen.';
+        }
+      }catch(e){
+        // Device rebooting – stop polling, assume success
+        stopPoll();
+        stat.textContent='Gerät antwortet nicht mehr → Neustart läuft…';
+        msg.style.color='var(--ok)';msg.textContent='Neustart erkannt.';
+      }
+    },1000);
+  }catch(e){
+    stopPoll();
+    stat.textContent='Netzwerkfehler: '+e.message;
+    msg.style.color='var(--danger)';
+  }
 }
 
 // ── Diagnose ──────────────────────────────────────────────────
@@ -1635,6 +1653,13 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js');
 </script>
 </body>
 </html>)RAW";
+
+// ── GitHub OTA Progress State ─────────────────────────────────
+static volatile int    _otaPercent = 0;
+static volatile bool   _otaActive  = false;
+static volatile bool   _otaDone    = false;
+static volatile bool   _otaError   = false;
+static String          _otaMsg;
 
 WebInterface::WebInterface(Inventory &inventory, CustomProducts &customProducts,
                            StorageStats &stats, ShoppingList &shopping)
@@ -2209,34 +2234,82 @@ void WebInterface::begin() {
             if (url.isEmpty()) {
                 req->send(400, "application/json", "{\"error\":\"no url\"}"); return;
             }
-            // Run OTA in a background task to allow response to be sent first
-            req->send(200, "application/json", "{\"ok\":true}");
-
-            // Delay slightly then start OTA
             static String _otaUrl;
             _otaUrl = url;
+            // Reset progress state
+            _otaPercent = 0; _otaDone = false; _otaError = false;
+            _otaMsg = "Starte…"; _otaActive = true;
+            req->send(200, "application/json", "{\"ok\":true}");
+
             xTaskCreate([](void *) {
-                vTaskDelay(pdMS_TO_TICKS(200));
+                vTaskDelay(pdMS_TO_TICKS(300));
+                _otaMsg = "Verbinde mit GitHub…";
                 WiFiClientSecure client; client.setInsecure();
                 HTTPClient https;
-                // Follow redirect: GitHub releases redirect to S3
                 https.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-                if (!https.begin(client, _otaUrl)) { vTaskDelete(nullptr); return; }
+                https.setTimeout(30000);
+                if (!https.begin(client, _otaUrl)) {
+                    _otaMsg = "Verbindung fehlgeschlagen";
+                    _otaError = true; _otaActive = false; vTaskDelete(nullptr); return;
+                }
                 https.addHeader("User-Agent", "ESP32-Lebensmittel");
+                _otaMsg = "Lade Firmware…";
                 int code = https.GET();
-                if (code != 200) { https.end(); vTaskDelete(nullptr); return; }
-                int sz = https.getSize();
-                if (!Update.begin(sz > 0 ? sz : UPDATE_SIZE_UNKNOWN)) {
+                if (code != 200) {
+                    _otaMsg = "HTTP " + String(code);
+                    _otaError = true; _otaActive = false;
+                    https.end(); vTaskDelete(nullptr); return;
+                }
+                int fwSize = https.getSize();
+                if (!Update.begin(fwSize > 0 ? fwSize : UPDATE_SIZE_UNKNOWN)) {
+                    _otaMsg = "Update.begin() fehlgeschlagen";
+                    _otaError = true; _otaActive = false;
                     https.end(); vTaskDelete(nullptr); return;
                 }
                 WiFiClient *stream = https.getStreamPtr();
-                Update.writeStream(*stream);
+                uint8_t buf[4096];
+                size_t written = 0;
+                _otaMsg = "Flashe…";
+                while (true) {
+                    size_t avail = stream->available();
+                    if (!avail) {
+                        if (!stream->connected()) break;
+                        vTaskDelay(pdMS_TO_TICKS(10)); continue;
+                    }
+                    size_t n = stream->readBytes(buf, min(avail, sizeof(buf)));
+                    if (!n) break;
+                    if (Update.write(buf, n) != n) {
+                        _otaMsg = "Schreibfehler";
+                        _otaError = true; _otaActive = false;
+                        https.end(); Update.abort(); vTaskDelete(nullptr); return;
+                    }
+                    written += n;
+                    if (fwSize > 0) _otaPercent = (int)((written * 100) / fwSize);
+                    if (fwSize > 0 && written >= (size_t)fwSize) break;
+                }
                 https.end();
-                if (Update.end(true)) ESP.restart();
+                if (Update.end(true)) {
+                    _otaPercent = 100; _otaMsg = "Neustart…";
+                    _otaDone = true; _otaActive = false;
+                    vTaskDelay(pdMS_TO_TICKS(1500));
+                    ESP.restart();
+                } else {
+                    _otaMsg = String(Update.errorString());
+                    _otaError = true; _otaActive = false;
+                }
                 vTaskDelete(nullptr);
-            }, "ghota", 8192, nullptr, 1, nullptr);
+            }, "ghota", 12288, nullptr, 1, nullptr);
         }
     );
+
+    _server.on("/api/ota-progress", HTTP_GET, [](AsyncWebServerRequest *req) {
+        String s = "{\"percent\":" + String(_otaPercent) +
+                   ",\"active\":"  + (_otaActive ? "true" : "false") +
+                   ",\"done\":"    + (_otaDone   ? "true" : "false") +
+                   ",\"error\":"   + (_otaError  ? "true" : "false") +
+                   ",\"msg\":\""   + _otaMsg + "\"}";
+        req->send(200, "application/json", s);
+    });
 
     // ── Telegram-Konfiguration ───────────────────────────────
 
