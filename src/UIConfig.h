@@ -17,6 +17,11 @@ struct UIConfig {
     uint8_t  brightness;
     uint8_t  warning_days;
     uint8_t  danger_days;
+    uint8_t  tbtn_h;      // button height (default 48)
+    uint8_t  cat_cols;    // category columns 1-3 (default 2)
+    uint8_t  cat_gap;     // tile gap px (default 6)
+    uint8_t  list_item_h; // list item height (default 64)
+    uint8_t  btn_radius;  // button corner radius (default 10)
 };
 
 extern UIConfig g_uiCfg;
@@ -36,6 +41,11 @@ inline void resetUIConfig(UIConfig &c) {
     c.brightness  = 220;
     c.warning_days = 7;
     c.danger_days  = 3;
+    c.tbtn_h      = 48;
+    c.cat_cols    = 2;
+    c.cat_gap     = 6;
+    c.list_item_h = 64;
+    c.btn_radius  = 10;
 }
 
 inline void loadUIConfig() {
@@ -55,6 +65,11 @@ inline void loadUIConfig() {
     g_uiCfg.brightness  = p.getUChar("bright",    g_uiCfg.brightness);
     g_uiCfg.warning_days= p.getUChar("warn_d",    g_uiCfg.warning_days);
     g_uiCfg.danger_days = p.getUChar("danger_d",  g_uiCfg.danger_days);
+    g_uiCfg.tbtn_h      = p.getUChar("tbtn_h",    g_uiCfg.tbtn_h);
+    g_uiCfg.cat_cols    = p.getUChar("cat_cols",   g_uiCfg.cat_cols);
+    g_uiCfg.cat_gap     = p.getUChar("cat_gap",    g_uiCfg.cat_gap);
+    g_uiCfg.list_item_h = p.getUChar("list_item_h",g_uiCfg.list_item_h);
+    g_uiCfg.btn_radius  = p.getUChar("btn_radius", g_uiCfg.btn_radius);
     p.end();
 }
 
@@ -71,9 +86,14 @@ inline void saveUIConfig() {
     p.putUShort("surface", g_uiCfg.surface);
     p.putUShort("btn_ok",  g_uiCfg.btn_ok);
     p.putUShort("btn_back",g_uiCfg.btn_back);
-    p.putUChar("bright",   g_uiCfg.brightness);
-    p.putUChar("warn_d",   g_uiCfg.warning_days);
-    p.putUChar("danger_d", g_uiCfg.danger_days);
+    p.putUChar("bright",    g_uiCfg.brightness);
+    p.putUChar("warn_d",    g_uiCfg.warning_days);
+    p.putUChar("danger_d",  g_uiCfg.danger_days);
+    p.putUChar("tbtn_h",    g_uiCfg.tbtn_h);
+    p.putUChar("cat_cols",  g_uiCfg.cat_cols);
+    p.putUChar("cat_gap",   g_uiCfg.cat_gap);
+    p.putUChar("list_item_h",g_uiCfg.list_item_h);
+    p.putUChar("btn_radius",g_uiCfg.btn_radius);
     p.end();
 }
 

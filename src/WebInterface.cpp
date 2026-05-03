@@ -570,6 +570,31 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     <div id="colorPickers" style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem"></div>
 
     <div style="margin-top:1.25rem">
+      <p style="font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem">Layout</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+        <label style="font-size:.85rem;color:var(--muted)">Button-H&ouml;he (px)
+          <input type="number" id="uiTbtnH" min="32" max="80" style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
+        </label>
+        <label style="font-size:.85rem;color:var(--muted)">Button-Radius (px)
+          <input type="number" id="uiBtnRadius" min="0" max="24" style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
+        </label>
+        <label style="font-size:.85rem;color:var(--muted)">Kategorie-Spalten
+          <select id="uiCatCols" style="display:block;width:100%;margin-top:.3rem" onchange="updatePreview()">
+            <option value="1">1 Spalte</option>
+            <option value="2" selected>2 Spalten</option>
+            <option value="3">3 Spalten</option>
+          </select>
+        </label>
+        <label style="font-size:.85rem;color:var(--muted)">Kachel-Abstand (px)
+          <input type="number" id="uiCatGap" min="2" max="20" style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
+        </label>
+        <label style="font-size:.85rem;color:var(--muted)">Listen-Zeilen-H&ouml;he (px)
+          <input type="number" id="uiListItemH" min="40" max="100" style="display:block;width:100%;margin-top:.3rem" oninput="updatePreview()">
+        </label>
+      </div>
+    </div>
+
+    <div style="margin-top:1.25rem">
       <label style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:.3rem">Helligkeit</label>
       <div style="display:flex;gap:.75rem;align-items:center">
         <input type="range" id="uiBrightness" min="50" max="255" value="220"
@@ -1212,19 +1237,19 @@ const _colorFields=[
 const _themes={
   amoled:{bg:'#000000',text:'#FFFFFF',subtext:'#808080',ok:'#00FC00',warn:'#FF6800',
     danger:'#FF0000',accent:'#00FFFF',header:'#0C1213',surface:'#0C1861',
-    btn_ok:'#003000',btn_back:'#142250',brightness:220,warning_days:7,danger_days:3},
+    btn_ok:'#003000',btn_back:'#142250',brightness:220,warning_days:7,danger_days:3,tbtn_h:48,btn_radius:10,cat_cols:2,cat_gap:6,list_item_h:64},
   ocean:{bg:'#0A1628',text:'#D0E8FF',subtext:'#5080A0',ok:'#00CC88',warn:'#FF9900',
     danger:'#FF4444',accent:'#4488FF',header:'#0D2040',surface:'#122030',
-    btn_ok:'#0A3020',btn_back:'#0A2040',brightness:200,warning_days:7,danger_days:3},
+    btn_ok:'#0A3020',btn_back:'#0A2040',brightness:200,warning_days:7,danger_days:3,tbtn_h:48,btn_radius:10,cat_cols:2,cat_gap:6,list_item_h:64},
   forest:{bg:'#0A1408',text:'#D0FFD0',subtext:'#608060',ok:'#00FF44',warn:'#FFAA00',
     danger:'#FF2222',accent:'#44FF88',header:'#0C1C08',surface:'#122010',
-    btn_ok:'#0A3010',btn_back:'#1A3010',brightness:200,warning_days:7,danger_days:3},
+    btn_ok:'#0A3010',btn_back:'#1A3010',brightness:200,warning_days:7,danger_days:3,tbtn_h:48,btn_radius:10,cat_cols:2,cat_gap:6,list_item_h:64},
   sunset:{bg:'#120808',text:'#FFE8E0',subtext:'#806060',ok:'#00CC66',warn:'#FF8800',
     danger:'#FF2222',accent:'#FF6644',header:'#1C1008',surface:'#1A1010',
-    btn_ok:'#0A2810',btn_back:'#2A1408',brightness:210,warning_days:7,danger_days:3},
+    btn_ok:'#0A2810',btn_back:'#2A1408',brightness:210,warning_days:7,danger_days:3,tbtn_h:48,btn_radius:10,cat_cols:2,cat_gap:6,list_item_h:64},
   light:{bg:'#F0F0F0',text:'#111111',subtext:'#666666',ok:'#008800',warn:'#AA6600',
     danger:'#CC0000',accent:'#0066CC',header:'#DDDDDD',surface:'#E8E8E8',
-    btn_ok:'#006600',btn_back:'#444444',brightness:255,warning_days:7,danger_days:3},
+    btn_ok:'#006600',btn_back:'#444444',brightness:255,warning_days:7,danger_days:3,tbtn_h:48,btn_radius:10,cat_cols:2,cat_gap:6,list_item_h:64},
 };
 let _uiVals={};
 function _buildColorPickers(){
@@ -1255,6 +1280,11 @@ function applyTheme(name){
   document.getElementById('brightVal').textContent=t.brightness||220;
   document.getElementById('uiWarnDays').value=t.warning_days||7;
   document.getElementById('uiDangerDays').value=t.danger_days||3;
+  if(t.tbtn_h)    {document.getElementById('uiTbtnH').value=t.tbtn_h;}
+  if(t.btn_radius){document.getElementById('uiBtnRadius').value=t.btn_radius;}
+  if(t.cat_cols)  {document.getElementById('uiCatCols').value=t.cat_cols;}
+  if(t.cat_gap)   {document.getElementById('uiCatGap').value=t.cat_gap;}
+  if(t.list_item_h){document.getElementById('uiListItemH').value=t.list_item_h;}
   updatePreview();
 }
 function updatePreview(){
@@ -1269,9 +1299,14 @@ function updatePreview(){
     {n:'Backwaren',c:'#998800'},{n:'Sonstiges',c:'#556677'},
   ];
   let tileSvg='';
-  const gap=6,tw=131,th=95,hdr=44;
+  const cols=parseInt(document.getElementById('uiCatCols')?.value||2);
+  const gap=parseInt(document.getElementById('uiCatGap')?.value||6);
+  const rows=Math.ceil(8/cols);
+  const tw=Math.floor((280-(cols+1)*gap)/cols);
+  const th=Math.floor((456-44-(rows+1)*gap)/rows);
+  const hdr=44;
   tiles.forEach((t,i)=>{
-    const col=i%2,row=Math.floor(i/2);
+    const col=i%cols,row=Math.floor(i/cols);
     const tx=gap+col*(tw+gap),ty=hdr+gap+row*(th+gap);
     const short=t.n.length<=8;
     tileSvg+=`<rect x="${tx}" y="${ty}" width="${tw}" height="${th}" rx="12" fill="${t.c}"/>
@@ -1293,6 +1328,11 @@ async function loadDesign(){
     const d=await fetch('/api/ui-config').then(r=>r.json());
     if(d.error){document.getElementById('designMsg').textContent='Fehler: '+d.error;return;}
     _colorFields.forEach(f=>_setColor(f.key,d[f.key]||'#000000'));
+    document.getElementById('uiTbtnH').value     = d.tbtn_h     || 48;
+    document.getElementById('uiBtnRadius').value  = d.btn_radius || 10;
+    document.getElementById('uiCatCols').value    = d.cat_cols   || 2;
+    document.getElementById('uiCatGap').value     = d.cat_gap    || 6;
+    document.getElementById('uiListItemH').value  = d.list_item_h|| 64;
     document.getElementById('uiBrightness').value=d.brightness||220;
     document.getElementById('brightVal').textContent=d.brightness||220;
     document.getElementById('uiWarnDays').value=d.warning_days||7;
@@ -1305,6 +1345,11 @@ async function saveDesign(){
   msg.style.color='var(--muted)';msg.textContent='Speichern…';
   const body=Object.fromEntries(_colorFields.map(f=>[f.key,_uiVals[f.key]||'#000000']));
   body.brightness=parseInt(document.getElementById('uiBrightness').value)||220;
+  body.tbtn_h     =parseInt(document.getElementById('uiTbtnH').value)||48;
+  body.btn_radius =parseInt(document.getElementById('uiBtnRadius').value)||10;
+  body.cat_cols   =parseInt(document.getElementById('uiCatCols').value)||2;
+  body.cat_gap    =parseInt(document.getElementById('uiCatGap').value)||6;
+  body.list_item_h=parseInt(document.getElementById('uiListItemH').value)||64;
   body.warning_days=parseInt(document.getElementById('uiWarnDays').value)||7;
   body.danger_days=parseInt(document.getElementById('uiDangerDays').value)||3;
   try{
@@ -2006,6 +2051,11 @@ void WebInterface::begin() {
         doc["brightness"]  = g_uiCfg.brightness;
         doc["warning_days"]= g_uiCfg.warning_days;
         doc["danger_days"] = g_uiCfg.danger_days;
+        doc["tbtn_h"]     = g_uiCfg.tbtn_h;
+        doc["btn_radius"] = g_uiCfg.btn_radius;
+        doc["cat_cols"]   = g_uiCfg.cat_cols;
+        doc["cat_gap"]    = g_uiCfg.cat_gap;
+        doc["list_item_h"]= g_uiCfg.list_item_h;
         String s; serializeJson(doc, s);
         req->send(200, "application/json", s);
     });
@@ -2032,6 +2082,11 @@ void WebInterface::begin() {
             if (!doc["brightness"].isNull()) g_uiCfg.brightness  = doc["brightness"].as<uint8_t>();
             if (!doc["warning_days"].isNull())g_uiCfg.warning_days=doc["warning_days"].as<uint8_t>();
             if (!doc["danger_days"].isNull()) g_uiCfg.danger_days =doc["danger_days"].as<uint8_t>();
+            if (!doc["tbtn_h"].isNull())      g_uiCfg.tbtn_h     = doc["tbtn_h"].as<uint8_t>();
+            if (!doc["btn_radius"].isNull())   g_uiCfg.btn_radius  = doc["btn_radius"].as<uint8_t>();
+            if (!doc["cat_cols"].isNull())     g_uiCfg.cat_cols    = doc["cat_cols"].as<uint8_t>();
+            if (!doc["cat_gap"].isNull())      g_uiCfg.cat_gap     = doc["cat_gap"].as<uint8_t>();
+            if (!doc["list_item_h"].isNull())  g_uiCfg.list_item_h = doc["list_item_h"].as<uint8_t>();
             saveUIConfig();
             extern void applyUIBrightness();
             applyUIBrightness();

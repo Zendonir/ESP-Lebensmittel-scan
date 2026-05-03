@@ -15,4 +15,9 @@ UIConfig g_uiCfg = {
     .brightness  = 220,
     .warning_days = 7,
     .danger_days  = 3,
+    .tbtn_h      = 48,
+    .cat_cols    = 2,
+    .cat_gap     = 6,
+    .list_item_h = 64,
+    .btn_radius  = 10,
 };

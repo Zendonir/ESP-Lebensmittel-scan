@@ -95,7 +95,7 @@ void DisplayManager::drawHeader(const String &title, uint16_t bg) {
 void DisplayManager::drawTouchButton(int16_t x, int16_t y, int16_t w, int16_t h,
                                       const String &label, uint16_t bg, uint16_t fg,
                                       uint8_t sz) {
-    _gfx->fillRoundRect(x, y, w, h, 10, bg);
+    _gfx->fillRoundRect(x, y, w, h, g_uiCfg.btn_radius, bg);
     // Transparent text background: button is already drawn, avoid corner artifacts
     applyFont(sz);
     _gfx->setTextColor(fg);
@@ -157,7 +157,7 @@ void DisplayManager::showCategoryGrid(const std::vector<int> &catInvCounts,
         int16_t ty = CAT_HDR + CAT_GAP + row * (CAT_TILE_H + CAT_GAP);
 
         uint16_t bg = g_categories[i].bgColor;
-        _gfx->fillRoundRect(tx, ty, CAT_TILE_W, CAT_TILE_H, 12, bg);
+        _gfx->fillRoundRect(tx, ty, CAT_TILE_W, CAT_TILE_H, g_uiCfg.btn_radius, bg);
 
         String name = g_categories[i].name;
         uint8_t tsz = g_fontCfg.btn;

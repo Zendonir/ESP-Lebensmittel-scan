@@ -15,16 +15,16 @@ struct DateInput {
 
 // ── Hauptscreen (Kategorie-Grid) — Hochformat 280×456 ────────
 static constexpr int16_t CAT_HDR       = 44;
-static constexpr int16_t CAT_GAP       = 6;
-static constexpr int16_t CAT_COLS      = 2;
-static constexpr int16_t CAT_ROWS      = 4;
-static constexpr int16_t CAT_TILE_W    = (DISPLAY_W - (CAT_COLS + 1) * CAT_GAP) / CAT_COLS;
-static constexpr int16_t CAT_TILE_H    = (DISPLAY_H - CAT_HDR - (CAT_ROWS + 1) * CAT_GAP) / CAT_ROWS;
+#define CAT_COLS      ((int16_t)(g_uiCfg.cat_cols < 1 ? 1 : g_uiCfg.cat_cols > 3 ? 3 : g_uiCfg.cat_cols))
+#define CAT_GAP       ((int16_t)g_uiCfg.cat_gap)
+#define CAT_ROWS      ((int16_t)((8 + CAT_COLS - 1) / CAT_COLS))
+#define CAT_TILE_W    ((int16_t)((DISPLAY_W - (CAT_COLS + 1) * CAT_GAP) / CAT_COLS))
+#define CAT_TILE_H    ((int16_t)((DISPLAY_H - CAT_HDR - (CAT_ROWS + 1) * CAT_GAP) / CAT_ROWS))
 
 // ── Produktliste / Unterscreen-Header ────────────────────────
 static constexpr int16_t SUB_HDR       = 54;
-static constexpr int16_t LIST_ITEM_H   = 64;
-static constexpr int16_t LIST_MAX_VIS  = (DISPLAY_H - SUB_HDR) / LIST_ITEM_H;
+#define LIST_ITEM_H   ((int16_t)g_uiCfg.list_item_h)
+#define LIST_MAX_VIS  ((int16_t)((DISPLAY_H - SUB_HDR) / LIST_ITEM_H))
 
 // ── Datumseingabe (▲ Drum Roller ▼) — Hochformat 280×456 ─────
 static constexpr int16_t DRUM_COL_W    = DISPLAY_W / 3;                         // 93
@@ -47,19 +47,19 @@ static constexpr int16_t NP_ROW_H  = (DISPLAY_H - NP_TOP) / 4;      // 82
 
 // ── Universelle Buttons ───────────────────────────────────────
 static constexpr int16_t TBTN_X           = 8;
-static constexpr int16_t TBTN_W           = DISPLAY_W - 16;
-static constexpr int16_t TBTN_H           = 48;
-static constexpr int16_t TBTN_PRIMARY_Y   = DISPLAY_H - TBTN_H - 8;
-static constexpr int16_t TBTN_SECONDARY_Y = DISPLAY_H - 2 * TBTN_H - 16;
+#define TBTN_W          ((int16_t)(DISPLAY_W - 16))
+#define TBTN_H          ((int16_t)g_uiCfg.tbtn_h)
+#define TBTN_PRIMARY_Y  ((int16_t)(DISPLAY_H - TBTN_H - 8))
+#define TBTN_SECONDARY_Y ((int16_t)(DISPLAY_H - 2*(int16_t)TBTN_H - 16))
 
 // ── IDLE-Buttons (AP-Mode) ────────────────────────────────────
-static constexpr int16_t IDLE_LIST_BTN_Y = DISPLAY_H - 2 * 48 - 16;
-static constexpr int16_t IDLE_INV_BTN_Y  = DISPLAY_H - 48 - 8;
-static constexpr int16_t IDLE_BTN_H      = 48;
+#define IDLE_BTN_H      ((int16_t)g_uiCfg.tbtn_h)
+#define IDLE_LIST_BTN_Y ((int16_t)(DISPLAY_H - 2*(int16_t)TBTN_H - 16))
+#define IDLE_INV_BTN_Y  ((int16_t)(DISPLAY_H - (int16_t)TBTN_H - 8))
 
 // ── Inventar-Browser ─────────────────────────────────────────
-static constexpr int16_t INV_DEL_Y  = TBTN_PRIMARY_Y;
-static constexpr int16_t INV_BACK_Y = TBTN_SECONDARY_Y;
+#define INV_DEL_Y       TBTN_PRIMARY_Y
+#define INV_BACK_Y      TBTN_SECONDARY_Y
 
 class DisplayManager {
 public:
