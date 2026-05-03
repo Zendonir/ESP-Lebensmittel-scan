@@ -399,13 +399,18 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     <hr style="border-color:var(--border);margin:1.5rem 0">
     <h2 style="margin-bottom:1rem">GitHub OTA – Automatisches Update</h2>
     <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
-      Pr&uuml;ft den aktuellen GitHub Release und flasht die neue Firmware direkt.
+      Verf&uuml;gbare Releases laden und Firmware direkt flashen.
     </p>
-    <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
-      <button class="btn" onclick="checkGithubRelease()">&#x1F50D; Pr&uuml;fen</button>
+    <div style="display:flex;gap:.75rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:.75rem">
+      <label style="font-size:.85rem;color:var(--muted)">Version
+        <select id="ghVersionSelect" style="display:block;width:260px;margin-top:.3rem" disabled>
+          <option value="">&#x2013; Versionen laden &#x2013;</option>
+        </select>
+      </label>
+      <button class="btn" onclick="loadGithubReleases()">&#x1F504; Laden</button>
       <button class="btn btn-ok" id="ghOtaFlash" onclick="flashGithubRelease()" style="display:none">&#x26A1; Installieren</button>
-      <span id="ghOtaMsg" style="font-size:.85rem;color:var(--muted)"></span>
     </div>
+    <span id="ghOtaMsg" style="font-size:.85rem;color:var(--muted)"></span>
     <div id="ghOtaProgress" style="display:none;margin-top:1rem">
       <div style="background:var(--border);border-radius:99px;height:8px;overflow:hidden">
         <div id="ghOtaBar" style="background:var(--accent);height:100%;width:0%;transition:width .3s"></div>
@@ -1002,18 +1007,33 @@ async function saveOtaPw(){
 
 // ── GitHub OTA ────────────────────────────────────────────────
 let _ghOtaUrl='';
-async function checkGithubRelease(){
+async function loadGithubReleases(){
+  const sel=document.getElementById('ghVersionSelect');
   const msg=document.getElementById('ghOtaMsg');
   const btn=document.getElementById('ghOtaFlash');
-  msg.style.color='var(--muted)';msg.textContent='Prüfe GitHub…';btn.style.display='none';
+  msg.style.color='var(--muted)';msg.textContent='Lade Releases…';
+  btn.style.display='none';sel.disabled=true;
   try{
-    const d=await fetch('/api/github-release').then(r=>r.json());
-    if(d.error){msg.style.color='var(--danger)';msg.textContent='Fehler: '+d.error;return;}
-    _ghOtaUrl=d.url||'';
+    const list=await fetch('/api/github-release').then(r=>r.json());
+    if(!Array.isArray(list)||list.length===0){
+      msg.style.color='var(--danger)';
+      msg.textContent=list&&list.error?'Fehler: '+list.error:'Keine Releases mit Firmware gefunden.';
+      return;
+    }
+    sel.innerHTML='';
+    list.forEach(r=>{
+      const o=document.createElement('option');
+      o.value=r.url;
+      o.textContent=r.tag+(r.size?' ('+r.size+')':'');
+      sel.appendChild(o);
+    });
+    sel.disabled=false;
+    _ghOtaUrl=sel.value;
+    sel.onchange=()=>{_ghOtaUrl=sel.value;};
     msg.style.color='var(--ok)';
-    msg.textContent='Verfügbar: '+d.tag+' ('+d.size+')';
+    msg.textContent=list.length+' Release(s) gefunden.';
     btn.style.display='';
-  }catch(e){msg.style.color='var(--danger)';msg.textContent='Netzwerkfehler';}
+  }catch(e){msg.style.color='var(--danger)';msg.textContent='Netzwerkfehler: '+e.message;}
 }
 async function flashGithubRelease(){
   if(!_ghOtaUrl)return;
@@ -1622,8 +1642,7 @@ void WebInterface::begin() {
     _server.on("/api/github-release", HTTP_GET, [](AsyncWebServerRequest *req) {
         WiFiClientSecure client; client.setInsecure();
         HTTPClient https;
-        // GitHub API: latest release for this repo
-        String apiUrl = "https://api.github.com/repos/zendonir/esp-lebensmittel-scan/releases/latest";
+        String apiUrl = "https://api.github.com/repos/zendonir/esp-lebensmittel-scan/releases?per_page=10";
         if (!https.begin(client, apiUrl)) {
             req->send(503, "application/json", "{\"error\":\"begin failed\"}"); return;
         }
@@ -1634,31 +1653,48 @@ void WebInterface::begin() {
             String err = "{\"error\":\"HTTP " + String(code) + "\"}";
             https.end(); req->send(200, "application/json", err); return;
         }
-        String body = https.getString();
-        https.end();
+
+        // Filter: nur tag_name und assets-Felder behalten → spart RAM
+        JsonDocument filter;
+        JsonArray fArr = filter.to<JsonArray>();
+        JsonObject fObj = fArr.add<JsonObject>();
+        fObj["tag_name"] = true;
+        JsonArray fAssets = fObj["assets"].to<JsonArray>();
+        JsonObject fAsset = fAssets.add<JsonObject>();
+        fAsset["name"]                 = true;
+        fAsset["browser_download_url"] = true;
+        fAsset["size"]                 = true;
 
         JsonDocument doc;
-        if (deserializeJson(doc, body)) {
-            req->send(200, "application/json", "{\"error\":\"JSON parse\"}"); return;
+        DeserializationError err2 = deserializeJson(doc, *https.getStreamPtr(),
+                                                    DeserializationOption::Filter(filter));
+        https.end();
+        if (err2) {
+            String e = "{\"error\":\"JSON: "; e += err2.c_str(); e += "\"}";
+            req->send(200, "application/json", e); return;
         }
-        String tag = doc["tag_name"] | String("?");
-        String url, sizeStr;
-        for (JsonObject a : doc["assets"].as<JsonArray>()) {
-            String name = a["name"] | String("");
-            if (name.endsWith(".bin")) {
-                url     = a["browser_download_url"] | String("");
-                int sz  = a["size"] | 0;
-                sizeStr = String(sz / 1024) + " KB";
-                break;
-            }
-        }
-        if (url.isEmpty()) {
-            req->send(200, "application/json", "{\"error\":\"No .bin asset\"}"); return;
-        }
+
         JsonDocument out;
-        out["tag"]  = tag;
-        out["url"]  = url;
-        out["size"] = sizeStr;
+        JsonArray arr = out.to<JsonArray>();
+        for (JsonObject rel : doc.as<JsonArray>()) {
+            String tag = rel["tag_name"] | String("");
+            if (tag.isEmpty()) continue;
+            String url, sizeStr;
+            for (JsonObject a : rel["assets"].as<JsonArray>()) {
+                String name = a["name"] | String("");
+                if (name.endsWith(".bin")) {
+                    url     = a["browser_download_url"] | String("");
+                    int sz  = a["size"] | 0;
+                    sizeStr = String(sz / 1024) + " KB";
+                    break;
+                }
+            }
+            if (url.isEmpty()) continue;
+            JsonObject entry = arr.add<JsonObject>();
+            entry["tag"]  = tag;
+            entry["url"]  = url;
+            entry["size"] = sizeStr;
+        }
         String s; serializeJson(out, s);
         req->send(200, "application/json", s);
     });
