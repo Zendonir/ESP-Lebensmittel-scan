@@ -7,6 +7,29 @@
 static BarcodeScanner *s_scanner = nullptr;
 static NimBLEClient   *s_client  = nullptr;
 
+// ── Geräte-Suche (Discovery) ─────────────────────────────────
+
+static std::vector<BLEDeviceInfo> s_discovered;
+static volatile bool              s_discovering = false;
+static SemaphoreHandle_t          s_discMutex   = nullptr;
+
+class BLEDiscoveryCB : public NimBLEScanCallbacks {
+    void onResult(const NimBLEAdvertisedDevice *dev) override {
+        BLEDeviceInfo info;
+        info.name = dev->getName().c_str();
+        info.addr = dev->getAddress().toString().c_str();
+        info.rssi = dev->getRSSI();
+        if (info.name.isEmpty()) info.name = "(kein Name)";
+        xSemaphoreTake(s_discMutex, portMAX_DELAY);
+        bool dup = false;
+        for (auto &d : s_discovered) if (d.addr == info.addr) { dup = true; break; }
+        if (!dup) s_discovered.push_back(info);
+        xSemaphoreGive(s_discMutex);
+    }
+};
+
+static BLEDiscoveryCB s_discoveryCB;
+
 // ── HID-Keycode → ASCII ───────────────────────────────────────
 
 static char hidKeycode(uint8_t mod, uint8_t key) {
@@ -112,6 +135,48 @@ class BLEScanCB : public NimBLEScanCallbacks {
 };
 
 static BLEScanCB s_scanCB;
+
+// ── Geräte-Suche Implementierung ─────────────────────────────
+
+void BarcodeScanner::startDiscoveryScan(int durationSec) {
+    if (s_discovering) return;
+    if (!s_discMutex) s_discMutex = xSemaphoreCreateMutex();
+    xSemaphoreTake(s_discMutex, portMAX_DELAY);
+    s_discovered.clear();
+    xSemaphoreGive(s_discMutex);
+    s_discovering = true;
+
+    static int s_dur = 6;
+    s_dur = durationSec;
+    xTaskCreate([](void *) {
+        if (!NimBLEDevice::isInitialized()) NimBLEDevice::init("");
+        NimBLEScan *scan = NimBLEDevice::getScan();
+        // Laufenden Scanner-Scan stoppen falls aktiv
+        if (scan->isScanning()) scan->stop();
+        scan->setScanCallbacks(&s_discoveryCB, false);
+        scan->setActiveScan(true);
+        scan->setInterval(100);
+        scan->setWindow(99);
+        scan->start(s_dur, false);
+        s_discovering = false;
+        // Scanner-Callback wiederherstellen wenn im BLE-Modus
+        if (s_scanner && s_scanner->_bleMode) {
+            scan->setScanCallbacks(&s_scanCB, false);
+            s_scanner->_startScan();
+        }
+        vTaskDelete(nullptr);
+    }, "bleDisc", 6144, nullptr, 1, nullptr);
+}
+
+bool BarcodeScanner::isDiscovering() { return s_discovering; }
+
+std::vector<BLEDeviceInfo> BarcodeScanner::getDiscoveredDevices() {
+    if (!s_discMutex) return {};
+    xSemaphoreTake(s_discMutex, portMAX_DELAY);
+    auto copy = s_discovered;
+    xSemaphoreGive(s_discMutex);
+    return copy;
+}
 
 // ── Konstruktor ───────────────────────────────────────────────
 

@@ -475,9 +475,16 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
           <option value="bt">BLE HID (externer Scanner)</option>
         </select>
       </label>
-      <label id="btNameRow" style="font-size:.85rem;color:var(--muted);display:none">Ger&auml;tename-Filter (leer&nbsp;= beliebiger HID-Scanner)
+      <label id="btNameRow" style="font-size:.85rem;color:var(--muted);display:none;flex-direction:column;gap:.4rem">
+        Ger&auml;tename-Filter (leer&nbsp;= beliebiger HID-Scanner)
         <input type="text" id="btDevName" maxlength="32" placeholder="z.B. BCST-23"
                style="display:block;width:260px;margin-top:.3rem">
+        <div style="display:flex;gap:.5rem;align-items:center;margin-top:.25rem">
+          <button class="btn" style="width:auto;padding:.35rem .8rem;font-size:.85rem"
+                  onclick="startBLEScan()">&#x1F50D; Ger&auml;te suchen (6s)</button>
+          <span id="bleScanStatus" style="font-size:.8rem;color:var(--muted)"></span>
+        </div>
+        <div id="bleScanResults" style="margin-top:.4rem;display:flex;flex-direction:column;gap:.3rem"></div>
       </label>
       <button class="btn btn-ok" style="width:fit-content" onclick="saveScannerCfg()">Speichern &amp; Neustart</button>
     </div>
@@ -1104,6 +1111,40 @@ async function saveScannerCfg(){
     msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert. Gerät startet neu…';
     setTimeout(()=>location.reload(),4000);
   }else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
+}
+
+// ── BLE-Gerätesuche ───────────────────────────────────────────
+let _blePollTimer=null;
+async function startBLEScan(){
+  const status=document.getElementById('bleScanStatus');
+  const results=document.getElementById('bleScanResults');
+  results.innerHTML='';status.textContent='Suche läuft…';
+  if(_blePollTimer){clearInterval(_blePollTimer);_blePollTimer=null;}
+  try{
+    await fetch('/api/ble-scan',{method:'POST'});
+    let elapsed=0;
+    _blePollTimer=setInterval(async()=>{
+      elapsed++;
+      try{
+        const d=await fetch('/api/ble-results').then(r=>r.json());
+        status.textContent=(d.scanning?'Suche läuft… ('+elapsed+'s)':'Suche abgeschlossen – ')+d.devices.length+' Gerät(e)';
+        results.innerHTML='';
+        d.devices.sort((a,b)=>b.rssi-a.rssi).forEach(dev=>{
+          const btn=document.createElement('button');
+          btn.className='btn';
+          btn.style.cssText='width:auto;text-align:left;padding:.35rem .7rem;font-size:.82rem';
+          const sig=dev.rssi>-60?'●●●':dev.rssi>-75?'●●○':'●○○';
+          btn.textContent=sig+' '+dev.name+' ('+dev.addr+')';
+          btn.onclick=()=>{
+            document.getElementById('btDevName').value=dev.name==='(kein Name)'?'':dev.name;
+            status.textContent='✓ Ausgewählt: '+(dev.name||dev.addr);
+          };
+          results.appendChild(btn);
+        });
+        if(!d.scanning){clearInterval(_blePollTimer);_blePollTimer=null;}
+      }catch(e){status.textContent='Fehler beim Laden';clearInterval(_blePollTimer);_blePollTimer=null;}
+    },1000);
+  }catch(e){status.textContent='Fehler beim Starten der Suche';}
 }
 
 // ── Drucker ───────────────────────────────────────────────────
@@ -2330,8 +2371,8 @@ void WebInterface::begin() {
                 _otaMsg = "Verbinde mit GitHub…";
                 WiFiClientSecure client; client.setInsecure();
                 HTTPClient https;
-                https.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-                https.setTimeout(30000);
+                https.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+                https.setTimeout(60000);
                 if (!https.begin(client, _otaUrl)) {
                     _otaMsg = "Verbindung fehlgeschlagen";
                     _otaError = true; _otaActive = false; vTaskDelete(nullptr); return;
@@ -2382,7 +2423,7 @@ void WebInterface::begin() {
                     _otaError = true; _otaActive = false;
                 }
                 vTaskDelete(nullptr);
-            }, "ghota", 12288, nullptr, 1, nullptr);
+            }, "ghota", 20480, nullptr, 1, nullptr);
         }
     );
 
@@ -2551,6 +2592,27 @@ void WebInterface::begin() {
         tone(BUZZER_PIN, 1800, 80);
 #endif
         req->send(200, "application/json", "{\"ok\":true}");
+    });
+
+    _server.on("/api/ble-scan", HTTP_POST, [](AsyncWebServerRequest *req) {
+        BarcodeScanner::startDiscoveryScan(6);
+        req->send(200, "application/json", "{\"ok\":true,\"scanning\":true}");
+    });
+
+    _server.on("/api/ble-results", HTTP_GET, [](AsyncWebServerRequest *req) {
+        auto devices = BarcodeScanner::getDiscoveredDevices();
+        bool scanning = BarcodeScanner::isDiscovering();
+        JsonDocument doc;
+        doc["scanning"] = scanning;
+        JsonArray arr = doc["devices"].to<JsonArray>();
+        for (auto &d : devices) {
+            JsonObject o = arr.add<JsonObject>();
+            o["name"] = d.name;
+            o["addr"] = d.addr;
+            o["rssi"] = d.rssi;
+        }
+        String out; serializeJson(doc, out);
+        req->send(200, "application/json", out);
     });
 
     _server.on("/api/printer-config", HTTP_GET, [](AsyncWebServerRequest *req) {
