@@ -170,7 +170,8 @@ void DisplayManager::showCategoryGrid(const std::vector<int> &catInvCounts,
 
         String name = g_categories[i].name;
         uint8_t tsz = g_fontCfg.btn;
-        if (name.length() > 9 && tsz > 16) tsz = prevPx(tsz);
+        int16_t maxW = CAT_TILE_W - 16;
+        while (tsz > 12 && textWidth(name, tsz) > maxW) tsz = prevPx(tsz);
         if (name.length() > 20) name = name.substring(0, 20);
         textCenter(name, tx + CAT_TILE_W / 2, ty + CAT_TILE_H / 2, tsz, 0xFFFF, bg);
     }

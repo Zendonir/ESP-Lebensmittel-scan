@@ -1494,7 +1494,7 @@ function _buildPreviewList(v){
   return `<rect width="280" height="456" fill="${v.bg||'#000'}"/>
     <rect width="280" height="${sub}" fill="${v.bg||'#000'}"/>
     <line x1="0" y1="${sub}" x2="280" y2="${sub}" stroke="${v.surface||'#333'}" stroke-width="1"/>
-    <text x="50" y="${sub/2+7}" font-size="13" fill="${v.text||'#FFF'}" font-family="sans-serif">&lt; Zurück</text>
+    <text x="6" y="${sub/2+9}" font-size="11" fill="${v.text||'#FFF'}" font-family="sans-serif">&lt; Zurück</text>
     <text x="140" y="${sub/2+7}" text-anchor="middle" font-size="16" fill="${v.accent||'#00FFFF'}" font-family="sans-serif" font-weight="600">Milchprodukte</text>
     <circle cx="272" cy="8" r="4" fill="${v.ok||'#00FF00'}"/>
     ${clkSvg}${s}
@@ -1502,30 +1502,43 @@ function _buildPreviewList(v){
     <text x="140" y="${456-btnH/2-8+7}" text-anchor="middle" font-size="15" fill="${v.text||'#FFF'}" font-family="sans-serif">← Zurück</text>`;
 }
 function _buildPreviewDate(v){
-  const sub=parseInt(_giv('uiSubHdrH',54));
-  const btnH=parseInt(_giv('uiTbtnH',48));
-  const btnM=parseInt(_giv('uiTbtnMargin',8));
+  // Matches showDateEntryNumpad() layout — static constants from DisplayManager.h
+  const npHdrH=54, npDateH=72, npTop=126;
+  const npColW=Math.floor(280/3);  // 93
+  const npRowH=Math.floor((456-npTop)/4);  // 82
   const btnR=parseInt(_giv('uiBtnRadius',10));
-  const dfmt=parseInt(_giv('uiDateFmt',0));
-  const dateStr=dfmt===1?'12/31/2025':dfmt===2?'2025-12-31':'31.12.2025';
-  const dateH=72;const npTop=sub+dateH;const npColW=Math.floor(280/3);
-  const npRowH=Math.floor((456-npTop)/4);
-  const keys=['1','2','3','4','5','6','7','8','9','⌫','0','✓'];
-  const kbg=(k)=>k==='✓'?(v.btn_ok||'#003000'):k==='⌫'?(v.btn_back||'#1A2250'):(v.surface||'#181818');
-  let s='';
-  keys.forEach((k,i)=>{
-    const col=i%3,row=Math.floor(i/3);
-    const kx=col*npColW+2,ky=npTop+row*npRowH+2,kw=npColW-4,kh=npRowH-4;
-    s+=`<rect x="${kx}" y="${ky}" width="${kw}" height="${kh}" rx="${btnR}" fill="${kbg(k)}"/>
-    <text x="${kx+kw/2}" y="${ky+kh/2+7}" text-anchor="middle" font-size="20" fill="${v.text||'#FFF'}" font-family="sans-serif" font-weight="600">${k}</text>`;
+  const flds=['Tag','Monat','Jahr'];
+  const vals=['__','--','--'];
+  // Field 0 (Tag) active
+  let cols='';
+  for(let i=0;i<3;i++){
+    const bx=i*npColW;
+    const active=(i===0);
+    const bg=active?(v.accent||'#00FFFF'):(v.surface||'#181818');
+    const fg=active?'#000000':(v.text||'#FFF');
+    const lfg=active?'#000000':(v.subtext||'#808080');
+    cols+=`<rect x="${bx}" y="${npHdrH}" width="${npColW}" height="${npDateH}" fill="${bg}"/>
+    <text x="${bx+npColW/2}" y="${npHdrH+16}" text-anchor="middle" font-size="11" fill="${lfg}" font-family="sans-serif">${flds[i]}</text>
+    <text x="${bx+npColW/2}" y="${npHdrH+npDateH/2+14}" text-anchor="middle" font-size="22" fill="${fg}" font-family="monospace" font-weight="bold">${vals[i]}</text>`;
+  }
+  const rows=[['1','2','3'],['4','5','6'],['7','8','9'],['<','0','>']];
+  const rowBg=[[v.surface,v.surface,v.surface],[v.surface,v.surface,v.surface],[v.surface,v.surface,v.surface],[v.btn_back,v.surface,v.accent]];
+  let keys='';
+  rows.forEach((row,ri)=>{
+    row.forEach((k,ci)=>{
+      const kx=ci*npColW+4, ky=npTop+ri*npRowH+4, kw=npColW-8, kh=npRowH-8;
+      const kb=rowBg[ri][ci]||v.surface||'#181818';
+      keys+=`<rect x="${kx}" y="${ky}" width="${kw}" height="${kh}" rx="${btnR}" fill="${kb}"/>
+      <text x="${kx+kw/2}" y="${ky+kh/2+8}" text-anchor="middle" font-size="${ri===3?18:24}" fill="${v.text||'#FFF'}" font-family="sans-serif" font-weight="600">${k}</text>`;
+    });
   });
   return `<rect width="280" height="456" fill="${v.bg||'#000'}"/>
-    <rect width="280" height="${sub}" fill="${v.bg||'#000'}"/>
-    <text x="140" y="${sub/2+7}" text-anchor="middle" font-size="16" fill="${v.text||'#FFF'}" font-family="sans-serif" font-weight="600">Datum eingeben</text>
-    <rect width="280" height="${dateH}" y="${sub}" fill="${v.surface||'#181818'}"/>
-    <text x="140" y="${sub+dateH/2-8}" text-anchor="middle" font-size="13" fill="${v.subtext||'#808080'}" font-family="sans-serif">Joghurt Natur</text>
-    <text x="140" y="${sub+dateH/2+14}" text-anchor="middle" font-size="22" fill="${v.accent||'#00FFFF'}" font-family="monospace" font-weight="bold">${dateStr}</text>
-    ${s}`;
+    <rect width="280" height="${npHdrH}" fill="${v.header||'#0C1213'}"/>
+    <text x="140" y="${npHdrH/2+7}" text-anchor="middle" font-size="14" fill="${v.text||'#FFF'}" font-family="sans-serif">Joghurt Natur</text>
+    <circle cx="272" cy="8" r="4" fill="${v.ok||'#00FF00'}"/>
+    <line x1="${npColW}" y1="${npHdrH}" x2="${npColW}" y2="${npTop}" stroke="${v.bg||'#000'}" stroke-width="2"/>
+    <line x1="${2*npColW}" y1="${npHdrH}" x2="${2*npColW}" y2="${npTop}" stroke="${v.bg||'#000'}" stroke-width="2"/>
+    ${cols}${keys}`;
 }
 function updatePreview(){
   const v=_uiVals;
