@@ -145,13 +145,12 @@ void ThermalPrinter::barcode128(const String &data) {
 }
 
 void ThermalPrinter::feedToNextLabel() {
-    uint16_t labelDots = loadLabelMm() * DOTS_PER_MM;
-    uint16_t gapDots   = loadGapMm()   * DOTS_PER_MM;
-    uint16_t totalPitch = labelDots + gapDots;
-
-    // Verbleibende Dots bis Ende des Etiketts + ganzer Abstand
-    int16_t remaining = (int16_t)totalPitch - (int16_t)_contentDots;
-    if (remaining > 0) feedMm(remaining / DOTS_PER_MM + 1);
+    uint16_t labelDots  = loadLabelMm() * DOTS_PER_MM;
+    uint16_t gapDots    = loadGapMm()   * DOTS_PER_MM;
+    int16_t  remaining  = (int16_t)(labelDots + gapDots) - (int16_t)_contentDots;
+    // Mindestens den Abstand vorschieben, auch wenn Inhalt das Etikett überläuft
+    uint16_t feedDots   = (remaining > (int16_t)gapDots) ? (uint16_t)remaining : gapDots;
+    if (feedDots > 0) feedMm(feedDots / DOTS_PER_MM + 1);
 }
 
 // ── Label ─────────────────────────────────────────────────────

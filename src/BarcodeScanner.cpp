@@ -80,14 +80,17 @@ class BLEScanCB : public NimBLEScanCallbacks {
     void onResult(const NimBLEAdvertisedDevice *dev) override {
         if (!s_scanner) return;
 
-        // Optionaler Namens-Filter
+        // Namens-Filter
+        bool nameMatch = false;
         if (!s_scanner->_targetName.isEmpty()) {
             String found = dev->getName().c_str();
             if (found.indexOf(s_scanner->_targetName) < 0) return;
+            nameMatch = true;
         }
-
-        // Nur Geräte mit HID-Service (0x1812)
-        if (!dev->isAdvertisingService(NimBLEUUID((uint16_t)0x1812))) return;
+        // Ohne gesetzten Namen nur Geräte mit advertised HID-Service verbinden.
+        // Mit Namensfilter direkt verbinden – manche Scanner (z.B. Inateck)
+        // advertisen 0x1812 nur im Scan-Response, nicht im Advertisement.
+        if (!nameMatch && !dev->isAdvertisingService(NimBLEUUID((uint16_t)0x1812))) return;
 
         Serial.printf("[BLE] HID-Scanner gefunden: %s\n", dev->toString().c_str());
         NimBLEDevice::getScan()->stop();
