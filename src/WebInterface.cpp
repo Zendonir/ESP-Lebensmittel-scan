@@ -499,6 +499,18 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
           <option value="115200">115200</option>
         </select>
       </label>
+      <label style="font-size:.85rem;color:var(--muted)">Vorschub nach Inhalt
+        <div style="display:flex;align-items:center;gap:.5rem;margin-top:.3rem">
+          <input type="number" id="printerFeedMm" min="0" max="200" step="1"
+                 style="width:80px">
+          <span style="color:var(--muted);font-size:.85rem">mm &nbsp;—&nbsp; so weit wird nach dem Inhalt vorgeschoben</span>
+        </div>
+        <span style="font-size:.75rem;color:var(--muted)">Tipp: bei vorgestanzten Etiketten = Etikettl&auml;nge&nbsp;&minus;&nbsp;Inhaltsh&ouml;he&nbsp;(~&nbsp;30&thinsp;mm)</span>
+      </label>
+      <label style="font-size:.85rem;color:var(--muted);display:flex;align-items:center;gap:.5rem;margin-top:.25rem">
+        <input type="checkbox" id="printerUseCut" style="width:16px;height:16px">
+        Automatisch schneiden (nur wenn Drucker Messer hat)
+      </label>
       <div style="display:flex;gap:.75rem;flex-wrap:wrap">
         <button class="btn btn-ok" style="width:fit-content" onclick="savePrinterCfg()">Speichern</button>
         <button class="btn" style="width:fit-content" onclick="doTestPrint()">&#x1F5A8; Testdruck</button>
@@ -1091,14 +1103,20 @@ async function saveScannerCfg(){
 async function loadPrinterCfg(){
   try{const d=await fetch('/api/printer-config').then(r=>r.json());
     const s=document.getElementById('printerBaud');
-    if(s)s.value=String(d.baud||9600);}catch(e){}
+    if(s)s.value=String(d.baud||9600);
+    const f=document.getElementById('printerFeedMm');
+    if(f)f.value=d.feed_mm!==undefined?d.feed_mm:20;
+    const c=document.getElementById('printerUseCut');
+    if(c)c.checked=d.use_cut!==false;}catch(e){}
 }
 async function savePrinterCfg(){
   const msg=document.getElementById('printerMsg');
   const baud=parseInt(document.getElementById('printerBaud').value)||9600;
+  const feed_mm=parseInt(document.getElementById('printerFeedMm').value)||20;
+  const use_cut=document.getElementById('printerUseCut').checked;
   msg.style.color='var(--muted)';msg.textContent='Speichere…';
   const r=await fetch('/api/printer-config',{method:'POST',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify({baud})});
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({baud,feed_mm,use_cut})});
   if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert.';}
   else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
 }
@@ -2531,7 +2549,9 @@ void WebInterface::begin() {
 
     _server.on("/api/printer-config", HTTP_GET, [](AsyncWebServerRequest *req) {
         JsonDocument doc;
-        doc["baud"] = ThermalPrinter::loadBaud();
+        doc["baud"]    = ThermalPrinter::loadBaud();
+        doc["feed_mm"] = ThermalPrinter::loadFeedMm();
+        doc["use_cut"] = ThermalPrinter::loadUseCut();
         String out; serializeJson(doc, out);
         req->send(200, "application/json", out);
     });
@@ -2545,8 +2565,14 @@ void WebInterface::begin() {
             if (deserializeJson(doc, (const char*)data, len)) {
                 req->send(400, "application/json", "{\"ok\":false}"); return;
             }
-            uint32_t baud = doc["baud"] | 9600;
-            printer.restart(baud);
+            if (!doc["baud"].isNull()) {
+                uint32_t baud = doc["baud"].as<uint32_t>();
+                printer.restart(baud);
+            }
+            if (!doc["feed_mm"].isNull())
+                ThermalPrinter::saveFeedMm(doc["feed_mm"].as<uint16_t>());
+            if (!doc["use_cut"].isNull())
+                ThermalPrinter::saveUseCut(doc["use_cut"].as<bool>());
             req->send(200, "application/json", "{\"ok\":true}");
         }
     );

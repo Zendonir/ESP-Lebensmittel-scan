@@ -11,6 +11,10 @@ public:
 
     static uint32_t loadBaud();
     static void     saveBaud(uint32_t baud);
+    static uint16_t loadFeedMm();
+    static void     saveFeedMm(uint16_t mm);
+    static bool     loadUseCut();
+    static void     saveUseCut(bool cut);
 
     // Druckt ein Lager-Etikett:
     //   name        – Produktname (Klarschrift)
@@ -27,11 +31,12 @@ private:
     uint32_t _baud;
 
     void init();
-    void align(uint8_t a);      // 0=links 1=mitte 2=rechts
+    void align(uint8_t a);        // 0=links 1=mitte 2=rechts
     void bold(bool on);
     void doubleHeight(bool on);
     void printLine(const String &text);
     void feed(uint8_t lines);
+    void feedMm(uint16_t mm);     // Präziser Vorschub in mm via ESC J
     void cut();
     void barcode128(const String &data);
 };

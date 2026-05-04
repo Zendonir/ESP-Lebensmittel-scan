@@ -23,6 +23,8 @@ void ThermalPrinter::restart(uint32_t baud) {
 }
 
 void ThermalPrinter::testPrint() {
+    uint16_t feedMmVal = loadFeedMm();
+    bool useCut        = loadUseCut();
     init();
     align(1);
     bold(true);
@@ -32,13 +34,14 @@ void ThermalPrinter::testPrint() {
     printLine("");
     printLine("ESP32 Lebensmittel-Scanner");
     printLine("Baudrate: " + String(_baud));
-    printLine("Protokoll: ESC/POS");
+    printLine("Vorschub:  " + String(feedMmVal) + " mm");
+    printLine("Schnitt:   " + String(useCut ? "ja" : "nein"));
     printLine("");
     align(1);
     barcode128("TEST001");
     printLine("TEST001");
-    feed(3);
-    cut();
+    feedMm(feedMmVal);
+    if (useCut) cut();
 }
 
 uint32_t ThermalPrinter::loadBaud() {
@@ -50,6 +53,30 @@ uint32_t ThermalPrinter::loadBaud() {
 void ThermalPrinter::saveBaud(uint32_t baud) {
     Preferences p; p.begin("printer", false);
     p.putUInt("baud", baud);
+    p.end();
+}
+
+uint16_t ThermalPrinter::loadFeedMm() {
+    Preferences p; p.begin("printer", true);
+    uint16_t v = p.getUShort("feed_mm", 20);
+    p.end(); return v;
+}
+
+void ThermalPrinter::saveFeedMm(uint16_t mm) {
+    Preferences p; p.begin("printer", false);
+    p.putUShort("feed_mm", mm);
+    p.end();
+}
+
+bool ThermalPrinter::loadUseCut() {
+    Preferences p; p.begin("printer", true);
+    bool v = p.getBool("use_cut", true);
+    p.end(); return v;
+}
+
+void ThermalPrinter::saveUseCut(bool cut) {
+    Preferences p; p.begin("printer", false);
+    p.putBool("use_cut", cut);
     p.end();
 }
 
@@ -80,6 +107,17 @@ void ThermalPrinter::printLine(const String &text) {
 
 void ThermalPrinter::feed(uint8_t lines) {
     _serial.write(0x1B); _serial.write('d'); _serial.write(lines);
+}
+
+void ThermalPrinter::feedMm(uint16_t mm) {
+    // ESC J n: feed n × 0.125mm (8 dots/mm)
+    uint16_t dots = mm * 8;
+    while (dots > 0) {
+        uint8_t chunk = (dots > 255) ? 255 : (uint8_t)dots;
+        _serial.write(0x1B); _serial.write('J'); _serial.write(chunk);
+        dots -= chunk;
+        if (dots > 0) delay(20);
+    }
 }
 
 void ThermalPrinter::cut() {
@@ -140,7 +178,7 @@ void ThermalPrinter::printLabel(const String &name, const String &labelCode,
     if (qty > 1)
         printLine("Menge:  " + String(qty) + " Stk.");
 
-    // ── Abschneiden ───────────────────────────────────────────
-    feed(3);
-    cut();
+    // ── Vorschub + Schnitt ────────────────────────────────────
+    feedMm(loadFeedMm());
+    if (loadUseCut()) cut();
 }
