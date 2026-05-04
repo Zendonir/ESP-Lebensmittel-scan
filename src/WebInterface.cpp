@@ -475,9 +475,16 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
           <option value="bt">BLE HID (externer Scanner)</option>
         </select>
       </label>
-      <label id="btNameRow" style="font-size:.85rem;color:var(--muted);display:none">Ger&auml;tename-Filter (leer&nbsp;= beliebiger HID-Scanner)
+      <label id="btNameRow" style="font-size:.85rem;color:var(--muted);display:none;flex-direction:column;gap:.4rem">
+        Ger&auml;tename-Filter (leer&nbsp;= beliebiger HID-Scanner)
         <input type="text" id="btDevName" maxlength="32" placeholder="z.B. BCST-23"
                style="display:block;width:260px;margin-top:.3rem">
+        <div style="display:flex;gap:.5rem;align-items:center;margin-top:.25rem">
+          <button class="btn" style="width:auto;padding:.35rem .8rem;font-size:.85rem"
+                  onclick="startBLEScan()">&#x1F50D; Ger&auml;te suchen (6s)</button>
+          <span id="bleScanStatus" style="font-size:.8rem;color:var(--muted)"></span>
+        </div>
+        <div id="bleScanResults" style="margin-top:.4rem;display:flex;flex-direction:column;gap:.3rem"></div>
       </label>
       <button class="btn btn-ok" style="width:fit-content" onclick="saveScannerCfg()">Speichern &amp; Neustart</button>
     </div>
@@ -498,6 +505,25 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
           <option value="57600">57600</option>
           <option value="115200">115200</option>
         </select>
+      </label>
+      <div style="display:flex;gap:1rem;flex-wrap:wrap">
+        <label style="font-size:.85rem;color:var(--muted)">Etikettl&auml;nge
+          <div style="display:flex;align-items:center;gap:.4rem;margin-top:.3rem">
+            <input type="number" id="printerLabelMm" min="1" max="300" step="1" style="width:70px">
+            <span style="color:var(--muted);font-size:.85rem">mm</span>
+          </div>
+        </label>
+        <label style="font-size:.85rem;color:var(--muted)">Abstand zwischen Etiketten
+          <div style="display:flex;align-items:center;gap:.4rem;margin-top:.3rem">
+            <input type="number" id="printerGapMm" min="0" max="50" step="1" style="width:70px">
+            <span style="color:var(--muted);font-size:.85rem">mm</span>
+          </div>
+        </label>
+      </div>
+      <span style="font-size:.75rem;color:var(--muted)">Der Vorschub nach dem Inhalt wird automatisch berechnet (Pitch&nbsp;=&nbsp;L&auml;nge&nbsp;+&nbsp;Abstand).</span>
+      <label style="font-size:.85rem;color:var(--muted);display:flex;align-items:center;gap:.5rem;margin-top:.25rem">
+        <input type="checkbox" id="printerUseCut" style="width:16px;height:16px">
+        Automatisch schneiden (nur wenn Drucker Messer hat)
       </label>
       <div style="display:flex;gap:.75rem;flex-wrap:wrap">
         <button class="btn btn-ok" style="width:fit-content" onclick="savePrinterCfg()">Speichern</button>
@@ -1087,19 +1113,58 @@ async function saveScannerCfg(){
   }else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
 }
 
+// ── BLE-Gerätesuche ───────────────────────────────────────────
+let _blePollTimer=null;
+async function startBLEScan(){
+  const status=document.getElementById('bleScanStatus');
+  const results=document.getElementById('bleScanResults');
+  results.innerHTML='';status.textContent='Suche läuft…';
+  if(_blePollTimer){clearInterval(_blePollTimer);_blePollTimer=null;}
+  try{
+    await fetch('/api/ble-scan',{method:'POST'});
+    let elapsed=0;
+    _blePollTimer=setInterval(async()=>{
+      elapsed++;
+      try{
+        const d=await fetch('/api/ble-results').then(r=>r.json());
+        status.textContent=(d.scanning?'Suche läuft… ('+elapsed+'s)':'Suche abgeschlossen – ')+d.devices.length+' Gerät(e)';
+        results.innerHTML='';
+        d.devices.sort((a,b)=>b.rssi-a.rssi).forEach(dev=>{
+          const btn=document.createElement('button');
+          btn.className='btn';
+          btn.style.cssText='width:auto;text-align:left;padding:.35rem .7rem;font-size:.82rem';
+          const sig=dev.rssi>-60?'●●●':dev.rssi>-75?'●●○':'●○○';
+          btn.textContent=sig+' '+dev.name+' ('+dev.addr+')';
+          btn.onclick=()=>{
+            document.getElementById('btDevName').value=dev.name==='(kein Name)'?'':dev.name;
+            status.textContent='✓ Ausgewählt: '+(dev.name||dev.addr);
+          };
+          results.appendChild(btn);
+        });
+        if(!d.scanning){clearInterval(_blePollTimer);_blePollTimer=null;}
+      }catch(e){status.textContent='Fehler beim Laden';clearInterval(_blePollTimer);_blePollTimer=null;}
+    },1000);
+  }catch(e){status.textContent='Fehler beim Starten der Suche';}
+}
+
 // ── Drucker ───────────────────────────────────────────────────
 async function loadPrinterCfg(){
   try{const d=await fetch('/api/printer-config').then(r=>r.json());
-    const s=document.getElementById('printerBaud');
-    if(s)s.value=String(d.baud||9600);}catch(e){}
+    const b=document.getElementById('printerBaud');    if(b)b.value=String(d.baud||9600);
+    const l=document.getElementById('printerLabelMm'); if(l)l.value=d.label_mm||29;
+    const g=document.getElementById('printerGapMm');   if(g)g.value=d.gap_mm||6;
+    const c=document.getElementById('printerUseCut');  if(c)c.checked=d.use_cut!==false;}catch(e){}
 }
 async function savePrinterCfg(){
   const msg=document.getElementById('printerMsg');
-  const baud=parseInt(document.getElementById('printerBaud').value)||9600;
+  const baud     =parseInt(document.getElementById('printerBaud').value)||9600;
+  const label_mm =parseInt(document.getElementById('printerLabelMm').value)||29;
+  const gap_mm   =parseInt(document.getElementById('printerGapMm').value)||6;
+  const use_cut  =document.getElementById('printerUseCut').checked;
   msg.style.color='var(--muted)';msg.textContent='Speichere…';
   const r=await fetch('/api/printer-config',{method:'POST',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify({baud})});
-  if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert.';}
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({baud,label_mm,gap_mm,use_cut})});
+  if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert. Pitch: '+(label_mm+gap_mm)+' mm';}
   else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
 }
 async function doTestPrint(){
@@ -2306,8 +2371,8 @@ void WebInterface::begin() {
                 _otaMsg = "Verbinde mit GitHub…";
                 WiFiClientSecure client; client.setInsecure();
                 HTTPClient https;
-                https.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-                https.setTimeout(30000);
+                https.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+                https.setTimeout(60000);
                 if (!https.begin(client, _otaUrl)) {
                     _otaMsg = "Verbindung fehlgeschlagen";
                     _otaError = true; _otaActive = false; vTaskDelete(nullptr); return;
@@ -2358,7 +2423,7 @@ void WebInterface::begin() {
                     _otaError = true; _otaActive = false;
                 }
                 vTaskDelete(nullptr);
-            }, "ghota", 12288, nullptr, 1, nullptr);
+            }, "ghota", 20480, nullptr, 1, nullptr);
         }
     );
 
@@ -2529,9 +2594,33 @@ void WebInterface::begin() {
         req->send(200, "application/json", "{\"ok\":true}");
     });
 
+    _server.on("/api/ble-scan", HTTP_POST, [](AsyncWebServerRequest *req) {
+        BarcodeScanner::startDiscoveryScan(6);
+        req->send(200, "application/json", "{\"ok\":true,\"scanning\":true}");
+    });
+
+    _server.on("/api/ble-results", HTTP_GET, [](AsyncWebServerRequest *req) {
+        auto devices = BarcodeScanner::getDiscoveredDevices();
+        bool scanning = BarcodeScanner::isDiscovering();
+        JsonDocument doc;
+        doc["scanning"] = scanning;
+        JsonArray arr = doc["devices"].to<JsonArray>();
+        for (auto &d : devices) {
+            JsonObject o = arr.add<JsonObject>();
+            o["name"] = d.name;
+            o["addr"] = d.addr;
+            o["rssi"] = d.rssi;
+        }
+        String out; serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+
     _server.on("/api/printer-config", HTTP_GET, [](AsyncWebServerRequest *req) {
         JsonDocument doc;
-        doc["baud"] = ThermalPrinter::loadBaud();
+        doc["baud"]     = ThermalPrinter::loadBaud();
+        doc["label_mm"] = ThermalPrinter::loadLabelMm();
+        doc["gap_mm"]   = ThermalPrinter::loadGapMm();
+        doc["use_cut"]  = ThermalPrinter::loadUseCut();
         String out; serializeJson(doc, out);
         req->send(200, "application/json", out);
     });
@@ -2545,8 +2634,14 @@ void WebInterface::begin() {
             if (deserializeJson(doc, (const char*)data, len)) {
                 req->send(400, "application/json", "{\"ok\":false}"); return;
             }
-            uint32_t baud = doc["baud"] | 9600;
-            printer.restart(baud);
+            if (!doc["baud"].isNull())
+                printer.restart(doc["baud"].as<uint32_t>());
+            if (!doc["label_mm"].isNull())
+                ThermalPrinter::saveLabelMm(doc["label_mm"].as<uint16_t>());
+            if (!doc["gap_mm"].isNull())
+                ThermalPrinter::saveGapMm(doc["gap_mm"].as<uint16_t>());
+            if (!doc["use_cut"].isNull())
+                ThermalPrinter::saveUseCut(doc["use_cut"].as<bool>());
             req->send(200, "application/json", "{\"ok\":true}");
         }
     );

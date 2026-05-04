@@ -1,6 +1,13 @@
 #pragma once
 #include <Arduino.h>
+#include <vector>
 #include <freertos/semphr.h>
+
+struct BLEDeviceInfo {
+    String name;
+    String addr;
+    int    rssi;
+};
 
 class BarcodeScanner {
 public:
@@ -12,13 +19,17 @@ public:
     bool   available();
     String getBarcode();
     void   flush();
-    void   enable();   // UART: GM861 aktivieren; BLE: no-op
-    void   disable();  // UART: GM861 schlafen;   BLE: no-op
+    void   enable();
+    void   disable();
 
     bool isBLEMode()    const { return _bleMode; }
     bool bleConnected() const { return _bleConnected; }
 
-    // Aufgerufen aus NimBLE-Callbacks (public für Lambda-Zugriff)
+    // BLE-Geräte-Suche (unabhängig vom Scanner-Modus)
+    static void startDiscoveryScan(int durationSec = 6);
+    static bool isDiscovering();
+    static std::vector<BLEDeviceInfo> getDiscoveredDevices();
+
     void   _onHIDReport(const uint8_t *data, size_t len);
     void   _setConnected(bool v) { _bleConnected = v; }
     void   _startScan();
@@ -33,11 +44,9 @@ private:
     uint8_t           _rxPin, _txPin;
     uint32_t          _baud;
 
-    // UART-Puffer
     String            _uartBuf;
     bool              _uartReady  = false;
 
-    // BLE-Puffer (mutex-geschützt)
     String            _bleBuf;
     bool              _bleReady     = false;
     bool              _bleMode      = false;
