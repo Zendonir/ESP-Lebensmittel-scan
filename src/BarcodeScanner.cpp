@@ -167,7 +167,7 @@ void BarcodeScanner::startDiscoveryScan(int durationSec) {
         scan->setInterval(100);
         scan->setWindow(99);
         Serial.printf("[BLE] Discovery-Scan gestartet (%ds)\n", dur);
-        scan->start(dur, false);
+        scan->start((uint32_t)dur * 1000, false);  // v2.x: ms, not seconds
         Serial.printf("[BLE] Discovery-Scan fertig, %d Geräte\n", (int)s_discovered.size());
         s_discovering = false;
         if (s_scanner && s_scanner->_bleMode) {
