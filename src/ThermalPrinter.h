@@ -6,6 +6,11 @@ class ThermalPrinter {
 public:
     ThermalPrinter(HardwareSerial &serial, uint8_t txPin, uint8_t rxPin, uint32_t baud);
     void begin();
+    void restart(uint32_t baud);  // Neue Baudrate speichern + Serial neu starten
+    void testPrint();             // Testseite drucken
+
+    static uint32_t loadBaud();
+    static void     saveBaud(uint32_t baud);
 
     // Druckt ein Lager-Etikett:
     //   name        – Produktname (Klarschrift)

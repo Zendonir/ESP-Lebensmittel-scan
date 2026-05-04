@@ -3,6 +3,7 @@
 #include "UIConfig.h"
 #include "FontConfig.h"
 #include "BarcodeScanner.h"
+#include "ThermalPrinter.h"
 extern bool g_useNumpad;
 #include "CategoryManager.h"
 #include "StorageStats.h"
@@ -482,6 +483,29 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     </div>
     <div id="scannerMsg" style="margin-top:.75rem;font-size:.85rem"></div>
     <hr style="border-color:var(--border);margin:1.5rem 0">
+    <h2 style="margin-bottom:1rem">&#x1F5A8; Thermodrucker</h2>
+    <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
+      Anschluss &uuml;ber TTL-Port: ESP32 GPIO17&rarr;RX, GPIO18&larr;TX, GND&rarr;GND.<br>
+      DTRD-Pin am Drucker: mit 3,3&thinsp;V verbinden oder offen lassen.
+      Baudrate testen falls kein Ausdruck erscheint.
+    </p>
+    <div style="display:flex;flex-direction:column;gap:.75rem;max-width:440px">
+      <label style="font-size:.85rem;color:var(--muted)">Baudrate
+        <select id="printerBaud" style="display:block;margin-top:.3rem;width:200px">
+          <option value="9600">9600 (Standard)</option>
+          <option value="19200">19200</option>
+          <option value="38400">38400</option>
+          <option value="57600">57600</option>
+          <option value="115200">115200</option>
+        </select>
+      </label>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+        <button class="btn btn-ok" style="width:fit-content" onclick="savePrinterCfg()">Speichern</button>
+        <button class="btn" style="width:fit-content" onclick="doTestPrint()">&#x1F5A8; Testdruck</button>
+      </div>
+    </div>
+    <div id="printerMsg" style="margin-top:.75rem;font-size:.85rem"></div>
+    <hr style="border-color:var(--border);margin:1.5rem 0">
     <h2 style="margin-bottom:1rem">Schriftgr&ouml;&szlig;en am Ger&auml;t</h2>
     <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
       Pixelh&ouml;he der Schrift: 8&thinsp;px, 16&thinsp;px, 24&thinsp;px oder 32&thinsp;px (Vielfaches von 8).
@@ -715,7 +739,7 @@ function switchTab(id,btn){
   if(id==='mqtt'){loadMqtt();loadTelegram();}
   if(id==='shop')loadShop();
   if(id==='stats')loadStats();
-  if(id==='system'){loadOtaPw();loadDevConfig();loadScannerCfg();loadFontSizes();}
+  if(id==='system'){loadOtaPw();loadDevConfig();loadScannerCfg();loadPrinterCfg();loadFontSizes();}
   if(id==='scanlogs')loadScanlogs();
   if(id==='design')loadDesign();
 }
@@ -1061,6 +1085,29 @@ async function saveScannerCfg(){
     msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert. Gerät startet neu…';
     setTimeout(()=>location.reload(),4000);
   }else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
+}
+
+// ── Drucker ───────────────────────────────────────────────────
+async function loadPrinterCfg(){
+  try{const d=await fetch('/api/printer-config').then(r=>r.json());
+    const s=document.getElementById('printerBaud');
+    if(s)s.value=String(d.baud||9600);}catch(e){}
+}
+async function savePrinterCfg(){
+  const msg=document.getElementById('printerMsg');
+  const baud=parseInt(document.getElementById('printerBaud').value)||9600;
+  msg.style.color='var(--muted)';msg.textContent='Speichere…';
+  const r=await fetch('/api/printer-config',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({baud})});
+  if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert.';}
+  else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
+}
+async function doTestPrint(){
+  const msg=document.getElementById('printerMsg');
+  msg.style.color='var(--muted)';msg.textContent='Drucke…';
+  const r=await fetch('/api/printer-test',{method:'POST'});
+  if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Testdruck gesendet.';}
+  else{msg.style.color='var(--danger)';msg.textContent='Fehler – kein Drucker?';}
 }
 
 // ── Schriftgrößen ─────────────────────────────────────────────
@@ -2479,6 +2526,34 @@ void WebInterface::begin() {
         delay(120);
         tone(BUZZER_PIN, 1800, 80);
 #endif
+        req->send(200, "application/json", "{\"ok\":true}");
+    });
+
+    _server.on("/api/printer-config", HTTP_GET, [](AsyncWebServerRequest *req) {
+        JsonDocument doc;
+        doc["baud"] = ThermalPrinter::loadBaud();
+        String out; serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+
+    _server.on("/api/printer-config", HTTP_POST,
+        [](AsyncWebServerRequest *req){},
+        nullptr,
+        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t, size_t) {
+            extern ThermalPrinter printer;
+            JsonDocument doc;
+            if (deserializeJson(doc, (const char*)data, len)) {
+                req->send(400, "application/json", "{\"ok\":false}"); return;
+            }
+            uint32_t baud = doc["baud"] | 9600;
+            printer.restart(baud);
+            req->send(200, "application/json", "{\"ok\":true}");
+        }
+    );
+
+    _server.on("/api/printer-test", HTTP_POST, [](AsyncWebServerRequest *req) {
+        extern ThermalPrinter printer;
+        printer.testPrint();
         req->send(200, "application/json", "{\"ok\":true}");
     });
 
