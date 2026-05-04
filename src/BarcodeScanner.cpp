@@ -4,8 +4,9 @@
 
 // ── Statischer Scanner-Zeiger für NimBLE-Callbacks ────────────
 
-static BarcodeScanner *s_scanner = nullptr;
-static NimBLEClient   *s_client  = nullptr;
+static BarcodeScanner *s_scanner    = nullptr;
+static NimBLEClient   *s_client     = nullptr;
+static bool            s_nimbleInit = false;
 
 // ── Geräte-Suche (Discovery) ─────────────────────────────────
 
@@ -149,26 +150,32 @@ void BarcodeScanner::startDiscoveryScan(int durationSec) {
     xSemaphoreGive(s_discMutex);
     s_discovering = true;
 
-    static int s_dur = 6;
-    s_dur = durationSec;
-    xTaskCreate([](void *) {
-        if (!NimBLEDevice::isInitialized()) NimBLEDevice::init("");
+    int *durPtr = new int(durationSec);
+    xTaskCreate([](void *arg) {
+        int dur = *reinterpret_cast<int *>(arg);
+        delete reinterpret_cast<int *>(arg);
+
+        if (!s_nimbleInit) {
+            NimBLEDevice::init("");
+            s_nimbleInit = true;
+        }
         NimBLEScan *scan = NimBLEDevice::getScan();
-        // Laufenden Scanner-Scan stoppen falls aktiv
         if (scan->isScanning()) scan->stop();
+        delay(100);
         scan->setScanCallbacks(&s_discoveryCB, false);
         scan->setActiveScan(true);
         scan->setInterval(100);
         scan->setWindow(99);
-        scan->start(s_dur, false);
+        Serial.printf("[BLE] Discovery-Scan gestartet (%ds)\n", dur);
+        scan->start(dur, false);
+        Serial.printf("[BLE] Discovery-Scan fertig, %d Geräte\n", (int)s_discovered.size());
         s_discovering = false;
-        // Scanner-Callback wiederherstellen wenn im BLE-Modus
         if (s_scanner && s_scanner->_bleMode) {
             scan->setScanCallbacks(&s_scanCB, false);
             s_scanner->_startScan();
         }
         vTaskDelete(nullptr);
-    }, "bleDisc", 6144, nullptr, 1, nullptr);
+    }, "bleDisc", 12288, durPtr, 1, nullptr);
 }
 
 bool BarcodeScanner::isDiscovering() { return s_discovering; }
@@ -204,7 +211,10 @@ void BarcodeScanner::beginBLE(const String &targetName) {
     s_scanner   = this;
     _bleBuf.reserve(32);
 
-    NimBLEDevice::init("");
+    if (!s_nimbleInit) {
+        NimBLEDevice::init("");
+        s_nimbleInit = true;
+    }
     NimBLEScan *scan = NimBLEDevice::getScan();
     scan->setScanCallbacks(&s_scanCB, false);
     scan->setActiveScan(true);

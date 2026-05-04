@@ -2595,7 +2595,7 @@ void WebInterface::begin() {
     });
 
     _server.on("/api/ble-scan", HTTP_POST, [](AsyncWebServerRequest *req) {
-        BarcodeScanner::startDiscoveryScan(6);
+        BarcodeScanner::startDiscoveryScan(10);
         req->send(200, "application/json", "{\"ok\":true,\"scanning\":true}");
     });
 
