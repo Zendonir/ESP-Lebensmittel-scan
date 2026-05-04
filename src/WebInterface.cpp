@@ -3,6 +3,7 @@
 #include "UIConfig.h"
 #include "FontConfig.h"
 #include "BarcodeScanner.h"
+#include "ThermalPrinter.h"
 extern bool g_useNumpad;
 #include "CategoryManager.h"
 #include "StorageStats.h"
@@ -482,6 +483,29 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     </div>
     <div id="scannerMsg" style="margin-top:.75rem;font-size:.85rem"></div>
     <hr style="border-color:var(--border);margin:1.5rem 0">
+    <h2 style="margin-bottom:1rem">&#x1F5A8; Thermodrucker</h2>
+    <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
+      Anschluss &uuml;ber TTL-Port: ESP32 GPIO17&rarr;RX, GPIO18&larr;TX, GND&rarr;GND.<br>
+      DTRD-Pin am Drucker: mit 3,3&thinsp;V verbinden oder offen lassen.
+      Baudrate testen falls kein Ausdruck erscheint.
+    </p>
+    <div style="display:flex;flex-direction:column;gap:.75rem;max-width:440px">
+      <label style="font-size:.85rem;color:var(--muted)">Baudrate
+        <select id="printerBaud" style="display:block;margin-top:.3rem;width:200px">
+          <option value="9600">9600 (Standard)</option>
+          <option value="19200">19200</option>
+          <option value="38400">38400</option>
+          <option value="57600">57600</option>
+          <option value="115200">115200</option>
+        </select>
+      </label>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+        <button class="btn btn-ok" style="width:fit-content" onclick="savePrinterCfg()">Speichern</button>
+        <button class="btn" style="width:fit-content" onclick="doTestPrint()">&#x1F5A8; Testdruck</button>
+      </div>
+    </div>
+    <div id="printerMsg" style="margin-top:.75rem;font-size:.85rem"></div>
+    <hr style="border-color:var(--border);margin:1.5rem 0">
     <h2 style="margin-bottom:1rem">Schriftgr&ouml;&szlig;en am Ger&auml;t</h2>
     <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
       Pixelh&ouml;he der Schrift: 8&thinsp;px, 16&thinsp;px, 24&thinsp;px oder 32&thinsp;px (Vielfaches von 8).
@@ -715,7 +739,7 @@ function switchTab(id,btn){
   if(id==='mqtt'){loadMqtt();loadTelegram();}
   if(id==='shop')loadShop();
   if(id==='stats')loadStats();
-  if(id==='system'){loadOtaPw();loadDevConfig();loadScannerCfg();loadFontSizes();}
+  if(id==='system'){loadOtaPw();loadDevConfig();loadScannerCfg();loadPrinterCfg();loadFontSizes();}
   if(id==='scanlogs')loadScanlogs();
   if(id==='design')loadDesign();
 }
@@ -1061,6 +1085,29 @@ async function saveScannerCfg(){
     msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert. Gerät startet neu…';
     setTimeout(()=>location.reload(),4000);
   }else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
+}
+
+// ── Drucker ───────────────────────────────────────────────────
+async function loadPrinterCfg(){
+  try{const d=await fetch('/api/printer-config').then(r=>r.json());
+    const s=document.getElementById('printerBaud');
+    if(s)s.value=String(d.baud||9600);}catch(e){}
+}
+async function savePrinterCfg(){
+  const msg=document.getElementById('printerMsg');
+  const baud=parseInt(document.getElementById('printerBaud').value)||9600;
+  msg.style.color='var(--muted)';msg.textContent='Speichere…';
+  const r=await fetch('/api/printer-config',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({baud})});
+  if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert.';}
+  else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
+}
+async function doTestPrint(){
+  const msg=document.getElementById('printerMsg');
+  msg.style.color='var(--muted)';msg.textContent='Drucke…';
+  const r=await fetch('/api/printer-test',{method:'POST'});
+  if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Testdruck gesendet.';}
+  else{msg.style.color='var(--danger)';msg.textContent='Fehler – kein Drucker?';}
 }
 
 // ── Schriftgrößen ─────────────────────────────────────────────
@@ -1494,7 +1541,7 @@ function _buildPreviewList(v){
   return `<rect width="280" height="456" fill="${v.bg||'#000'}"/>
     <rect width="280" height="${sub}" fill="${v.bg||'#000'}"/>
     <line x1="0" y1="${sub}" x2="280" y2="${sub}" stroke="${v.surface||'#333'}" stroke-width="1"/>
-    <text x="50" y="${sub/2+7}" font-size="13" fill="${v.text||'#FFF'}" font-family="sans-serif">&lt; Zurück</text>
+    <text x="6" y="${sub/2+9}" font-size="11" fill="${v.text||'#FFF'}" font-family="sans-serif">&lt; Zurück</text>
     <text x="140" y="${sub/2+7}" text-anchor="middle" font-size="16" fill="${v.accent||'#00FFFF'}" font-family="sans-serif" font-weight="600">Milchprodukte</text>
     <circle cx="272" cy="8" r="4" fill="${v.ok||'#00FF00'}"/>
     ${clkSvg}${s}
@@ -1502,30 +1549,43 @@ function _buildPreviewList(v){
     <text x="140" y="${456-btnH/2-8+7}" text-anchor="middle" font-size="15" fill="${v.text||'#FFF'}" font-family="sans-serif">← Zurück</text>`;
 }
 function _buildPreviewDate(v){
-  const sub=parseInt(_giv('uiSubHdrH',54));
-  const btnH=parseInt(_giv('uiTbtnH',48));
-  const btnM=parseInt(_giv('uiTbtnMargin',8));
+  // Matches showDateEntryNumpad() layout — static constants from DisplayManager.h
+  const npHdrH=54, npDateH=72, npTop=126;
+  const npColW=Math.floor(280/3);  // 93
+  const npRowH=Math.floor((456-npTop)/4);  // 82
   const btnR=parseInt(_giv('uiBtnRadius',10));
-  const dfmt=parseInt(_giv('uiDateFmt',0));
-  const dateStr=dfmt===1?'12/31/2025':dfmt===2?'2025-12-31':'31.12.2025';
-  const dateH=72;const npTop=sub+dateH;const npColW=Math.floor(280/3);
-  const npRowH=Math.floor((456-npTop)/4);
-  const keys=['1','2','3','4','5','6','7','8','9','⌫','0','✓'];
-  const kbg=(k)=>k==='✓'?(v.btn_ok||'#003000'):k==='⌫'?(v.btn_back||'#1A2250'):(v.surface||'#181818');
-  let s='';
-  keys.forEach((k,i)=>{
-    const col=i%3,row=Math.floor(i/3);
-    const kx=col*npColW+2,ky=npTop+row*npRowH+2,kw=npColW-4,kh=npRowH-4;
-    s+=`<rect x="${kx}" y="${ky}" width="${kw}" height="${kh}" rx="${btnR}" fill="${kbg(k)}"/>
-    <text x="${kx+kw/2}" y="${ky+kh/2+7}" text-anchor="middle" font-size="20" fill="${v.text||'#FFF'}" font-family="sans-serif" font-weight="600">${k}</text>`;
+  const flds=['Tag','Monat','Jahr'];
+  const vals=['__','--','--'];
+  // Field 0 (Tag) active
+  let cols='';
+  for(let i=0;i<3;i++){
+    const bx=i*npColW;
+    const active=(i===0);
+    const bg=active?(v.accent||'#00FFFF'):(v.surface||'#181818');
+    const fg=active?'#000000':(v.text||'#FFF');
+    const lfg=active?'#000000':(v.subtext||'#808080');
+    cols+=`<rect x="${bx}" y="${npHdrH}" width="${npColW}" height="${npDateH}" fill="${bg}"/>
+    <text x="${bx+npColW/2}" y="${npHdrH+16}" text-anchor="middle" font-size="11" fill="${lfg}" font-family="sans-serif">${flds[i]}</text>
+    <text x="${bx+npColW/2}" y="${npHdrH+npDateH/2+14}" text-anchor="middle" font-size="22" fill="${fg}" font-family="monospace" font-weight="bold">${vals[i]}</text>`;
+  }
+  const rows=[['1','2','3'],['4','5','6'],['7','8','9'],['<','0','>']];
+  const rowBg=[[v.surface,v.surface,v.surface],[v.surface,v.surface,v.surface],[v.surface,v.surface,v.surface],[v.btn_back,v.surface,v.accent]];
+  let keys='';
+  rows.forEach((row,ri)=>{
+    row.forEach((k,ci)=>{
+      const kx=ci*npColW+4, ky=npTop+ri*npRowH+4, kw=npColW-8, kh=npRowH-8;
+      const kb=rowBg[ri][ci]||v.surface||'#181818';
+      keys+=`<rect x="${kx}" y="${ky}" width="${kw}" height="${kh}" rx="${btnR}" fill="${kb}"/>
+      <text x="${kx+kw/2}" y="${ky+kh/2+8}" text-anchor="middle" font-size="${ri===3?18:24}" fill="${v.text||'#FFF'}" font-family="sans-serif" font-weight="600">${k}</text>`;
+    });
   });
   return `<rect width="280" height="456" fill="${v.bg||'#000'}"/>
-    <rect width="280" height="${sub}" fill="${v.bg||'#000'}"/>
-    <text x="140" y="${sub/2+7}" text-anchor="middle" font-size="16" fill="${v.text||'#FFF'}" font-family="sans-serif" font-weight="600">Datum eingeben</text>
-    <rect width="280" height="${dateH}" y="${sub}" fill="${v.surface||'#181818'}"/>
-    <text x="140" y="${sub+dateH/2-8}" text-anchor="middle" font-size="13" fill="${v.subtext||'#808080'}" font-family="sans-serif">Joghurt Natur</text>
-    <text x="140" y="${sub+dateH/2+14}" text-anchor="middle" font-size="22" fill="${v.accent||'#00FFFF'}" font-family="monospace" font-weight="bold">${dateStr}</text>
-    ${s}`;
+    <rect width="280" height="${npHdrH}" fill="${v.header||'#0C1213'}"/>
+    <text x="140" y="${npHdrH/2+7}" text-anchor="middle" font-size="14" fill="${v.text||'#FFF'}" font-family="sans-serif">Joghurt Natur</text>
+    <circle cx="272" cy="8" r="4" fill="${v.ok||'#00FF00'}"/>
+    <line x1="${npColW}" y1="${npHdrH}" x2="${npColW}" y2="${npTop}" stroke="${v.bg||'#000'}" stroke-width="2"/>
+    <line x1="${2*npColW}" y1="${npHdrH}" x2="${2*npColW}" y2="${npTop}" stroke="${v.bg||'#000'}" stroke-width="2"/>
+    ${cols}${keys}`;
 }
 function updatePreview(){
   const v=_uiVals;
@@ -2466,6 +2526,34 @@ void WebInterface::begin() {
         delay(120);
         tone(BUZZER_PIN, 1800, 80);
 #endif
+        req->send(200, "application/json", "{\"ok\":true}");
+    });
+
+    _server.on("/api/printer-config", HTTP_GET, [](AsyncWebServerRequest *req) {
+        JsonDocument doc;
+        doc["baud"] = ThermalPrinter::loadBaud();
+        String out; serializeJson(doc, out);
+        req->send(200, "application/json", out);
+    });
+
+    _server.on("/api/printer-config", HTTP_POST,
+        [](AsyncWebServerRequest *req){},
+        nullptr,
+        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t, size_t) {
+            extern ThermalPrinter printer;
+            JsonDocument doc;
+            if (deserializeJson(doc, (const char*)data, len)) {
+                req->send(400, "application/json", "{\"ok\":false}"); return;
+            }
+            uint32_t baud = doc["baud"] | 9600;
+            printer.restart(baud);
+            req->send(200, "application/json", "{\"ok\":true}");
+        }
+    );
+
+    _server.on("/api/printer-test", HTTP_POST, [](AsyncWebServerRequest *req) {
+        extern ThermalPrinter printer;
+        printer.testPrint();
         req->send(200, "application/json", "{\"ok\":true}");
     });
 

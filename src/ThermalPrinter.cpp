@@ -1,13 +1,56 @@
 #include "ThermalPrinter.h"
+#include <Preferences.h>
 
 ThermalPrinter::ThermalPrinter(HardwareSerial &serial,
                                 uint8_t txPin, uint8_t rxPin, uint32_t baud)
     : _serial(serial), _txPin(txPin), _rxPin(rxPin), _baud(baud) {}
 
 void ThermalPrinter::begin() {
+    _baud = loadBaud();
     _serial.begin(_baud, SERIAL_8N1, _rxPin, _txPin);
     delay(50);
     init();
+}
+
+void ThermalPrinter::restart(uint32_t baud) {
+    saveBaud(baud);
+    _baud = baud;
+    _serial.end();
+    delay(10);
+    _serial.begin(_baud, SERIAL_8N1, _rxPin, _txPin);
+    delay(50);
+    init();
+}
+
+void ThermalPrinter::testPrint() {
+    init();
+    align(1);
+    bold(true);
+    printLine("*** Testdruck ***");
+    bold(false);
+    align(0);
+    printLine("");
+    printLine("ESP32 Lebensmittel-Scanner");
+    printLine("Baudrate: " + String(_baud));
+    printLine("Protokoll: ESC/POS");
+    printLine("");
+    align(1);
+    barcode128("TEST001");
+    printLine("TEST001");
+    feed(3);
+    cut();
+}
+
+uint32_t ThermalPrinter::loadBaud() {
+    Preferences p; p.begin("printer", true);
+    uint32_t b = p.getUInt("baud", 9600);
+    p.end(); return b;
+}
+
+void ThermalPrinter::saveBaud(uint32_t baud) {
+    Preferences p; p.begin("printer", false);
+    p.putUInt("baud", baud);
+    p.end();
 }
 
 // ── ESC/POS Hilfsbefehle ──────────────────────────────────────
