@@ -449,21 +449,31 @@ void setup() {
     bool touchOk = touch.begin();
     if (!touchOk) Serial.println("[Touch] CST816S nicht gefunden!");
 
+    Serial.printf("[Boot] heap=%u psram=%u\n", ESP.getFreeHeap(), ESP.getFreePsram());
     bool dispOk = display.begin();
-    Serial.printf("[Display] begin()=%d\n", dispOk);
+    Serial.printf("[Display] begin()=%d  heap=%u psram=%u\n",
+                  dispOk, ESP.getFreeHeap(), ESP.getFreePsram());
+    if (!dispOk) Serial.println("[Display] FEHLER: begin() gescheitert!");
     display.showBooting("Display + Touch OK"); delay(300);
+    Serial.println("[Display] showBooting OK");
 
-    if (BarcodeScanner::loadBTMode()) {
+    bool bleMode = BarcodeScanner::loadBTMode();
+    Serial.printf("[Boot] Scanner-Modus: %s\n", bleMode ? "BLE" : "UART");
+    if (bleMode) {
         String bleName = BarcodeScanner::loadBTName();
         display.showBooting("BLE-Scanner: " + (bleName.isEmpty() ? "beliebig" : bleName));
+        Serial.printf("[BLE] beginBLE(\"%s\") ...\n", bleName.c_str());
         scanner.beginBLE(bleName);
+        Serial.printf("[BLE] beginBLE done, heap=%u\n", ESP.getFreeHeap());
     } else {
         scanner.begin();
+        Serial.println("[Boot] UART-Scanner OK");
     }
     display.showBooting("Scanner OK"); delay(200);
 
     printer.begin();
     display.showBooting("Drucker OK"); delay(200);
+    Serial.printf("[Boot] Drucker OK, heap=%u\n", ESP.getFreeHeap());
 
     display.showBooting("Lade Daten...");
     if (!LittleFS.begin(true, "/littlefs", 10, "littlefs")) {

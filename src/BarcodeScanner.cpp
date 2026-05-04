@@ -155,27 +155,38 @@ void BarcodeScanner::startDiscoveryScan(int durationSec) {
         int dur = *reinterpret_cast<int *>(arg);
         delete reinterpret_cast<int *>(arg);
 
+        Serial.printf("[BLE] Discovery init: nimbleInit=%d heap=%u\n",
+                      (int)s_nimbleInit, ESP.getFreeHeap());
         if (!s_nimbleInit) {
             NimBLEDevice::init("");
             s_nimbleInit = true;
+            Serial.printf("[BLE] NimBLE init done, heap=%u\n", ESP.getFreeHeap());
         }
         NimBLEScan *scan = NimBLEDevice::getScan();
-        if (scan->isScanning()) scan->stop();
-        delay(100);
+        Serial.printf("[BLE] scan ptr=%p isScanning=%d\n", (void*)scan, (int)scan->isScanning());
+        if (scan->isScanning()) {
+            scan->stop();
+            delay(200);
+            Serial.println("[BLE] laufender Scan gestoppt");
+        }
         scan->setScanCallbacks(&s_discoveryCB, false);
         scan->setActiveScan(true);
         scan->setInterval(100);
         scan->setWindow(99);
-        Serial.printf("[BLE] Discovery-Scan gestartet (%ds)\n", dur);
-        scan->start((uint32_t)dur * 1000, false);  // v2.x: ms, not seconds
-        Serial.printf("[BLE] Discovery-Scan fertig, %d Geräte\n", (int)s_discovered.size());
+        Serial.printf("[BLE] Discovery-Scan startet (%ds = %dms)\n", dur, dur * 1000);
+        // getResults() blockiert bis Scan abgeschlossen (v2.x)
+        scan->getResults((uint32_t)dur * 1000, false);
+        xSemaphoreTake(s_discMutex, portMAX_DELAY);
+        int found = s_discovered.size();
+        xSemaphoreGive(s_discMutex);
+        Serial.printf("[BLE] Discovery fertig: %d Geräte, heap=%u\n", found, ESP.getFreeHeap());
         s_discovering = false;
         if (s_scanner && s_scanner->_bleMode) {
             scan->setScanCallbacks(&s_scanCB, false);
             s_scanner->_startScan();
         }
         vTaskDelete(nullptr);
-    }, "bleDisc", 12288, durPtr, 1, nullptr);
+    }, "bleDisc", 12288, durPtr, 2, nullptr);
 }
 
 bool BarcodeScanner::isDiscovering() { return s_discovering; }
