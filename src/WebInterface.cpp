@@ -499,14 +499,21 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
           <option value="115200">115200</option>
         </select>
       </label>
-      <label style="font-size:.85rem;color:var(--muted)">Vorschub nach Inhalt
-        <div style="display:flex;align-items:center;gap:.5rem;margin-top:.3rem">
-          <input type="number" id="printerFeedMm" min="0" max="200" step="1"
-                 style="width:80px">
-          <span style="color:var(--muted);font-size:.85rem">mm &nbsp;—&nbsp; so weit wird nach dem Inhalt vorgeschoben</span>
-        </div>
-        <span style="font-size:.75rem;color:var(--muted)">Tipp: bei vorgestanzten Etiketten = Etikettl&auml;nge&nbsp;&minus;&nbsp;Inhaltsh&ouml;he&nbsp;(~&nbsp;30&thinsp;mm)</span>
-      </label>
+      <div style="display:flex;gap:1rem;flex-wrap:wrap">
+        <label style="font-size:.85rem;color:var(--muted)">Etikettl&auml;nge
+          <div style="display:flex;align-items:center;gap:.4rem;margin-top:.3rem">
+            <input type="number" id="printerLabelMm" min="1" max="300" step="1" style="width:70px">
+            <span style="color:var(--muted);font-size:.85rem">mm</span>
+          </div>
+        </label>
+        <label style="font-size:.85rem;color:var(--muted)">Abstand zwischen Etiketten
+          <div style="display:flex;align-items:center;gap:.4rem;margin-top:.3rem">
+            <input type="number" id="printerGapMm" min="0" max="50" step="1" style="width:70px">
+            <span style="color:var(--muted);font-size:.85rem">mm</span>
+          </div>
+        </label>
+      </div>
+      <span style="font-size:.75rem;color:var(--muted)">Der Vorschub nach dem Inhalt wird automatisch berechnet (Pitch&nbsp;=&nbsp;L&auml;nge&nbsp;+&nbsp;Abstand).</span>
       <label style="font-size:.85rem;color:var(--muted);display:flex;align-items:center;gap:.5rem;margin-top:.25rem">
         <input type="checkbox" id="printerUseCut" style="width:16px;height:16px">
         Automatisch schneiden (nur wenn Drucker Messer hat)
@@ -1102,22 +1109,21 @@ async function saveScannerCfg(){
 // ── Drucker ───────────────────────────────────────────────────
 async function loadPrinterCfg(){
   try{const d=await fetch('/api/printer-config').then(r=>r.json());
-    const s=document.getElementById('printerBaud');
-    if(s)s.value=String(d.baud||9600);
-    const f=document.getElementById('printerFeedMm');
-    if(f)f.value=d.feed_mm!==undefined?d.feed_mm:20;
-    const c=document.getElementById('printerUseCut');
-    if(c)c.checked=d.use_cut!==false;}catch(e){}
+    const b=document.getElementById('printerBaud');    if(b)b.value=String(d.baud||9600);
+    const l=document.getElementById('printerLabelMm'); if(l)l.value=d.label_mm||29;
+    const g=document.getElementById('printerGapMm');   if(g)g.value=d.gap_mm||6;
+    const c=document.getElementById('printerUseCut');  if(c)c.checked=d.use_cut!==false;}catch(e){}
 }
 async function savePrinterCfg(){
   const msg=document.getElementById('printerMsg');
-  const baud=parseInt(document.getElementById('printerBaud').value)||9600;
-  const feed_mm=parseInt(document.getElementById('printerFeedMm').value)||20;
-  const use_cut=document.getElementById('printerUseCut').checked;
+  const baud     =parseInt(document.getElementById('printerBaud').value)||9600;
+  const label_mm =parseInt(document.getElementById('printerLabelMm').value)||29;
+  const gap_mm   =parseInt(document.getElementById('printerGapMm').value)||6;
+  const use_cut  =document.getElementById('printerUseCut').checked;
   msg.style.color='var(--muted)';msg.textContent='Speichere…';
   const r=await fetch('/api/printer-config',{method:'POST',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify({baud,feed_mm,use_cut})});
-  if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert.';}
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({baud,label_mm,gap_mm,use_cut})});
+  if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert. Pitch: '+(label_mm+gap_mm)+' mm';}
   else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
 }
 async function doTestPrint(){
@@ -2549,9 +2555,10 @@ void WebInterface::begin() {
 
     _server.on("/api/printer-config", HTTP_GET, [](AsyncWebServerRequest *req) {
         JsonDocument doc;
-        doc["baud"]    = ThermalPrinter::loadBaud();
-        doc["feed_mm"] = ThermalPrinter::loadFeedMm();
-        doc["use_cut"] = ThermalPrinter::loadUseCut();
+        doc["baud"]     = ThermalPrinter::loadBaud();
+        doc["label_mm"] = ThermalPrinter::loadLabelMm();
+        doc["gap_mm"]   = ThermalPrinter::loadGapMm();
+        doc["use_cut"]  = ThermalPrinter::loadUseCut();
         String out; serializeJson(doc, out);
         req->send(200, "application/json", out);
     });
@@ -2565,12 +2572,12 @@ void WebInterface::begin() {
             if (deserializeJson(doc, (const char*)data, len)) {
                 req->send(400, "application/json", "{\"ok\":false}"); return;
             }
-            if (!doc["baud"].isNull()) {
-                uint32_t baud = doc["baud"].as<uint32_t>();
-                printer.restart(baud);
-            }
-            if (!doc["feed_mm"].isNull())
-                ThermalPrinter::saveFeedMm(doc["feed_mm"].as<uint16_t>());
+            if (!doc["baud"].isNull())
+                printer.restart(doc["baud"].as<uint32_t>());
+            if (!doc["label_mm"].isNull())
+                ThermalPrinter::saveLabelMm(doc["label_mm"].as<uint16_t>());
+            if (!doc["gap_mm"].isNull())
+                ThermalPrinter::saveGapMm(doc["gap_mm"].as<uint16_t>());
             if (!doc["use_cut"].isNull())
                 ThermalPrinter::saveUseCut(doc["use_cut"].as<bool>());
             req->send(200, "application/json", "{\"ok\":true}");
