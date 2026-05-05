@@ -91,44 +91,57 @@ class BLEScanCB : public NimBLEScanCallbacks {
         Serial.printf("[BLE] HID-Scanner gefunden: %s\n", dev->toString().c_str());
         NimBLEDevice::getScan()->stop();
 
-        if (!s_client) {
-            s_client = NimBLEDevice::createClient();
-            s_client->setClientCallbacks(&s_clientCB, false);
-        }
+        // connect() NICHT im Scan-Callback aufrufen – das blockiert den NimBLE-Host-Task.
+        // Stattdessen: separater Task, der connect() ausführt.
+        NimBLEAddress *addr = new NimBLEAddress(dev->getAddress());
+        xTaskCreate([](void *arg) {
+            NimBLEAddress *address = reinterpret_cast<NimBLEAddress *>(arg);
 
-        if (!s_client->connect(dev)) {
-            Serial.println("[BLE] Verbindung fehlgeschlagen, Neuversuch...");
-            s_scanner->_startScan();
-            return;
-        }
-        Serial.println("[BLE] Verbunden!");
+            if (!s_client) {
+                s_client = NimBLEDevice::createClient();
+                s_client->setClientCallbacks(&s_clientCB, false);
+            }
 
-        NimBLERemoteService *svc = s_client->getService(NimBLEUUID((uint16_t)0x1812));
-        if (!svc) {
-            Serial.println("[BLE] HID-Service nicht gefunden");
-            s_client->disconnect();
-            s_scanner->_startScan();
-            return;
-        }
+            Serial.printf("[BLE] Verbinde mit %s ...\n", address->toString().c_str());
+            if (!s_client->connect(*address)) {
+                delete address;
+                Serial.println("[BLE] Verbindung fehlgeschlagen, Neuversuch...");
+                if (s_scanner) s_scanner->_startScan();
+                vTaskDelete(nullptr);
+                return;
+            }
+            delete address;
+            Serial.println("[BLE] Verbunden!");
 
-        bool ok = false;
-        const auto &chars = svc->getCharacteristics(true);
-        for (auto *chr : chars) {
-            if (chr->getUUID() == NimBLEUUID((uint16_t)0x2A4D) && chr->canNotify()) {
-                if (chr->subscribe(true, hidNotifyCB)) {
-                    Serial.println("[BLE] HID-Report abonniert");
-                    ok = true;
+            NimBLERemoteService *svc = s_client->getService(NimBLEUUID((uint16_t)0x1812));
+            if (!svc) {
+                Serial.println("[BLE] HID-Service nicht gefunden");
+                s_client->disconnect();
+                if (s_scanner) s_scanner->_startScan();
+                vTaskDelete(nullptr);
+                return;
+            }
+
+            bool ok = false;
+            const auto &chars = svc->getCharacteristics(true);
+            for (auto *chr : chars) {
+                if (chr->getUUID() == NimBLEUUID((uint16_t)0x2A4D) && chr->canNotify()) {
+                    if (chr->subscribe(true, hidNotifyCB)) {
+                        Serial.println("[BLE] HID-Report abonniert");
+                        ok = true;
+                    }
                 }
             }
-        }
 
-        if (ok) {
-            s_scanner->_setConnected(true);
-        } else {
-            Serial.println("[BLE] Kein notify-fähiges Report-Char");
-            s_client->disconnect();
-            s_scanner->_startScan();
-        }
+            if (ok) {
+                if (s_scanner) s_scanner->_setConnected(true);
+            } else {
+                Serial.println("[BLE] Kein notify-fähiges Report-Char");
+                s_client->disconnect();
+                if (s_scanner) s_scanner->_startScan();
+            }
+            vTaskDelete(nullptr);
+        }, "bleConn", 8192, addr, 1, nullptr);
     }
 };
 
