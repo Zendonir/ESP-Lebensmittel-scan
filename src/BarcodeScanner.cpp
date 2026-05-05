@@ -14,33 +14,16 @@ static std::vector<BLEDeviceInfo> s_discovered;
 static volatile bool              s_discovering = false;
 static SemaphoreHandle_t          s_discMutex   = nullptr;
 
-class BLEDiscoveryCB : public NimBLEScanCallbacks {
-    void onResult(const NimBLEAdvertisedDevice *dev) override {
-        BLEDeviceInfo info;
-        info.name = dev->getName().c_str();
-        info.addr = dev->getAddress().toString().c_str();
-        info.rssi = dev->getRSSI();
-        if (info.name.isEmpty()) info.name = "(kein Name)";
-        xSemaphoreTake(s_discMutex, portMAX_DELAY);
-        bool dup = false;
-        for (auto &d : s_discovered) if (d.addr == info.addr) { dup = true; break; }
-        if (!dup) s_discovered.push_back(info);
-        xSemaphoreGive(s_discMutex);
-    }
-};
-
-static BLEDiscoveryCB s_discoveryCB;
-
 // ── HID-Keycode → ASCII ───────────────────────────────────────
 
 static char hidKeycode(uint8_t mod, uint8_t key) {
-    bool shift = mod & 0x22;  // Left Shift (0x02) | Right Shift (0x20)
+    bool shift = mod & 0x22;
     if (key >= 0x04 && key <= 0x1D) {
         char c = 'a' + (key - 0x04);
         return shift ? (char)(c - 32) : c;
     }
     if (key >= 0x1E && key <= 0x27) {
-        const char *nums  = "1234567890";
+        const char *nums       = "1234567890";
         const char *shift_nums = "!@#$%^&*()";
         return shift ? shift_nums[key - 0x1E] : nums[key - 0x1E];
     }
@@ -76,21 +59,18 @@ class BLEClientCB : public NimBLEClientCallbacks {
 static BLEClientCB s_clientCB;
 
 // ── BLE-Scan-Callbacks (Gerät gefunden → verbinden) ───────────
+// Muss VOR BLEDiscoveryCB definiert sein (onScanEnd referenziert s_scanCB)
 
 class BLEScanCB : public NimBLEScanCallbacks {
     void onResult(const NimBLEAdvertisedDevice *dev) override {
         if (!s_scanner) return;
 
-        // Namens-Filter
         bool nameMatch = false;
         if (!s_scanner->_targetName.isEmpty()) {
             String found = dev->getName().c_str();
             if (found.indexOf(s_scanner->_targetName) < 0) return;
             nameMatch = true;
         }
-        // Ohne gesetzten Namen nur Geräte mit advertised HID-Service verbinden.
-        // Mit Namensfilter direkt verbinden – manche Scanner (z.B. Inateck)
-        // advertisen 0x1812 nur im Scan-Response, nicht im Advertisement.
         if (!nameMatch && !dev->isAdvertisingService(NimBLEUUID((uint16_t)0x1812))) return;
 
         Serial.printf("[BLE] HID-Scanner gefunden: %s\n", dev->toString().c_str());
@@ -116,7 +96,6 @@ class BLEScanCB : public NimBLEScanCallbacks {
             return;
         }
 
-        // Alle HID-Report-Characteristics (0x2A4D) abonnieren
         bool ok = false;
         const auto &chars = svc->getCharacteristics(true);
         for (auto *chr : chars) {
@@ -140,6 +119,39 @@ class BLEScanCB : public NimBLEScanCallbacks {
 
 static BLEScanCB s_scanCB;
 
+// ── Discovery-Callbacks (alle Geräte, kein Filter) ───────────
+
+class BLEDiscoveryCB : public NimBLEScanCallbacks {
+    void onResult(const NimBLEAdvertisedDevice *dev) override {
+        BLEDeviceInfo info;
+        info.name = dev->getName().c_str();
+        info.addr = dev->getAddress().toString().c_str();
+        info.rssi = dev->getRSSI();
+        if (info.name.isEmpty()) info.name = "(kein Name)";
+        Serial.printf("[BLE] Disc: %-24s %s %ddBm\n",
+                      info.name.c_str(), info.addr.c_str(), info.rssi);
+        xSemaphoreTake(s_discMutex, portMAX_DELAY);
+        bool dup = false;
+        for (auto &d : s_discovered) if (d.addr == info.addr) { dup = true; break; }
+        if (!dup) s_discovered.push_back(info);
+        xSemaphoreGive(s_discMutex);
+    }
+
+    void onScanEnd(const NimBLEScanResults &, int reason) override {
+        xSemaphoreTake(s_discMutex, portMAX_DELAY);
+        int cnt = s_discovered.size();
+        xSemaphoreGive(s_discMutex);
+        Serial.printf("[BLE] onScanEnd: %d Geräte, reason=%d\n", cnt, reason);
+        s_discovering = false;
+        if (s_scanner && s_scanner->_bleMode) {
+            NimBLEDevice::getScan()->setScanCallbacks(&s_scanCB, false);
+            s_scanner->_startScan();
+        }
+    }
+};
+
+static BLEDiscoveryCB s_discoveryCB;
+
 // ── Geräte-Suche Implementierung ─────────────────────────────
 
 void BarcodeScanner::startDiscoveryScan(int durationSec) {
@@ -148,45 +160,37 @@ void BarcodeScanner::startDiscoveryScan(int durationSec) {
     xSemaphoreTake(s_discMutex, portMAX_DELAY);
     s_discovered.clear();
     xSemaphoreGive(s_discMutex);
+
+    if (!s_nimbleInit) {
+        NimBLEDevice::init("");
+        s_nimbleInit = true;
+        Serial.printf("[BLE] NimBLE init, heap=%u\n", ESP.getFreeHeap());
+    }
+
+    NimBLEScan *scan = NimBLEDevice::getScan();
+    Serial.printf("[BLE] Discovery: isScanning=%d connected=%d heap=%u\n",
+                  (int)scan->isScanning(),
+                  s_scanner ? (int)s_scanner->_bleConnected : -1,
+                  ESP.getFreeHeap());
+    if (scan->isScanning()) {
+        scan->stop();
+        delay(200);
+        Serial.println("[BLE] laufender Scan gestoppt");
+    }
+
+    scan->setScanCallbacks(&s_discoveryCB, false);
+    scan->setActiveScan(true);
+    scan->setInterval(100);
+    scan->setWindow(99);
+
+    // start() ist in NimBLE v2.x non-blocking; onScanEnd → s_discovering=false
     s_discovering = true;
-
-    int *durPtr = new int(durationSec);
-    xTaskCreate([](void *arg) {
-        int dur = *reinterpret_cast<int *>(arg);
-        delete reinterpret_cast<int *>(arg);
-
-        Serial.printf("[BLE] Discovery init: nimbleInit=%d heap=%u\n",
-                      (int)s_nimbleInit, ESP.getFreeHeap());
-        if (!s_nimbleInit) {
-            NimBLEDevice::init("");
-            s_nimbleInit = true;
-            Serial.printf("[BLE] NimBLE init done, heap=%u\n", ESP.getFreeHeap());
-        }
-        NimBLEScan *scan = NimBLEDevice::getScan();
-        Serial.printf("[BLE] scan ptr=%p isScanning=%d\n", (void*)scan, (int)scan->isScanning());
-        if (scan->isScanning()) {
-            scan->stop();
-            delay(200);
-            Serial.println("[BLE] laufender Scan gestoppt");
-        }
-        scan->setScanCallbacks(&s_discoveryCB, false);
-        scan->setActiveScan(true);
-        scan->setInterval(100);
-        scan->setWindow(99);
-        Serial.printf("[BLE] Discovery-Scan startet (%ds = %dms)\n", dur, dur * 1000);
-        // getResults() blockiert bis Scan abgeschlossen (v2.x)
-        scan->getResults((uint32_t)dur * 1000, false);
-        xSemaphoreTake(s_discMutex, portMAX_DELAY);
-        int found = s_discovered.size();
-        xSemaphoreGive(s_discMutex);
-        Serial.printf("[BLE] Discovery fertig: %d Geräte, heap=%u\n", found, ESP.getFreeHeap());
+    bool ok = scan->start((uint32_t)durationSec * 1000, false, true);
+    Serial.printf("[BLE] Discovery start(%dms) ok=%d\n", durationSec * 1000, ok);
+    if (!ok) {
+        Serial.println("[BLE] Discovery start FEHLGESCHLAGEN");
         s_discovering = false;
-        if (s_scanner && s_scanner->_bleMode) {
-            scan->setScanCallbacks(&s_scanCB, false);
-            s_scanner->_startScan();
-        }
-        vTaskDelete(nullptr);
-    }, "bleDisc", 12288, durPtr, 2, nullptr);
+    }
 }
 
 bool BarcodeScanner::isDiscovering() { return s_discovering; }
