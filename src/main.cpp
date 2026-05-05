@@ -109,8 +109,10 @@ State         state          = State::BOOTING;
 ProductInfo   currentProduct;
 DateInput     dateInput;
 String        currentBarcode;
-InventoryItem retrieveItem;   // Artikel bei Auslagerungs-Scan
-InventoryItem lastAddedItem;  // Für Drucker nach SAVING
+InventoryItem retrieveItem;    // Artikel bei Auslagerungs-Scan
+InventoryItem lastAddedItem;   // Für Drucker nach SAVING
+InventoryItem lastRemovedItem; // Cache für Re-Einlagerung
+bool          g_isRestore = false; // true = Re-Einlagerung
 int           currentCatIndex = 0;  // Aktive Kategorie im Hauptscreen
 int           mainOffset      = 0;  // Scroll-Offset Hauptliste
 int           browseIndex     = 0;
@@ -361,9 +363,13 @@ String generateLabelCode() {
     uint32_t n = prefs.getUInt("cnt", 0) + 1;
     prefs.putUInt("cnt", n);
     prefs.end();
-    char buf[10];
-    snprintf(buf, sizeof(buf), "L%05u", n);
+    char buf[20];
+    snprintf(buf, sizeof(buf), "LebNumber%05u", n);
     return buf;
+}
+
+static bool isLabelCode(const String &bc) {
+    return bc.startsWith("LebNumber");
 }
 
 // ── Haushalt-Hilfsfunktionen ──────────────────────────────────
@@ -556,11 +562,21 @@ void loop() {
             display.setBrightness(220);
             setState(State::MAIN);
         } else {
-            bool isLabel = (bc.length() == 6 && bc[0] == 'L');
-            const InventoryItem *found = isLabel ? inventory.findByLabel(bc) : nullptr;
-            if (found) {
-                retrieveItem = *found;
-                setState(State::RETRIEVE);
+            if (isLabelCode(bc)) {
+                const InventoryItem *found = inventory.findByLabel(bc);
+                if (found) {
+                    retrieveItem  = *found;
+                    g_isRestore   = false;
+                    setState(State::RETRIEVE);
+                } else if (!lastRemovedItem.labelBarcode.isEmpty() &&
+                           lastRemovedItem.labelBarcode == bc) {
+                    retrieveItem  = lastRemovedItem;
+                    g_isRestore   = true;
+                    setState(State::RETRIEVE);
+                } else {
+                    display.showError("Label nicht gefunden");
+                    setState(State::ERROR);
+                }
             } else {
                 currentBarcode = bc;
                 setState(State::FETCHING);
@@ -971,18 +987,31 @@ void loop() {
             display.showRetrieve(retrieveItem.name,
                                   isoToDisplay(retrieveItem.addedDate),
                                   isoToDisplay(retrieveItem.expiryDate),
-                                  days);
+                                  days, g_isRestore);
             screenDirty = false;
         }
         if (hit(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H)) {
-            int storageDays = max(0, -daysUntilExpiry(retrieveItem.addedDate));
-            storageStats.record(retrieveItem, todayStr(), storageDays);
-            shoppingList.add(retrieveItem.name, retrieveItem.category);
-            serverSync.onItemRemoved(retrieveItem, storageDays);
-            mqttPublishRetrieve(retrieveItem, storageDays);
-            telegramSend("<b>\xF0\x9F\x93\xA4 Ausgelagert:</b> " + retrieveItem.name +
-                         "\nLagerdauer: " + String(storageDays) + " Tage");
-            inventory.removeByLabel(retrieveItem.labelBarcode);
+            if (g_isRestore) {
+                // Re-Einlagerung
+                retrieveItem.addedDate = todayStr();
+                if (inventory.addItem(retrieveItem)) {
+                    lastAddedItem   = retrieveItem;
+                    lastRemovedItem = InventoryItem{};
+                    buzzOk();
+                }
+            } else {
+                // Auslagerung
+                int storageDays = max(0, -daysUntilExpiry(retrieveItem.addedDate));
+                storageStats.record(retrieveItem, todayStr(), storageDays);
+                shoppingList.add(retrieveItem.name, retrieveItem.category);
+                serverSync.onItemRemoved(retrieveItem, storageDays);
+                mqttPublishRetrieve(retrieveItem, storageDays);
+                telegramSend("<b>\xF0\x9F\x93\xA4 Ausgelagert:</b> " + retrieveItem.name +
+                             "\nLagerdauer: " + String(storageDays) + " Tage");
+                inventory.removeByLabel(retrieveItem.labelBarcode);
+                lastRemovedItem = retrieveItem;
+                buzzOk();
+            }
             setState(State::MAIN);
         }
         if (hit(TBTN_X, TBTN_SECONDARY_Y, TBTN_W, TBTN_H) || hardBack)
