@@ -89,7 +89,7 @@ public:
     void showSuccess(const String &productName, const String &date, bool showReprint = true);
     void showError(const String &msg);
     void showRetrieve(const String &name, const String &storageDate,
-                      const String &expiryDate, int daysLeft);
+                      const String &expiryDate, int daysLeft, bool reStore = false);
     void showInventoryItem(int index, int total, const String &name,
                            const String &expiry, int qty, int daysLeft);
     void showAPMode(const String &ssid, const String &password, const String &ip);
