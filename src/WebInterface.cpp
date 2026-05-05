@@ -2636,10 +2636,18 @@ void WebInterface::begin() {
             }
             if (!doc["baud"].isNull())
                 printer.restart(doc["baud"].as<uint32_t>());
-            if (!doc["label_mm"].isNull())
-                ThermalPrinter::saveLabelMm(doc["label_mm"].as<uint16_t>());
-            if (!doc["gap_mm"].isNull())
-                ThermalPrinter::saveGapMm(doc["gap_mm"].as<uint16_t>());
+            if (!doc["label_mm"].isNull()) {
+                uint16_t mm = doc["label_mm"].as<uint16_t>();
+                ThermalPrinter::saveLabelMm(mm);
+                Serial.printf("[Printer] saveLabelMm(%d) → verify=%d\n",
+                              mm, ThermalPrinter::loadLabelMm());
+            }
+            if (!doc["gap_mm"].isNull()) {
+                uint16_t mm = doc["gap_mm"].as<uint16_t>();
+                ThermalPrinter::saveGapMm(mm);
+                Serial.printf("[Printer] saveGapMm(%d) → verify=%d\n",
+                              mm, ThermalPrinter::loadGapMm());
+            }
             if (!doc["use_cut"].isNull())
                 ThermalPrinter::saveUseCut(doc["use_cut"].as<bool>());
             req->send(200, "application/json", "{\"ok\":true}");

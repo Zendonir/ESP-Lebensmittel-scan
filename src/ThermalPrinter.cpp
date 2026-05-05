@@ -47,7 +47,7 @@ void ThermalPrinter::testPrint() {
 // ── NVS ──────────────────────────────────────────────────────
 
 uint32_t ThermalPrinter::loadBaud() {
-    Preferences p; p.begin("printer", true);
+    Preferences p; p.begin("printer", false);
     uint32_t v = p.getUInt("baud", 9600); p.end(); return v;
 }
 void ThermalPrinter::saveBaud(uint32_t baud) {
@@ -55,7 +55,7 @@ void ThermalPrinter::saveBaud(uint32_t baud) {
     p.putUInt("baud", baud); p.end();
 }
 uint16_t ThermalPrinter::loadLabelMm() {
-    Preferences p; p.begin("printer", true);
+    Preferences p; p.begin("printer", false);
     uint16_t v = p.getUShort("label_mm", 29); p.end(); return v;
 }
 void ThermalPrinter::saveLabelMm(uint16_t mm) {
@@ -63,7 +63,7 @@ void ThermalPrinter::saveLabelMm(uint16_t mm) {
     p.putUShort("label_mm", mm); p.end();
 }
 uint16_t ThermalPrinter::loadGapMm() {
-    Preferences p; p.begin("printer", true);
+    Preferences p; p.begin("printer", false);
     uint16_t v = p.getUShort("gap_mm", 6); p.end(); return v;
 }
 void ThermalPrinter::saveGapMm(uint16_t mm) {
@@ -71,7 +71,7 @@ void ThermalPrinter::saveGapMm(uint16_t mm) {
     p.putUShort("gap_mm", mm); p.end();
 }
 bool ThermalPrinter::loadUseCut() {
-    Preferences p; p.begin("printer", true);
+    Preferences p; p.begin("printer", false);
     bool v = p.getBool("use_cut", false); p.end(); return v;
 }
 void ThermalPrinter::saveUseCut(bool cut) {
