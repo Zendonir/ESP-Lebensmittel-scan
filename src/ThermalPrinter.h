@@ -26,18 +26,14 @@ private:
     HardwareSerial &_serial;
     uint8_t  _txPin, _rxPin;
     uint32_t _baud;
-    uint16_t _contentDots = 0;  // dots printed since last init()
-    bool     _doubleH     = false;
+    uint16_t _contentDots = 0;
 
     void init();
     void align(uint8_t a);
     void bold(bool on);
-    void doubleHeight(bool on);
     void printLine(const String &text);
     void feedMm(uint16_t mm);
     void cut();
-    void barcode128(const String &data);
-
-    // Vorschub auf nächste Etikettenoberkante
+    void qrCode(const String &data, uint8_t moduleSize = 3);
     void feedToNextLabel();
 };
