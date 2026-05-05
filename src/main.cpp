@@ -142,7 +142,7 @@ struct WifiCfg { String ssid, password; };
 
 WifiCfg loadWifiCfg() {
     Preferences prefs;
-    prefs.begin("wifi", true);
+    prefs.begin("wifi", false);
     String s = prefs.getString("ssid",     WIFI_SSID);
     String p = prefs.getString("password", WIFI_PASSWORD);
     prefs.end();
@@ -179,7 +179,7 @@ static unsigned long _mqttLastCheck = 0;
 
 MqttCfg loadMqttCfg() {
     MqttCfg c;
-    Preferences p; p.begin("mqtt", true);
+    Preferences p; p.begin("mqtt", false);
     c.host   = p.getString("host",   "");
     c.port   = p.getUShort("port",   1883);
     c.prefix = p.getString("prefix", "lebensmittel");
@@ -266,7 +266,7 @@ static TelegramCfg _telegramCfg;
 
 TelegramCfg loadTelegramCfg() {
     TelegramCfg c;
-    Preferences p; p.begin("telegram", true);
+    Preferences p; p.begin("telegram", false);
     c.token  = p.getString("token",  "");
     c.chatId = p.getString("chatid", "");
     p.end();
@@ -496,7 +496,7 @@ void setup() {
         shoppingList.begin();
     }
 
-    { Preferences p; p.begin("dev", true); g_useNumpad = p.getBool("numpad", false); p.end(); }
+    { Preferences p; p.begin("dev", false); g_useNumpad = p.getBool("numpad", false); p.end(); }
     loadUIConfig();
     display.setBrightness(g_uiCfg.brightness);
     loadFontConfig();
@@ -538,7 +538,15 @@ void loop() {
     int16_t ty     = touch.tapY();
     Gesture gest   = touch.lastGesture();
 
-    if (tapped) lastActivity = millis();
+    if (tapped) {
+        lastActivity = millis();
+        Serial.printf("[Touch] tap x=%d y=%d state=%d\n", tx, ty, (int)state);
+    }
+
+    // Heartbeat alle 5 s: loop() läuft noch, aktueller Zustand
+    { static unsigned long _hb = 0;
+      if (millis() - _hb > 5000) { _hb = millis();
+          Serial.printf("[Loop] state=%d heap=%u\n", (int)state, ESP.getFreeHeap()); } }
 
     auto hit = [&](int16_t bx, int16_t by, int16_t bw, int16_t bh) {
         return tapped && tx>=bx && tx<bx+bw && ty>=by && ty<by+bh;
