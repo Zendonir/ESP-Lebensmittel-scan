@@ -48,10 +48,12 @@ static void hidNotifyCB(NimBLERemoteCharacteristic *, uint8_t *data,
 
 class BLEClientCB : public NimBLEClientCallbacks {
     void onDisconnect(NimBLEClient *, int reason) override {
-        Serial.printf("[BLE] Verbindung getrennt (reason=%d), scanne neu\n", reason);
+        Serial.printf("[BLE] Verbindung getrennt (reason=%d)\n", reason);
         if (s_scanner) {
             s_scanner->_setConnected(false);
-            s_scanner->_startScan();
+            // Während Discovery den HID-Scan NICHT neu starten –
+            // onScanEnd macht das nach Abschluss der Suche.
+            if (!s_discovering) s_scanner->_startScan();
         }
     }
 };
@@ -143,6 +145,7 @@ class BLEDiscoveryCB : public NimBLEScanCallbacks {
         xSemaphoreGive(s_discMutex);
         Serial.printf("[BLE] onScanEnd: %d Geräte, reason=%d\n", cnt, reason);
         s_discovering = false;
+        // HID-Scan nach Abschluss wieder aufnehmen
         if (s_scanner && s_scanner->isBLEMode()) {
             NimBLEDevice::getScan()->setScanCallbacks(&s_scanCB, false);
             s_scanner->_startScan();
@@ -153,6 +156,10 @@ class BLEDiscoveryCB : public NimBLEScanCallbacks {
 static BLEDiscoveryCB s_discoveryCB;
 
 // ── Geräte-Suche Implementierung ─────────────────────────────
+//
+// Problem: scan->start() schlägt fehl wenn NimBLE intern noch eine
+// connect()-Prozedur (aus BLEScanCB::onResult) abarbeitet.
+// Lösung: FreeRTOS-Task mit Retry-Loop bis NimBLE bereit ist.
 
 void BarcodeScanner::startDiscoveryScan(int durationSec) {
     if (s_discovering) return;
@@ -167,30 +174,44 @@ void BarcodeScanner::startDiscoveryScan(int durationSec) {
         Serial.printf("[BLE] NimBLE init, heap=%u\n", ESP.getFreeHeap());
     }
 
-    NimBLEScan *scan = NimBLEDevice::getScan();
-    Serial.printf("[BLE] Discovery: isScanning=%d connected=%d heap=%u\n",
-                  (int)scan->isScanning(),
-                  s_scanner ? (int)s_scanner->_bleConnected : -1,
-                  ESP.getFreeHeap());
-    if (scan->isScanning()) {
-        scan->stop();
-        delay(200);
-        Serial.println("[BLE] laufender Scan gestoppt");
-    }
-
-    scan->setScanCallbacks(&s_discoveryCB, false);
-    scan->setActiveScan(true);
-    scan->setInterval(100);
-    scan->setWindow(99);
-
-    // start() ist in NimBLE v2.x non-blocking; onScanEnd → s_discovering=false
     s_discovering = true;
-    bool ok = scan->start((uint32_t)durationSec * 1000, false, true);
-    Serial.printf("[BLE] Discovery start(%dms) ok=%d\n", durationSec * 1000, ok);
-    if (!ok) {
-        Serial.println("[BLE] Discovery start FEHLGESCHLAGEN");
-        s_discovering = false;
-    }
+
+    int *durPtr = new int(durationSec);
+    xTaskCreate([](void *arg) {
+        int dur = *reinterpret_cast<int *>(arg);
+        delete reinterpret_cast<int *>(arg);
+
+        NimBLEScan *scan = NimBLEDevice::getScan();
+
+        // Laufenden Scan stoppen
+        if (scan->isScanning()) { scan->stop(); delay(300); }
+
+        scan->setScanCallbacks(&s_discoveryCB, false);
+        scan->setActiveScan(true);
+        scan->setInterval(100);
+        scan->setWindow(99);
+
+        // Retry bis NimBLE bereit ist (connect() aus BLEScanCB blockiert evtl.)
+        bool ok = false;
+        for (int i = 0; i < 20 && !ok; i++) {
+            ok = scan->start((uint32_t)dur * 1000, false, true);
+            if (!ok) {
+                Serial.printf("[BLE] Discovery retry %d/20, heap=%u\n",
+                              i + 1, ESP.getFreeHeap());
+                delay(500);
+            }
+        }
+
+        if (!ok) {
+            Serial.println("[BLE] Discovery: start() dauerhaft fehlgeschlagen");
+            s_discovering = false;
+        } else {
+            Serial.printf("[BLE] Discovery läuft (%ds), heap=%u\n",
+                          dur, ESP.getFreeHeap());
+        }
+        // s_discovering = false wird von onScanEnd gesetzt
+        vTaskDelete(nullptr);
+    }, "bleDisc", 4096, durPtr, 1, nullptr);
 }
 
 bool BarcodeScanner::isDiscovering() { return s_discovering; }
@@ -242,6 +263,8 @@ void BarcodeScanner::beginBLE(const String &targetName) {
 }
 
 void BarcodeScanner::_startScan() {
+    // Während Discovery den HID-Scan nicht starten
+    if (s_discovering) return;
     if (!NimBLEDevice::getScan()->isScanning())
         NimBLEDevice::getScan()->start(0, false);
 }
