@@ -143,7 +143,7 @@ class BLEDiscoveryCB : public NimBLEScanCallbacks {
         xSemaphoreGive(s_discMutex);
         Serial.printf("[BLE] onScanEnd: %d Geräte, reason=%d\n", cnt, reason);
         s_discovering = false;
-        if (s_scanner && s_scanner->_bleMode) {
+        if (s_scanner && s_scanner->isBLEMode()) {
             NimBLEDevice::getScan()->setScanCallbacks(&s_scanCB, false);
             s_scanner->_startScan();
         }
