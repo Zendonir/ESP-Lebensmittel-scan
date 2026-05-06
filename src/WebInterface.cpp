@@ -1298,7 +1298,8 @@ async function loadGithubReleases(){
     list.forEach(r=>{
       const o=document.createElement('option');
       o.value=r.url;
-      o.textContent=r.tag+(r.size?' ('+r.size+')':'');
+      const pre=r.prerelease?' [pre-release]':'';
+      o.textContent=r.tag+pre+(r.size?' ('+r.size+')':'');
       sel.appendChild(o);
     });
     sel.disabled=false;
@@ -2297,23 +2298,29 @@ void WebInterface::begin() {
     _server.on("/api/github-releases", HTTP_GET, [](AsyncWebServerRequest *req) {
         WiFiClientSecure client; client.setInsecure();
         HTTPClient https;
-        String apiUrl = "https://api.github.com/repos/zendonir/esp-lebensmittel-scan/releases?per_page=20";
+        String apiUrl = "https://api.github.com/repos/zendonir/esp-lebensmittel-scan/releases?per_page=5";
         if (!https.begin(client, apiUrl)) {
             req->send(503, "application/json", "{\"error\":\"begin failed\"}"); return;
         }
         https.addHeader("User-Agent", "ESP32-Lebensmittel");
         https.addHeader("Accept",     "application/vnd.github+json");
+        https.setTimeout(15000);
         int code = https.GET();
         if (code != 200) {
             String err = "{\"error\":\"HTTP " + String(code) + "\"}";
             https.end(); req->send(200, "application/json", err); return;
         }
 
-        // Filter: nur benötigte Felder → spart RAM auf dem ESP32
+        // Kompletten Body laden bevor https.end() – verhindert IncompleteInput
+        // durch TCP-Segment-Grenzen beim Stream-Parsing
+        String body = https.getString();
+        https.end();
+
         JsonDocument filter;
         JsonArray fArr = filter.to<JsonArray>();
         JsonObject fObj = fArr.add<JsonObject>();
-        fObj["tag_name"] = true;
+        fObj["tag_name"]    = true;
+        fObj["prerelease"]  = true;
         JsonArray fAssets = fObj["assets"].to<JsonArray>();
         JsonObject fAsset = fAssets.add<JsonObject>();
         fAsset["name"]                 = true;
@@ -2321,9 +2328,8 @@ void WebInterface::begin() {
         fAsset["size"]                 = true;
 
         JsonDocument doc;
-        DeserializationError err2 = deserializeJson(doc, *https.getStreamPtr(),
+        DeserializationError err2 = deserializeJson(doc, body,
                                                     DeserializationOption::Filter(filter));
-        https.end();
         if (err2) {
             String e = "{\"error\":\"JSON: "; e += err2.c_str(); e += "\"}";
             req->send(200, "application/json", e); return;
@@ -2347,9 +2353,10 @@ void WebInterface::begin() {
             }
             if (url.isEmpty()) continue;  // Release ohne .bin überspringen
             JsonObject entry = arr.add<JsonObject>();
-            entry["tag"]  = tag;
-            entry["url"]  = url;
-            entry["size"] = sizeStr;
+            entry["tag"]        = tag;
+            entry["url"]        = url;
+            entry["size"]       = sizeStr;
+            entry["prerelease"] = rel["prerelease"] | false;
         }
         String s; serializeJson(out, s);
         req->send(200, "application/json", s);
