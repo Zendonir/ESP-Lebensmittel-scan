@@ -33,7 +33,39 @@ void ThermalPrinter::reloadCalib() {
 }
 
 void ThermalPrinter::testPrint() {
-    printLabel("Testprodukt", "TEST001", "06.05.2026", "31.12.2026", 1);
+    uint16_t backfeedMm = loadBackfeedMm();
+    if (backfeedMm > 0) backfeedDots(backfeedMm * DOTS_PER_MM);
+    init();
+
+    uint16_t labelMm  = loadLabelMm();
+    uint16_t gapMm    = loadGapMm();
+    int8_t   offsetMm = loadFeedOffsetMm();
+
+    // Obere Rahmenlinie = Etiketten-Oberkante
+    align(0);
+    printLine("________________________________");  // 32 '_'
+
+    // Info zentriert
+    align(1);
+    printLine("Etikett: " + String(labelMm) + " mm");
+    printLine("Abstand: " + String(gapMm)   + " mm");
+    if (offsetMm != 0)
+        printLine("Offset:  " + String(offsetMm) + " mm");
+    if (backfeedMm > 0)
+        printLine("Rücklauf:" + String(backfeedMm) + " mm");
+    align(0);
+
+    // Fülle Etikett bis zur unteren Rahmenlinie
+    uint16_t labelDots = labelMm * DOTS_PER_MM;
+    if (labelDots > _contentDots + LINE_DOTS)
+        feedDots(labelDots - _contentDots - LINE_DOTS);
+
+    // Untere Rahmenlinie = Etiketten-Unterkante
+    printLine("--------------------------------");  // 32 '-'
+
+    // Vorschub zum nächsten Etikett (inkl. Offset)
+    feedToNextLabel();
+    if (loadUseCut()) cut();
 }
 
 // ── NVS ──────────────────────────────────────────────────────
