@@ -2476,7 +2476,7 @@ void WebInterface::begin() {
     // ── OTA-Passwort ─────────────────────────────────────────
 
     _server.on("/api/ota-config", HTTP_GET, [](AsyncWebServerRequest *req) {
-        Preferences p; p.begin("ota", true);
+        Preferences p; p.begin("ota", false);
         String pw = p.getString("password", "lebensmittel");
         p.end();
         req->send(200, "application/json", "{\"password\":\"" + pw + "\"}");
@@ -2900,7 +2900,7 @@ void WebInterface::begin() {
 
     // OTA-Update unter /ota (Basic-Auth: admin / NVS-Passwort)
     {
-        Preferences p; p.begin("ota", true);
+        Preferences p; p.begin("ota", false);
         String pw = p.getString("password", "lebensmittel");
         p.end();
 

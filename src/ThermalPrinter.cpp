@@ -1,5 +1,6 @@
 #include "ThermalPrinter.h"
 #include <Preferences.h>
+#include <ArduinoJson.h>
 
 static constexpr uint16_t DOTS_PER_MM = 8;   // 203 DPI = 8 dots/mm
 static constexpr uint16_t LINE_DOTS   = 30;   // Standardzeilenhöhe ESC @
@@ -194,19 +195,10 @@ void ThermalPrinter::feedToNextLabel() {
 }
 
 // ── Label ─────────────────────────────────────────────────────
-//
-// Layout (kompakt, passt auf 29mm Etiketten):
-//   [QR-Code zentriert]          ~95 dots (moduleSize=3)
-//   [Produktname fett zentriert] 30 dots
-//   Einlag: TT.MM.JJJJ          30 dots
-//   MHD:    TT.MM.JJJJ          30 dots  (nur wenn vorhanden)
-//   Menge:  X Stk.               30 dots  (nur wenn > 1)
-// Summe ohne MHD/Menge: ~155 dots ≈ 19.4mm → passt auf 29mm
 
 void ThermalPrinter::printLabel(const String &name, const String &labelCode,
                                  const String &storageDate, const String &expiryDate,
                                  int qty) {
-    // Rücklauf vor dem Druck (falls konfiguriert und vom Drucker unterstützt)
     uint16_t backfeedMm = loadBackfeedMm();
     if (backfeedMm > 0) {
         Serial.printf("[Printer] Backfeed %d mm (%d dots)\n",
@@ -215,24 +207,101 @@ void ThermalPrinter::printLabel(const String &name, const String &labelCode,
     }
     init();
 
-    // QR-Code zentriert
-    align(1);
-    qrCode(labelCode, 3);
-    _serial.write('\n'); _contentDots += 8;
+    // Load layout from NVS
+    Preferences prefs; prefs.begin("llayout", false);
+    String layoutJson = prefs.getString("json", "{}");
+    prefs.end();
 
-    // Produktname (fett, max. 18 Zeichen bei 58mm)
-    bold(true);
-    String n = name.length() > 18 ? name.substring(0, 18) : name;
-    printLine(n);
-    bold(false);
+    uint8_t alignCode = 1;   // center
+    uint8_t fontSize  = 2;   // 1=normal 2=double 3=triple
 
-    // Datum + Menge linksbündig
-    align(0);
-    printLine("Einlag: " + storageDate);
-    if (!expiryDate.isEmpty())
-        printLine("MHD:    " + expiryDate);
-    if (qty > 1)
-        printLine("Menge:  " + String(qty) + " Stk.");
+    struct Elem { char id[8]; uint8_t y_pct; bool visible; };
+    Elem elems[5] = {
+        {"qr",      5,  true},
+        {"name",    52, true},
+        {"storage", 63, true},
+        {"expiry",  74, true},
+        {"qty",     85, false},
+    };
+
+    JsonDocument doc;
+    if (!deserializeJson(doc, layoutJson)) {
+        const char* al = doc["align"] | "center";
+        if      (strcmp(al, "left")  == 0) alignCode = 0;
+        else if (strcmp(al, "right") == 0) alignCode = 2;
+        fontSize = (uint8_t)(doc["fontSize"] | 2);
+        if (fontSize < 1) fontSize = 1;
+        if (fontSize > 3) fontSize = 3;
+
+        JsonArray arr = doc["elements"];
+        if (arr) {
+            for (JsonObject el : arr) {
+                const char* id = el["id"] | "";
+                for (auto& e : elems) {
+                    if (strncmp(e.id, id, 7) == 0) {
+                        e.y_pct  = (uint8_t)(el["y_pct"]  | (int)e.y_pct);
+                        e.visible = el["visible"] | e.visible;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Sort by y_pct ascending
+    for (int i = 0; i < 4; i++)
+        for (int j = 0; j < 4 - i; j++)
+            if (elems[j].y_pct > elems[j+1].y_pct) { Elem t = elems[j]; elems[j] = elems[j+1]; elems[j+1] = t; }
+
+    // Set global font size (GS ! n)
+    uint8_t gsn = 0x00;
+    if (fontSize == 2) gsn = 0x11;
+    else if (fontSize == 3) gsn = 0x22;
+    _serial.write(0x1D); _serial.write('!'); _serial.write(gsn);
+    uint16_t lineDots = LINE_DOTS * fontSize;
+
+    uint16_t labelDots = loadLabelMm() * DOTS_PER_MM;
+
+    for (auto& el : elems) {
+        if (!el.visible) continue;
+
+        uint16_t targetDots = (uint32_t)el.y_pct * labelDots / 100;
+        if (targetDots > _contentDots)
+            feedDots(targetDots - _contentDots);
+
+        if (strncmp(el.id, "qr", 7) == 0) {
+            align(1);
+            uint8_t modSize = (fontSize <= 2) ? 3 : 4;
+            qrCode(labelCode, modSize);
+            _serial.write('\n'); _contentDots += 8;
+        } else if (strncmp(el.id, "name", 7) == 0) {
+            align(alignCode);
+            bold(true);
+            String n = name.length() > 18 ? name.substring(0, 18) : name;
+            printLine(n);
+            bold(false);
+            _contentDots += lineDots - LINE_DOTS;
+        } else if (strncmp(el.id, "storage", 7) == 0) {
+            align(alignCode);
+            printLine("Einlag: " + storageDate);
+            _contentDots += lineDots - LINE_DOTS;
+        } else if (strncmp(el.id, "expiry", 7) == 0) {
+            if (!expiryDate.isEmpty()) {
+                align(alignCode);
+                printLine("MHD:    " + expiryDate);
+                _contentDots += lineDots - LINE_DOTS;
+            }
+        } else if (strncmp(el.id, "qty", 7) == 0) {
+            if (qty > 1) {
+                align(alignCode);
+                printLine("Menge:  " + String(qty) + " Stk.");
+                _contentDots += lineDots - LINE_DOTS;
+            }
+        }
+    }
+
+    // Reset font size to normal before feed
+    _serial.write(0x1D); _serial.write('!'); _serial.write((uint8_t)0x00);
 
     feedToNextLabel();
     if (loadUseCut()) cut();
