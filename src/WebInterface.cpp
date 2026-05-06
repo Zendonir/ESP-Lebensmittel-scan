@@ -548,46 +548,48 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     <!-- ── Label-Editor ──────────────────────────────────────── -->
     <h2 style="margin-bottom:.5rem">&#x1F3F7; Label-Layout Editor</h2>
     <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
-      Elemente per Drag&amp;Drop positionieren. Die Vorschau zeigt das Etikett ma&szlig;stabsgetreu (57&thinsp;mm&nbsp;&times;&nbsp;konfigurierte L&auml;nge).
+      Element anklicken und frei verschieben. Gr&ouml;&szlig;e im rechten Panel (mm) eingeben.
+      Texte sind immer linkb&uuml;ndig; X&thinsp;=&thinsp;linker Rand des Elements.
     </p>
     <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-start">
 
-      <!-- Vorschau -->
+      <!-- Vorschau-Canvas -->
       <div>
-        <div style="font-size:.8rem;color:var(--muted);margin-bottom:.4rem;text-align:center">Vorschau (57&thinsp;mm)</div>
-        <div id="labelCanvas" style="position:relative;background:#fff;border:2px solid #555;overflow:hidden;cursor:default"
-             ondragover="event.preventDefault()" ondrop="labelDrop(event)">
-          <!-- Elemente werden per JS eingefügt -->
-        </div>
-        <div style="font-size:.75rem;color:var(--muted);margin-top:.3rem;text-align:center" id="labelSizeHint"></div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:.4rem;text-align:center">57&thinsp;mm Breite (ma&szlig;stabsgetreu)</div>
+        <div id="labelCanvas" style="position:relative;background:#fff;border:2px solid #555;overflow:hidden;user-select:none;cursor:default;touch-action:none"></div>
+        <div id="labelSizeHint" style="font-size:.75rem;color:var(--muted);margin-top:.3rem;text-align:center"></div>
       </div>
 
-      <!-- Steuerung -->
-      <div style="display:flex;flex-direction:column;gap:.75rem;min-width:220px;flex:1">
-        <div style="font-size:.85rem;color:var(--muted)">Elemente</div>
-        <div id="labelElementList" style="display:flex;flex-direction:column;gap:.4rem"></div>
+      <!-- Eigenschaften + Liste -->
+      <div style="display:flex;flex-direction:column;gap:.75rem;min-width:230px">
+
+        <!-- Properties Panel -->
+        <div id="labelPropNone" style="font-size:.85rem;color:var(--muted);padding:.6rem;border:1px dashed var(--border);border-radius:6px">
+          &#x1F446; Element anklicken zum Bearbeiten
+        </div>
+        <div id="labelPropPanel" style="display:none;flex-direction:column;gap:.4rem;font-size:.85rem;color:var(--muted);padding:.6rem;border:1px solid var(--border);border-radius:6px">
+          <div id="labelPropTitle" style="font-weight:bold;color:var(--text);margin-bottom:.2rem"></div>
+          <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
+            <input type="checkbox" id="lpVisible" onchange="lpApply()"> Sichtbar
+          </label>
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:.35rem .5rem;align-items:center">
+            <span>X&nbsp;(mm)</span><input type="number" id="lpX" min="0" max="57" step="0.5" style="width:75px" oninput="lpApply()">
+            <span>Y&nbsp;(mm)</span><input type="number" id="lpY" min="0" max="300" step="0.5" style="width:75px" oninput="lpApply()">
+            <span id="lpDim1Label"></span><input type="number" id="lpDim1" min="3" max="57" step="0.5" style="width:75px" oninput="lpApply()">
+            <span id="lpDim2Label"></span><input type="number" id="lpDim2" min="2" max="30" step="0.5" style="width:75px" oninput="lpApply()">
+          </div>
+        </div>
+
+        <!-- Element-Liste -->
+        <div style="font-size:.85rem;color:var(--muted)">Elemente (&#x2611; = sichtbar)</div>
+        <div id="labelElementList" style="display:flex;flex-direction:column;gap:.3rem"></div>
+
+        <!-- Buttons -->
         <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.25rem">
           <button class="btn btn-ok" style="width:fit-content;font-size:.8rem" onclick="saveLabelLayout()">&#x1F4BE; Speichern</button>
           <button class="btn" style="width:fit-content;font-size:.8rem" onclick="resetLabelLayout()">&#x21BA; Zur&uuml;cksetzen</button>
         </div>
         <div id="labelEditorMsg" style="font-size:.8rem;margin-top:.25rem"></div>
-
-        <!-- Globale Schriftgröße -->
-        <hr style="border-color:var(--border)">
-        <label style="font-size:.85rem;color:var(--muted)">Schriftgr&ouml;&szlig;e
-          <select id="labelFontSize" style="display:block;margin-top:.3rem;width:140px" onchange="renderLabelPreview()">
-            <option value="1">Klein&nbsp;(1&times;)</option>
-            <option value="2" selected>Normal&nbsp;(2&times;)</option>
-            <option value="3">Gro&szlig;&nbsp;(3&times;)</option>
-          </select>
-        </label>
-        <label style="font-size:.85rem;color:var(--muted)">Ausrichtung
-          <select id="labelAlign" style="display:block;margin-top:.3rem;width:140px" onchange="renderLabelPreview()">
-            <option value="left">Links</option>
-            <option value="center" selected>Zentriert</option>
-            <option value="right">Rechts</option>
-          </select>
-        </label>
       </div>
     </div>
 
@@ -1239,90 +1241,120 @@ async function doTestPrint(){
   else{msg.style.color='var(--danger)';msg.textContent='Fehler – kein Drucker?';}
 }
 
-// ── Label-Editor ──────────────────────────────────────────────
-// Layout: Array von {id, label, y_pct (0-100), visible}
-// y_pct = vertikale Position in % der Etikettenhöhe
 
+
+// ── Label-Editor (2D, x_mm/y_mm absolut) ─────────────────────
+const _LE_PX=4; // px pro mm
 const LABEL_ELEMENTS_DEFAULT=[
-  {id:'qr',      label:'QR-Code',           y_pct:5,  visible:true},
-  {id:'name',    label:'Produktname',        y_pct:52, visible:true},
-  {id:'storage', label:'Einlagerungsdatum',  y_pct:63, visible:true},
-  {id:'expiry',  label:'MHD',               y_pct:74, visible:true},
-  {id:'qty',     label:'Menge',             y_pct:85, visible:false},
+  {id:'qr',      label:'QR-Code',        x_mm:23,  y_mm:2,  size_mm:11,           visible:true},
+  {id:'name',    label:'Produktname',    x_mm:0,   y_mm:14, w_mm:57, h_mm:5,      visible:true},
+  {id:'storage', label:'Einlagerdatum',  x_mm:0,   y_mm:20, w_mm:57, h_mm:4,      visible:true},
+  {id:'expiry',  label:'MHD',           x_mm:0,   y_mm:25, w_mm:57, h_mm:4,      visible:true},
+  {id:'qty',     label:'Menge',         x_mm:0,   y_mm:30, w_mm:57, h_mm:4,      visible:false},
 ];
 let _labelLayout=JSON.parse(JSON.stringify(LABEL_ELEMENTS_DEFAULT));
-let _dragId=null;
+let _selectedId=null;
+let _drag=null;
 
 function renderLabelPreview(){
   const labelMm=parseInt(document.getElementById('printerLabelMm')?.value||29);
-  const PX_PER_MM=3.5;
-  const W=Math.round(57*PX_PER_MM);
-  const H=Math.round(labelMm*PX_PER_MM);
+  const gapMm=parseInt(document.getElementById('printerGapMm')?.value||6);
+  const W=Math.round(57*_LE_PX), H=Math.round(labelMm*_LE_PX);
   const cv=document.getElementById('labelCanvas');
   const hint=document.getElementById('labelSizeHint');
   if(!cv)return;
-  cv.style.width=W+'px';cv.style.height=H+'px';
+  cv.style.width=W+'px'; cv.style.height=H+'px';
   if(hint)hint.textContent='57 mm × '+labelMm+' mm';
-
-  // Gap-Bereich anzeigen
-  const gapMm=parseInt(document.getElementById('printerGapMm')?.value||6);
-  const gapH=Math.round(gapMm*PX_PER_MM);
-
   cv.innerHTML='';
-  // Gap-Markierung
-  const gapDiv=document.createElement('div');
-  gapDiv.style.cssText='position:absolute;bottom:0;left:0;right:0;height:'+gapH+'px;'+
-    'background:repeating-linear-gradient(45deg,#eee,#eee 3px,#fff 3px,#fff 8px);'+
-    'opacity:.5;pointer-events:none';
-  cv.appendChild(gapDiv);
-  const gapLbl=document.createElement('div');
-  gapLbl.textContent='Abstand '+gapMm+' mm';
-  gapLbl.style.cssText='position:absolute;bottom:2px;right:4px;font-size:9px;color:#999;pointer-events:none';
-  cv.appendChild(gapLbl);
-
-  const align=document.getElementById('labelAlign')?.value||'center';
-  const fontSize=parseInt(document.getElementById('labelFontSize')?.value||2);
-  const fh=fontSize*7; // px approx
-
+  // Gap-Overlay
+  const gH=Math.round(gapMm*_LE_PX);
+  const gd=document.createElement('div');
+  gd.style.cssText='position:absolute;bottom:0;left:0;right:0;height:'+gH+'px;'+
+    'background:repeating-linear-gradient(45deg,#eee,#eee 3px,#fff 3px,#fff 8px);opacity:.5;pointer-events:none';
+  cv.appendChild(gd);
+  const gl=document.createElement('div');
+  gl.textContent='Abstand '+gapMm+' mm';
+  gl.style.cssText='position:absolute;bottom:2px;right:4px;font-size:9px;color:#999;pointer-events:none';
+  cv.appendChild(gl);
+  // Canvas-Klick auf Hintergrund → Auswahl aufheben
+  cv.addEventListener('mousedown',e=>{if(e.target===cv){_selectedId=null;renderLabelPreview();updatePropPanel();}},{once:false});
+  const samples={name:'Apfelsaft Bio',storage:'Einlag: 06.05.2026',expiry:'MHD: 15.08.2026',qty:'Menge: 2 Stk.'};
   _labelLayout.forEach(el=>{
-    if(!el.visible)return;
-    const div=document.createElement('div');
-    const yPx=Math.round(el.y_pct/100*H);
-    div.id='lel_'+el.id;
-    div.draggable=true;
-    div.dataset.id=el.id;
     const isQR=el.id==='qr';
-    const qrSz=fontSize*24;
-    div.style.cssText='position:absolute;'+(isQR?
-      'left:50%;transform:translateX(-50%);':
-      'left:4px;right:4px;text-align:'+align+';')+
-      'top:'+(yPx)+'px;cursor:grab;user-select:none;'+
-      (isQR?
-        'width:'+qrSz+'px;height:'+qrSz+'px;background:#000;display:flex;align-items:center;justify-content:center;':
-        'font-size:'+fh+'px;font-family:monospace;color:#222;background:rgba(37,99,235,.08);border-radius:2px;padding:1px 3px;');
+    const xPx=Math.round(el.x_mm*_LE_PX), yPx=Math.round(el.y_mm*_LE_PX);
+    const szPx=isQR?Math.round((el.size_mm||11)*_LE_PX):0;
+    const wPx=isQR?szPx:Math.round((el.w_mm||57)*_LE_PX);
+    const hPx=isQR?szPx:Math.round((el.h_mm||4)*_LE_PX);
+    const sel=el.id===_selectedId;
+    const div=document.createElement('div');
+    div.dataset.id=el.id;
+    div.style.cssText='position:absolute;left:'+xPx+'px;top:'+yPx+'px;width:'+wPx+'px;height:'+hPx+'px;'+
+      'cursor:grab;box-sizing:border-box;opacity:'+(el.visible?'1':'0.3')+';'+
+      (sel?'outline:2px solid #2563eb;outline-offset:1px;z-index:10;':'outline:1px dashed #bbb;')+
+      (isQR?'background:#000;display:flex;align-items:center;justify-content:center;':
+        'background:rgba(37,99,235,.1);font-size:'+(Math.max(8,hPx*.65))+'px;font-family:monospace;'+
+        'color:#222;overflow:hidden;white-space:nowrap;padding:0 2px;display:flex;align-items:center;');
     if(isQR){
-      div.innerHTML='<svg width="'+qrSz+'" height="'+qrSz+'" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg">'+
+      div.innerHTML='<svg width="'+szPx+'" height="'+szPx+'" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg">'+
         '<rect width="21" height="21" fill="white"/>'+
         '<path fill="black" d="M0,0h7v7H0V0zm1,1v5h5V1H1zm1,1h3v3H2V2zM14,0h7v7h-7V0zm1,1v5h5V1h-5zm1,1h3v3h-3V2zM0,14h7v7H0v-7zm1,1v5h5v-5H1zm1,1h3v3H2v-3zM8,0h1v1H8V0zm1,1h1v1H9V1zm1,0h1v2h-1V1zm1,1h1v1h-1V2zm0,1h1v1h-1V3zm-3,1h1v2H8V4zm2,0h1v1h-1V4zm1,1h1v1h-1V5zm1,0h1v1h-1V5zm-4,2h1v1H8V7zm2,0h2v1h-2V7zm3,0h1v1h-1V7zm1,1h1v1h-1V8zm-7,0h1v1H8V8zm2,0h1v1h-1V8zm-2,1h1v1H8V9zm1,0h1v1H9V9zm2,0h1v1h-1V9zm2,0h1v1h-1V9zm1,1h2v1h-2v-1zm-6,1h1v1H8v-1zm2,0h1v1h-1v-1zm2,0h2v1h-2v-1zm-4,1h1v1H8v-1zm2,0h1v1h-1v-1zm2,0h1v1h-1v-1zm1,1h1v1h-1v-1zm-5,1h2v1H8v-1zm3,0h1v2h-1v-2zm2,0h1v1h-1v-1zm1,0h1v1h-1v-1zm-6,1h1v1H8v-1zm2,1h1v1h-1v-1zm2,0h1v1h-1v-1zm2,0h2v1h-2v-1zm-5,1h1v1H9v-1zm1,0h1v1h-1v-1zm3,0h1v1h-1v-1zm1,0h1v1h-1v-1zm-6,1h2v1H8v-1zm3,0h1v1h-1v-1zm2,0h2v1h-2v-1z"/>'+
         '</svg>';
     }else{
-      const samples={name:'Apfelsaft Bio',storage:'Einlag: 06.05.2026',expiry:'MHD: 15.08.2026',qty:'Menge: 2 Stk.'};
       div.textContent=samples[el.id]||el.label;
     }
-    div.addEventListener('dragstart',e=>{_dragId=el.id;e.dataTransfer.effectAllowed='move';});
+    div.addEventListener('mousedown',e=>{
+      _selectedId=el.id;
+      _drag={id:el.id,sx:e.clientX,sy:e.clientY,ox:el.x_mm,oy:el.y_mm};
+      e.preventDefault(); e.stopPropagation();
+      renderLabelPreview(); updatePropPanel();
+    });
     cv.appendChild(div);
   });
+  cv.onmousemove=e=>{
+    if(!_drag)return;
+    const el=_labelLayout.find(x=>x.id===_drag.id);
+    if(!el)return;
+    el.x_mm=Math.max(0,Math.min(57,parseFloat((_drag.ox+(e.clientX-_drag.sx)/_LE_PX).toFixed(1))));
+    el.y_mm=Math.max(0,parseFloat((_drag.oy+(e.clientY-_drag.sy)/_LE_PX).toFixed(1)));
+    renderLabelPreview(); updatePropPanel();
+  };
+  cv.onmouseup=cv.onmouseleave=()=>{_drag=null;};
 }
 
-function labelDrop(e){
-  if(!_dragId)return;
-  const cv=document.getElementById('labelCanvas');
-  const rect=cv.getBoundingClientRect();
-  const yPx=e.clientY-rect.top;
-  const H=rect.height;
-  const el=_labelLayout.find(x=>x.id===_dragId);
-  if(el){el.y_pct=Math.max(0,Math.min(100,Math.round(yPx/H*100)));renderLabelPreview();}
-  _dragId=null;
+function updatePropPanel(){
+  const none=document.getElementById('labelPropNone');
+  const panel=document.getElementById('labelPropPanel');
+  if(!_selectedId||!_labelLayout.find(x=>x.id===_selectedId)){
+    none.style.display=''; panel.style.display='none'; return;
+  }
+  const el=_labelLayout.find(x=>x.id===_selectedId);
+  none.style.display='none'; panel.style.display='flex';
+  document.getElementById('labelPropTitle').textContent=el.label;
+  document.getElementById('lpVisible').checked=el.visible;
+  document.getElementById('lpX').value=el.x_mm;
+  document.getElementById('lpY').value=el.y_mm;
+  const d1l=document.getElementById('lpDim1Label'), d2l=document.getElementById('lpDim2Label');
+  const d1=document.getElementById('lpDim1'), d2=document.getElementById('lpDim2');
+  if(el.id==='qr'){
+    d1l.textContent='Größe (mm)'; d1.value=el.size_mm||11; d1.style.display='';
+    d2l.textContent=''; d2.style.display='none';
+  }else{
+    d1l.textContent='Breite (mm)'; d1.value=el.w_mm||57; d1.style.display='';
+    d2l.textContent='Höhe (mm)'; d2.value=el.h_mm||4; d2.style.display='';
+  }
+}
+
+function lpApply(){
+  if(!_selectedId)return;
+  const el=_labelLayout.find(x=>x.id===_selectedId);
+  if(!el)return;
+  el.visible=document.getElementById('lpVisible').checked;
+  el.x_mm=parseFloat(document.getElementById('lpX').value)||0;
+  el.y_mm=parseFloat(document.getElementById('lpY').value)||0;
+  if(el.id==='qr') el.size_mm=parseFloat(document.getElementById('lpDim1').value)||11;
+  else{ el.w_mm=parseFloat(document.getElementById('lpDim1').value)||57;
+        el.h_mm=parseFloat(document.getElementById('lpDim2').value)||4; }
+  renderLabelPreview(); renderElementList();
 }
 
 function renderElementList(){
@@ -1331,29 +1363,23 @@ function renderElementList(){
   list.innerHTML='';
   _labelLayout.forEach(el=>{
     const row=document.createElement('div');
-    row.style.cssText='display:flex;align-items:center;gap:.5rem;font-size:.85rem;color:var(--text)';
+    row.style.cssText='display:flex;align-items:center;gap:.5rem;font-size:.85rem;color:var(--text);cursor:pointer';
     const cb=document.createElement('input');
-    cb.type='checkbox';cb.checked=el.visible;cb.style.width='15px';cb.style.height='15px';
-    cb.addEventListener('change',()=>{el.visible=cb.checked;renderLabelPreview();});
+    cb.type='checkbox'; cb.checked=el.visible; cb.style.cssText='width:15px;height:15px;cursor:pointer';
+    cb.addEventListener('change',()=>{el.visible=cb.checked; renderLabelPreview();});
     const lbl=document.createElement('span');
-    lbl.textContent=el.label;lbl.style.flex='1';
-    const pos=document.createElement('span');
-    pos.style.cssText='color:var(--muted);font-size:.75rem;width:50px;text-align:right';
-    pos.textContent='y: '+el.y_pct+'%';
-    pos.id='lel_pos_'+el.id;
-    row.appendChild(cb);row.appendChild(lbl);row.appendChild(pos);
+    lbl.textContent=el.label; lbl.style.flex='1';
+    lbl.addEventListener('click',()=>{_selectedId=el.id; renderLabelPreview(); updatePropPanel();});
+    row.appendChild(cb); row.appendChild(lbl);
     list.appendChild(row);
   });
 }
 
 async function saveLabelLayout(){
   const msg=document.getElementById('labelEditorMsg');
-  const align=document.getElementById('labelAlign')?.value||'center';
-  const fontSize=parseInt(document.getElementById('labelFontSize')?.value||2);
-  const payload={elements:_labelLayout,align,fontSize};
   try{
     const r=await fetch('/api/label-layout',{method:'POST',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({elements:_labelLayout})});
     if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert';}
     else{msg.style.color='var(--danger)';msg.textContent='Fehler '+r.status;}
   }catch(e){msg.style.color='var(--danger)';msg.textContent='Netzwerkfehler';}
@@ -1362,24 +1388,18 @@ async function saveLabelLayout(){
 async function loadLabelLayout(){
   try{
     const d=await fetch('/api/label-layout').then(r=>r.json());
-    if(d.elements&&Array.isArray(d.elements)){
-      _labelLayout=d.elements;
-    }
-    const al=document.getElementById('labelAlign');if(al&&d.align)al.value=d.align;
-    const fs=document.getElementById('labelFontSize');if(fs&&d.fontSize)fs.value=d.fontSize;
+    if(d.elements&&Array.isArray(d.elements))_labelLayout=d.elements;
   }catch(e){}
-  renderElementList();
-  renderLabelPreview();
+  renderElementList(); renderLabelPreview(); updatePropPanel();
 }
 
 function resetLabelLayout(){
   _labelLayout=JSON.parse(JSON.stringify(LABEL_ELEMENTS_DEFAULT));
-  const al=document.getElementById('labelAlign');if(al)al.value='center';
-  const fs=document.getElementById('labelFontSize');if(fs)fs.value='2';
-  renderElementList();renderLabelPreview();
+  _selectedId=null;
+  renderElementList(); renderLabelPreview(); updatePropPanel();
 }
 
-// Label-Vorschau neu zeichnen wenn Etikettgröße sich ändert
+// Vorschau neu zeichnen wenn Etikett-Größe geändert wird
 ['printerLabelMm','printerGapMm'].forEach(id=>{
   document.addEventListener('DOMContentLoaded',()=>{
     const el=document.getElementById(id);
