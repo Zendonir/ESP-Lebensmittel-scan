@@ -521,10 +521,16 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
         </label>
       </div>
       <span style="font-size:.75rem;color:var(--muted)">Der Vorschub nach dem Inhalt wird automatisch berechnet (Pitch&nbsp;=&nbsp;L&auml;nge&nbsp;+&nbsp;Abstand).</span>
-      <label style="font-size:.85rem;color:var(--muted)">R&uuml;cklauf vor Druck (0&nbsp;=&nbsp;aus)
+      <label style="font-size:.85rem;color:var(--muted)">R&uuml;cklauf vor Druck&nbsp;<span style="font-size:.75rem">(ESC&nbsp;K, falls unterst&uuml;tzt)</span>
         <div style="display:flex;align-items:center;gap:.4rem;margin-top:.3rem">
           <input type="number" id="printerBackfeedMm" min="0" max="30" step="1" style="width:70px">
-          <span style="color:var(--muted);font-size:.85rem">mm &nbsp;<span style="font-size:.75rem">(ESC&nbsp;K)</span></span>
+          <span style="color:var(--muted);font-size:.85rem">mm</span>
+        </div>
+      </label>
+      <label style="font-size:.85rem;color:var(--muted)">Vorschub-Versatz&nbsp;<span style="font-size:.75rem">(negativ = Inhalt h&ouml;her, falls kein R&uuml;cklauf)</span>
+        <div style="display:flex;align-items:center;gap:.4rem;margin-top:.3rem">
+          <input type="number" id="printerFeedOffsetMm" min="-20" max="20" step="1" style="width:70px">
+          <span style="color:var(--muted);font-size:.85rem">mm</span>
         </div>
       </label>
       <label style="font-size:.85rem;color:var(--muted);display:flex;align-items:center;gap:.5rem;margin-top:.25rem">
@@ -537,6 +543,54 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
       </div>
     </div>
     <div id="printerMsg" style="margin-top:.75rem;font-size:.85rem"></div>
+    <hr style="border-color:var(--border);margin:1.5rem 0">
+
+    <!-- ── Label-Editor ──────────────────────────────────────── -->
+    <h2 style="margin-bottom:.5rem">&#x1F3F7; Label-Layout Editor</h2>
+    <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
+      Elemente per Drag&amp;Drop positionieren. Die Vorschau zeigt das Etikett ma&szlig;stabsgetreu (57&thinsp;mm&nbsp;&times;&nbsp;konfigurierte L&auml;nge).
+    </p>
+    <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-start">
+
+      <!-- Vorschau -->
+      <div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:.4rem;text-align:center">Vorschau (57&thinsp;mm)</div>
+        <div id="labelCanvas" style="position:relative;background:#fff;border:2px solid #555;overflow:hidden;cursor:default"
+             ondragover="event.preventDefault()" ondrop="labelDrop(event)">
+          <!-- Elemente werden per JS eingefügt -->
+        </div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:.3rem;text-align:center" id="labelSizeHint"></div>
+      </div>
+
+      <!-- Steuerung -->
+      <div style="display:flex;flex-direction:column;gap:.75rem;min-width:220px;flex:1">
+        <div style="font-size:.85rem;color:var(--muted)">Elemente</div>
+        <div id="labelElementList" style="display:flex;flex-direction:column;gap:.4rem"></div>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.25rem">
+          <button class="btn btn-ok" style="width:fit-content;font-size:.8rem" onclick="saveLabelLayout()">&#x1F4BE; Speichern</button>
+          <button class="btn" style="width:fit-content;font-size:.8rem" onclick="resetLabelLayout()">&#x21BA; Zur&uuml;cksetzen</button>
+        </div>
+        <div id="labelEditorMsg" style="font-size:.8rem;margin-top:.25rem"></div>
+
+        <!-- Globale Schriftgröße -->
+        <hr style="border-color:var(--border)">
+        <label style="font-size:.85rem;color:var(--muted)">Schriftgr&ouml;&szlig;e
+          <select id="labelFontSize" style="display:block;margin-top:.3rem;width:140px" onchange="renderLabelPreview()">
+            <option value="1">Klein&nbsp;(1&times;)</option>
+            <option value="2" selected>Normal&nbsp;(2&times;)</option>
+            <option value="3">Gro&szlig;&nbsp;(3&times;)</option>
+          </select>
+        </label>
+        <label style="font-size:.85rem;color:var(--muted)">Ausrichtung
+          <select id="labelAlign" style="display:block;margin-top:.3rem;width:140px" onchange="renderLabelPreview()">
+            <option value="left">Links</option>
+            <option value="center" selected>Zentriert</option>
+            <option value="right">Rechts</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
     <hr style="border-color:var(--border);margin:1.5rem 0">
     <h2 style="margin-bottom:1rem">Schriftgr&ouml;&szlig;en am Ger&auml;t</h2>
     <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
@@ -771,7 +825,7 @@ function switchTab(id,btn){
   if(id==='mqtt'){loadMqtt();loadTelegram();}
   if(id==='shop')loadShop();
   if(id==='stats')loadStats();
-  if(id==='system'){loadOtaPw();loadDevConfig();loadScannerCfg();loadPrinterCfg();loadFontSizes();}
+  if(id==='system'){loadOtaPw();loadDevConfig();loadScannerCfg();loadPrinterCfg();loadFontSizes();loadLabelLayout();}
   if(id==='scanlogs')loadScanlogs();
   if(id==='design')loadDesign();
 }
@@ -1160,6 +1214,7 @@ async function loadPrinterCfg(){
     const l=document.getElementById('printerLabelMm');    if(l)l.value=d.label_mm||29;
     const g=document.getElementById('printerGapMm');      if(g)g.value=d.gap_mm||6;
     const bf=document.getElementById('printerBackfeedMm');if(bf)bf.value=d.backfeed_mm||0;
+    const fo=document.getElementById('printerFeedOffsetMm');if(fo)fo.value=d.feed_offset_mm||0;
     const c=document.getElementById('printerUseCut');     if(c)c.checked=d.use_cut===true;}catch(e){}
 }
 async function savePrinterCfg(){
@@ -1167,11 +1222,12 @@ async function savePrinterCfg(){
   const baud        =parseInt(document.getElementById('printerBaud').value)||9600;
   const label_mm    =parseInt(document.getElementById('printerLabelMm').value)||29;
   const gap_mm      =parseInt(document.getElementById('printerGapMm').value)||6;
-  const backfeed_mm =parseInt(document.getElementById('printerBackfeedMm').value)||0;
-  const use_cut     =document.getElementById('printerUseCut').checked;
+  const backfeed_mm    =parseInt(document.getElementById('printerBackfeedMm').value)||0;
+  const feed_offset_mm =parseInt(document.getElementById('printerFeedOffsetMm').value)||0;
+  const use_cut        =document.getElementById('printerUseCut').checked;
   msg.style.color='var(--muted)';msg.textContent='Speichere…';
   const r=await fetch('/api/printer-config',{method:'POST',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify({baud,label_mm,gap_mm,backfeed_mm,use_cut})});
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({baud,label_mm,gap_mm,backfeed_mm,feed_offset_mm,use_cut})});
   if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert. Pitch: '+(label_mm+gap_mm)+' mm';}
   else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
 }
@@ -1182,6 +1238,154 @@ async function doTestPrint(){
   if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Testdruck gesendet.';}
   else{msg.style.color='var(--danger)';msg.textContent='Fehler – kein Drucker?';}
 }
+
+// ── Label-Editor ──────────────────────────────────────────────
+// Layout: Array von {id, label, y_pct (0-100), visible}
+// y_pct = vertikale Position in % der Etikettenhöhe
+
+const LABEL_ELEMENTS_DEFAULT=[
+  {id:'qr',      label:'QR-Code',           y_pct:5,  visible:true},
+  {id:'name',    label:'Produktname',        y_pct:52, visible:true},
+  {id:'storage', label:'Einlagerungsdatum',  y_pct:63, visible:true},
+  {id:'expiry',  label:'MHD',               y_pct:74, visible:true},
+  {id:'qty',     label:'Menge',             y_pct:85, visible:false},
+];
+let _labelLayout=JSON.parse(JSON.stringify(LABEL_ELEMENTS_DEFAULT));
+let _dragId=null;
+
+function renderLabelPreview(){
+  const labelMm=parseInt(document.getElementById('printerLabelMm')?.value||29);
+  const PX_PER_MM=3.5;
+  const W=Math.round(57*PX_PER_MM);
+  const H=Math.round(labelMm*PX_PER_MM);
+  const cv=document.getElementById('labelCanvas');
+  const hint=document.getElementById('labelSizeHint');
+  if(!cv)return;
+  cv.style.width=W+'px';cv.style.height=H+'px';
+  if(hint)hint.textContent='57 mm × '+labelMm+' mm';
+
+  // Gap-Bereich anzeigen
+  const gapMm=parseInt(document.getElementById('printerGapMm')?.value||6);
+  const gapH=Math.round(gapMm*PX_PER_MM);
+
+  cv.innerHTML='';
+  // Gap-Markierung
+  const gapDiv=document.createElement('div');
+  gapDiv.style.cssText='position:absolute;bottom:0;left:0;right:0;height:'+gapH+'px;'+
+    'background:repeating-linear-gradient(45deg,#eee,#eee 3px,#fff 3px,#fff 8px);'+
+    'opacity:.5;pointer-events:none';
+  cv.appendChild(gapDiv);
+  const gapLbl=document.createElement('div');
+  gapLbl.textContent='Abstand '+gapMm+' mm';
+  gapLbl.style.cssText='position:absolute;bottom:2px;right:4px;font-size:9px;color:#999;pointer-events:none';
+  cv.appendChild(gapLbl);
+
+  const align=document.getElementById('labelAlign')?.value||'center';
+  const fontSize=parseInt(document.getElementById('labelFontSize')?.value||2);
+  const fh=fontSize*7; // px approx
+
+  _labelLayout.forEach(el=>{
+    if(!el.visible)return;
+    const div=document.createElement('div');
+    const yPx=Math.round(el.y_pct/100*H);
+    div.id='lel_'+el.id;
+    div.draggable=true;
+    div.dataset.id=el.id;
+    const isQR=el.id==='qr';
+    const qrSz=fontSize*24;
+    div.style.cssText='position:absolute;'+(isQR?
+      'left:50%;transform:translateX(-50%);':
+      'left:4px;right:4px;text-align:'+align+';')+
+      'top:'+(yPx)+'px;cursor:grab;user-select:none;'+
+      (isQR?
+        'width:'+qrSz+'px;height:'+qrSz+'px;background:#000;display:flex;align-items:center;justify-content:center;':
+        'font-size:'+fh+'px;font-family:monospace;color:#222;background:rgba(37,99,235,.08);border-radius:2px;padding:1px 3px;');
+    if(isQR){
+      div.innerHTML='<svg width="'+qrSz+'" height="'+qrSz+'" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg">'+
+        '<rect width="21" height="21" fill="white"/>'+
+        '<path fill="black" d="M0,0h7v7H0V0zm1,1v5h5V1H1zm1,1h3v3H2V2zM14,0h7v7h-7V0zm1,1v5h5V1h-5zm1,1h3v3h-3V2zM0,14h7v7H0v-7zm1,1v5h5v-5H1zm1,1h3v3H2v-3zM8,0h1v1H8V0zm1,1h1v1H9V1zm1,0h1v2h-1V1zm1,1h1v1h-1V2zm0,1h1v1h-1V3zm-3,1h1v2H8V4zm2,0h1v1h-1V4zm1,1h1v1h-1V5zm1,0h1v1h-1V5zm-4,2h1v1H8V7zm2,0h2v1h-2V7zm3,0h1v1h-1V7zm1,1h1v1h-1V8zm-7,0h1v1H8V8zm2,0h1v1h-1V8zm-2,1h1v1H8V9zm1,0h1v1H9V9zm2,0h1v1h-1V9zm2,0h1v1h-1V9zm1,1h2v1h-2v-1zm-6,1h1v1H8v-1zm2,0h1v1h-1v-1zm2,0h2v1h-2v-1zm-4,1h1v1H8v-1zm2,0h1v1h-1v-1zm2,0h1v1h-1v-1zm1,1h1v1h-1v-1zm-5,1h2v1H8v-1zm3,0h1v2h-1v-2zm2,0h1v1h-1v-1zm1,0h1v1h-1v-1zm-6,1h1v1H8v-1zm2,1h1v1h-1v-1zm2,0h1v1h-1v-1zm2,0h2v1h-2v-1zm-5,1h1v1H9v-1zm1,0h1v1h-1v-1zm3,0h1v1h-1v-1zm1,0h1v1h-1v-1zm-6,1h2v1H8v-1zm3,0h1v1h-1v-1zm2,0h2v1h-2v-1z"/>'+
+        '</svg>';
+    }else{
+      const samples={name:'Apfelsaft Bio',storage:'Einlag: 06.05.2026',expiry:'MHD: 15.08.2026',qty:'Menge: 2 Stk.'};
+      div.textContent=samples[el.id]||el.label;
+    }
+    div.addEventListener('dragstart',e=>{_dragId=el.id;e.dataTransfer.effectAllowed='move';});
+    cv.appendChild(div);
+  });
+}
+
+function labelDrop(e){
+  if(!_dragId)return;
+  const cv=document.getElementById('labelCanvas');
+  const rect=cv.getBoundingClientRect();
+  const yPx=e.clientY-rect.top;
+  const H=rect.height;
+  const el=_labelLayout.find(x=>x.id===_dragId);
+  if(el){el.y_pct=Math.max(0,Math.min(100,Math.round(yPx/H*100)));renderLabelPreview();}
+  _dragId=null;
+}
+
+function renderElementList(){
+  const list=document.getElementById('labelElementList');
+  if(!list)return;
+  list.innerHTML='';
+  _labelLayout.forEach(el=>{
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:.5rem;font-size:.85rem;color:var(--text)';
+    const cb=document.createElement('input');
+    cb.type='checkbox';cb.checked=el.visible;cb.style.width='15px';cb.style.height='15px';
+    cb.addEventListener('change',()=>{el.visible=cb.checked;renderLabelPreview();});
+    const lbl=document.createElement('span');
+    lbl.textContent=el.label;lbl.style.flex='1';
+    const pos=document.createElement('span');
+    pos.style.cssText='color:var(--muted);font-size:.75rem;width:50px;text-align:right';
+    pos.textContent='y: '+el.y_pct+'%';
+    pos.id='lel_pos_'+el.id;
+    row.appendChild(cb);row.appendChild(lbl);row.appendChild(pos);
+    list.appendChild(row);
+  });
+}
+
+async function saveLabelLayout(){
+  const msg=document.getElementById('labelEditorMsg');
+  const align=document.getElementById('labelAlign')?.value||'center';
+  const fontSize=parseInt(document.getElementById('labelFontSize')?.value||2);
+  const payload={elements:_labelLayout,align,fontSize};
+  try{
+    const r=await fetch('/api/label-layout',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert';}
+    else{msg.style.color='var(--danger)';msg.textContent='Fehler '+r.status;}
+  }catch(e){msg.style.color='var(--danger)';msg.textContent='Netzwerkfehler';}
+}
+
+async function loadLabelLayout(){
+  try{
+    const d=await fetch('/api/label-layout').then(r=>r.json());
+    if(d.elements&&Array.isArray(d.elements)){
+      _labelLayout=d.elements;
+    }
+    const al=document.getElementById('labelAlign');if(al&&d.align)al.value=d.align;
+    const fs=document.getElementById('labelFontSize');if(fs&&d.fontSize)fs.value=d.fontSize;
+  }catch(e){}
+  renderElementList();
+  renderLabelPreview();
+}
+
+function resetLabelLayout(){
+  _labelLayout=JSON.parse(JSON.stringify(LABEL_ELEMENTS_DEFAULT));
+  const al=document.getElementById('labelAlign');if(al)al.value='center';
+  const fs=document.getElementById('labelFontSize');if(fs)fs.value='2';
+  renderElementList();renderLabelPreview();
+}
+
+// Label-Vorschau neu zeichnen wenn Etikettgröße sich ändert
+['printerLabelMm','printerGapMm'].forEach(id=>{
+  document.addEventListener('DOMContentLoaded',()=>{
+    const el=document.getElementById(id);
+    if(el)el.addEventListener('input',()=>{renderLabelPreview();});
+  });
+});
 
 // ── Schriftgrößen ─────────────────────────────────────────────
 async function loadFontSizes(){
@@ -1298,7 +1502,8 @@ async function loadGithubReleases(){
     list.forEach(r=>{
       const o=document.createElement('option');
       o.value=r.url;
-      o.textContent=r.tag+(r.size?' ('+r.size+')':'');
+      const pre=r.prerelease?' [pre-release]':'';
+      o.textContent=r.tag+pre+(r.size?' ('+r.size+')':'');
       sel.appendChild(o);
     });
     sel.disabled=false;
@@ -2271,7 +2476,7 @@ void WebInterface::begin() {
     // ── OTA-Passwort ─────────────────────────────────────────
 
     _server.on("/api/ota-config", HTTP_GET, [](AsyncWebServerRequest *req) {
-        Preferences p; p.begin("ota", true);
+        Preferences p; p.begin("ota", false);
         String pw = p.getString("password", "lebensmittel");
         p.end();
         req->send(200, "application/json", "{\"password\":\"" + pw + "\"}");
@@ -2297,35 +2502,28 @@ void WebInterface::begin() {
     _server.on("/api/github-releases", HTTP_GET, [](AsyncWebServerRequest *req) {
         WiFiClientSecure client; client.setInsecure();
         HTTPClient https;
-        String apiUrl = "https://api.github.com/repos/zendonir/esp-lebensmittel-scan/releases?per_page=20";
+        String apiUrl = "https://api.github.com/repos/zendonir/esp-lebensmittel-scan/releases?per_page=5";
         if (!https.begin(client, apiUrl)) {
             req->send(503, "application/json", "{\"error\":\"begin failed\"}"); return;
         }
         https.addHeader("User-Agent", "ESP32-Lebensmittel");
         https.addHeader("Accept",     "application/vnd.github+json");
+        https.setTimeout(15000);
         int code = https.GET();
         if (code != 200) {
             String err = "{\"error\":\"HTTP " + String(code) + "\"}";
             https.end(); req->send(200, "application/json", err); return;
         }
-
-        // Filter: nur benötigte Felder → spart RAM auf dem ESP32
-        JsonDocument filter;
-        JsonArray fArr = filter.to<JsonArray>();
-        JsonObject fObj = fArr.add<JsonObject>();
-        fObj["tag_name"] = true;
-        JsonArray fAssets = fObj["assets"].to<JsonArray>();
-        JsonObject fAsset = fAssets.add<JsonObject>();
-        fAsset["name"]                 = true;
-        fAsset["browser_download_url"] = true;
-        fAsset["size"]                 = true;
-
-        JsonDocument doc;
-        DeserializationError err2 = deserializeJson(doc, *https.getStreamPtr(),
-                                                    DeserializationOption::Filter(filter));
+        String body = https.getString();
         https.end();
+
+        // Kein ArduinoJson-Filter – Nested-Array-Filter funktioniert
+        // unzuverlässig. Stattdessen: volle Antwort parsen, dann extrahieren.
+        JsonDocument doc;
+        DeserializationError err2 = deserializeJson(doc, body);
         if (err2) {
-            String e = "{\"error\":\"JSON: "; e += err2.c_str(); e += "\"}";
+            String e = "{\"error\":\"JSON: "; e += err2.c_str(); e += " (";
+            e += String(body.length()); e += "B)\"}";
             req->send(200, "application/json", e); return;
         }
 
@@ -2334,7 +2532,6 @@ void WebInterface::begin() {
         for (JsonObject rel : doc.as<JsonArray>()) {
             String tag = rel["tag_name"] | String("");
             if (tag.isEmpty()) continue;
-            // .bin-Asset suchen
             String url, sizeStr;
             for (JsonObject a : rel["assets"].as<JsonArray>()) {
                 String name = a["name"] | String("");
@@ -2345,11 +2542,12 @@ void WebInterface::begin() {
                     break;
                 }
             }
-            if (url.isEmpty()) continue;  // Release ohne .bin überspringen
+            if (url.isEmpty()) continue;
             JsonObject entry = arr.add<JsonObject>();
-            entry["tag"]  = tag;
-            entry["url"]  = url;
-            entry["size"] = sizeStr;
+            entry["tag"]        = tag;
+            entry["url"]        = url;
+            entry["size"]       = sizeStr;
+            entry["prerelease"] = rel["prerelease"] | false;
         }
         String s; serializeJson(out, s);
         req->send(200, "application/json", s);
@@ -2625,11 +2823,12 @@ void WebInterface::begin() {
 
     _server.on("/api/printer-config", HTTP_GET, [](AsyncWebServerRequest *req) {
         JsonDocument doc;
-        doc["baud"]        = ThermalPrinter::loadBaud();
-        doc["label_mm"]    = ThermalPrinter::loadLabelMm();
-        doc["gap_mm"]      = ThermalPrinter::loadGapMm();
-        doc["backfeed_mm"] = ThermalPrinter::loadBackfeedMm();
-        doc["use_cut"]     = ThermalPrinter::loadUseCut();
+        doc["baud"]           = ThermalPrinter::loadBaud();
+        doc["label_mm"]       = ThermalPrinter::loadLabelMm();
+        doc["gap_mm"]         = ThermalPrinter::loadGapMm();
+        doc["backfeed_mm"]    = ThermalPrinter::loadBackfeedMm();
+        doc["feed_offset_mm"] = ThermalPrinter::loadFeedOffsetMm();
+        doc["use_cut"]        = ThermalPrinter::loadUseCut();
         String out; serializeJson(doc, out);
         req->send(200, "application/json", out);
     });
@@ -2659,6 +2858,8 @@ void WebInterface::begin() {
             }
             if (!doc["backfeed_mm"].isNull())
                 ThermalPrinter::saveBackfeedMm(doc["backfeed_mm"].as<uint16_t>());
+            if (!doc["feed_offset_mm"].isNull())
+                ThermalPrinter::saveFeedOffsetMm(doc["feed_offset_mm"].as<int8_t>());
             if (!doc["use_cut"].isNull())
                 ThermalPrinter::saveUseCut(doc["use_cut"].as<bool>());
             req->send(200, "application/json", "{\"ok\":true}");
@@ -2671,11 +2872,35 @@ void WebInterface::begin() {
         req->send(200, "application/json", "{\"ok\":true}");
     });
 
+    // ── Label-Layout (NVS: "llayout") ────────────────────────
+    _server.on("/api/label-layout", HTTP_GET, [](AsyncWebServerRequest *req) {
+        Preferences p; p.begin("llayout", false);
+        String s = p.getString("json", "{}");
+        p.end();
+        req->send(200, "application/json", s);
+    });
+    _server.on("/api/label-layout", HTTP_POST,
+        [](AsyncWebServerRequest *req){},
+        nullptr,
+        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t, size_t) {
+            // Validieren und direkt als String speichern
+            JsonDocument doc;
+            if (deserializeJson(doc, (const char*)data, len)) {
+                req->send(400, "application/json", "{\"ok\":false}"); return;
+            }
+            String s; serializeJson(doc, s);
+            Preferences p; p.begin("llayout", false);
+            p.putString("json", s);
+            p.end();
+            req->send(200, "application/json", "{\"ok\":true}");
+        }
+    );
+
     _server.onNotFound([](AsyncWebServerRequest *req) { req->send(404,"text/plain","Not found"); });
 
     // OTA-Update unter /ota (Basic-Auth: admin / NVS-Passwort)
     {
-        Preferences p; p.begin("ota", true);
+        Preferences p; p.begin("ota", false);
         String pw = p.getString("password", "lebensmittel");
         p.end();
 

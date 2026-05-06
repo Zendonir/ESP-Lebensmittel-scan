@@ -6,7 +6,6 @@ on:
       - main
     tags:
       - 'v*'
-      - 'V*'
   workflow_dispatch:
     inputs:
       version:
@@ -14,12 +13,23 @@ on:
         required: true
         default: 'v1.0.0'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      tag:    ${{ steps.ver.outputs.tag }}
+      title:  ${{ steps.ver.outputs.title }}
+      prerelease: ${{ steps.ver.outputs.prerelease }}
+      short_sha: ${{ steps.ver.outputs.short_sha }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Cache PlatformIO
         uses: actions/cache@v4
@@ -28,6 +38,7 @@ jobs:
             ~/.platformio
             .pio/libdeps
           key: pio-${{ hashFiles('platformio.ini') }}
+          restore-keys: pio-
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -40,36 +51,51 @@ jobs:
       - name: Build firmware
         run: platformio run -e waveshare_esp32s3_amoled_164
 
-      - name: Copy firmware artifact
+      - name: Determine version
+        id: ver
+        run: |
+          SHORT=$(git rev-parse --short HEAD)
+          COUNT=$(git rev-list --count HEAD)
+          echo "short_sha=${SHORT}" >> $GITHUB_OUTPUT
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.version }}"
+            echo "tag=${TAG}"          >> $GITHUB_OUTPUT
+            echo "title=Release ${TAG}" >> $GITHUB_OUTPUT
+            echo "prerelease=false"   >> $GITHUB_OUTPUT
+
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            echo "tag=${TAG}"           >> $GITHUB_OUTPUT
+            echo "title=Release ${TAG}" >> $GITHUB_OUTPUT
+            echo "prerelease=false"     >> $GITHUB_OUTPUT
+
+          else
+            # Jeder Push zu main → "latest" Pre-Release
+            echo "tag=latest"                                >> $GITHUB_OUTPUT
+            echo "title=Latest Build #${COUNT} (${SHORT})" >> $GITHUB_OUTPUT
+            echo "prerelease=true"                           >> $GITHUB_OUTPUT
+          fi
+
+      - name: Rename artifact
         run: |
           mkdir -p dist
-          cp .pio/build/waveshare_esp32s3_amoled_164/firmware.bin dist/firmware.bin
+          cp .pio/build/waveshare_esp32s3_amoled_164/firmware.bin \
+             dist/firmware-${{ steps.ver.outputs.tag }}.bin
 
-      - name: Upload build artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: firmware
-          path: dist/firmware.bin
+          path: dist/firmware-${{ steps.ver.outputs.tag }}.bin
           retention-days: 30
 
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: |
-      startsWith(github.ref, 'refs/tags/v') ||
-      startsWith(github.ref, 'refs/tags/V') ||
-      github.event_name == 'workflow_dispatch'
-    permissions:
-      contents: write
     steps:
-      - name: Determine version
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-          fi
+      - name: Checkout (für git tag)
+        uses: actions/checkout@v4
 
       - name: Download firmware artifact
         uses: actions/download-artifact@v4
@@ -77,17 +103,28 @@ jobs:
           name: firmware
           path: dist
 
+      # "latest"-Tag + Release löschen bevor neu erstellt wird
+      - name: Delete old 'latest' release
+        if: needs.build.outputs.tag == 'latest'
+        run: |
+          gh release delete latest --yes 2>/dev/null || true
+          git push origin :refs/tags/latest 2>/dev/null || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          files: dist/firmware.bin
-          generate_release_notes: true
-          name: "Firmware ${{ steps.version.outputs.tag }}"
+          tag_name:   ${{ needs.build.outputs.tag }}
+          name:       ${{ needs.build.outputs.title }}
+          prerelease: ${{ needs.build.outputs.prerelease }}
+          files:      dist/firmware-${{ needs.build.outputs.tag }}.bin
+          generate_release_notes: ${{ needs.build.outputs.prerelease == 'false' }}
           body: |
-            ## Firmware ${{ steps.version.outputs.tag }}
+            **Commit:** `${{ needs.build.outputs.short_sha }}`
+            **Branch/Ref:** `${{ github.ref_name }}`
 
-            Flash die `firmware.bin` über die Weboberfläche des Geräts
-            (System → OTA Update → Firmware flashen) oder direkt via PlatformIO.
-
-            **OTA-Update aus der Weboberfläche:** System → GitHub OTA → „Prüfen & Installieren“
+            Flash über Weboberfläche: System → OTA Update → `firmware-${{ needs.build.outputs.tag }}.bin` hochladen
+            Oder direkt via PlatformIO mit `--upload-port`.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
