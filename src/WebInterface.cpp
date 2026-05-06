@@ -2724,19 +2724,57 @@ void WebInterface::begin() {
             xTaskCreate([](void *) {
                 vTaskDelay(pdMS_TO_TICKS(300));
                 _otaMsg = "Verbinde mit GitHub…";
-                WiFiClientSecure client; client.setInsecure();
+
+                // Phase 1 – Redirect-URL holen (github.com → objects.githubusercontent.com)
+                String directUrl;
+                {
+                    WiFiClientSecure c1; c1.setInsecure();
+                    HTTPClient h1;
+                    h1.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+                    h1.setTimeout(15000);
+                    if (h1.begin(c1, _otaUrl)) {
+                        h1.addHeader("User-Agent", "ESP32-Lebensmittel");
+                        const char *hdrs[] = {"Location"};
+                        h1.collectHeaders(hdrs, 1);
+                        int c = h1.GET();
+                        if (c >= 300 && c < 400) {
+                            directUrl = h1.header("Location");
+                            _otaMsg = "Weiterleitung…";
+                        } else if (c == 200) {
+                            directUrl = _otaUrl; // Already direct
+                        } else {
+                            _otaMsg = "GitHub HTTP " + String(c);
+                            _otaError = true; _otaActive = false;
+                            h1.end(); vTaskDelete(nullptr); return;
+                        }
+                        h1.end();
+                    } else {
+                        _otaMsg = "GitHub-Verbindung fehlgeschlagen";
+                        _otaError = true; _otaActive = false;
+                        vTaskDelete(nullptr); return;
+                    }
+                }
+
+                if (directUrl.isEmpty()) {
+                    _otaMsg = "Keine Download-URL";
+                    _otaError = true; _otaActive = false;
+                    vTaskDelete(nullptr); return;
+                }
+
+                // Phase 2 – Firmware direkt vom CDN laden
+                _otaMsg = "Lade Firmware…";
+                WiFiClientSecure c2; c2.setInsecure();
                 HTTPClient https;
-                https.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+                https.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
                 https.setTimeout(60000);
-                if (!https.begin(client, _otaUrl)) {
-                    _otaMsg = "Verbindung fehlgeschlagen";
+                if (!https.begin(c2, directUrl)) {
+                    _otaMsg = "CDN-Verbindung fehlgeschlagen";
                     _otaError = true; _otaActive = false; vTaskDelete(nullptr); return;
                 }
                 https.addHeader("User-Agent", "ESP32-Lebensmittel");
-                _otaMsg = "Lade Firmware…";
                 int code = https.GET();
                 if (code != 200) {
-                    _otaMsg = "HTTP " + String(code);
+                    _otaMsg = "CDN HTTP " + String(code);
                     _otaError = true; _otaActive = false;
                     https.end(); vTaskDelete(nullptr); return;
                 }
@@ -2778,7 +2816,7 @@ void WebInterface::begin() {
                     _otaError = true; _otaActive = false;
                 }
                 vTaskDelete(nullptr);
-            }, "ghota", 20480, nullptr, 1, nullptr);
+            }, "ghota", 32768, nullptr, 1, nullptr);
         }
     );
 
