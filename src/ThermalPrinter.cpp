@@ -86,6 +86,14 @@ void ThermalPrinter::saveBackfeedMm(uint16_t mm) {
     Preferences p; p.begin("printer", false);
     p.putUShort("backfeed_mm", mm); p.end();
 }
+int8_t ThermalPrinter::loadFeedOffsetMm() {
+    Preferences p; p.begin("printer", false);
+    int8_t v = (int8_t)p.getChar("feed_off_mm", 0); p.end(); return v;
+}
+void ThermalPrinter::saveFeedOffsetMm(int8_t mm) {
+    Preferences p; p.begin("printer", false);
+    p.putChar("feed_off_mm", mm); p.end();
+}
 
 // ── ESC/POS Hilfsbefehle ──────────────────────────────────────
 
@@ -175,12 +183,13 @@ void ThermalPrinter::qrCode(const String &data, uint8_t moduleSize) {
 }
 
 void ThermalPrinter::feedToNextLabel() {
-    uint16_t labelDots = loadLabelMm() * DOTS_PER_MM;
-    uint16_t gapDots   = loadGapMm()   * DOTS_PER_MM;
-    int16_t  remaining = (int16_t)(labelDots + gapDots) - (int16_t)_contentDots;
-    uint16_t feed      = (remaining > (int16_t)gapDots) ? (uint16_t)remaining : gapDots;
-    Serial.printf("[Printer] contentDots=%d labelMm=%d gapMm=%d feedDots=%d\n",
-                  _contentDots, loadLabelMm(), loadGapMm(), feed);
+    uint16_t labelDots  = loadLabelMm()    * DOTS_PER_MM;
+    uint16_t gapDots    = loadGapMm()      * DOTS_PER_MM;
+    int16_t  offsetDots = loadFeedOffsetMm() * (int16_t)DOTS_PER_MM;
+    int16_t  remaining  = (int16_t)(labelDots + gapDots) - (int16_t)_contentDots + offsetDots;
+    uint16_t feed       = (remaining > (int16_t)gapDots) ? (uint16_t)remaining : gapDots;
+    Serial.printf("[Printer] contentDots=%d labelMm=%d gapMm=%d offsetMm=%d feedDots=%d\n",
+                  _contentDots, loadLabelMm(), loadGapMm(), loadFeedOffsetMm(), feed);
     if (feed > 0) feedDots(feed);
 }
 

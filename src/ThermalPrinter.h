@@ -19,6 +19,8 @@ public:
     static void     saveUseCut(bool cut);
     static uint16_t loadBackfeedMm();
     static void     saveBackfeedMm(uint16_t mm);
+    static int8_t   loadFeedOffsetMm();
+    static void     saveFeedOffsetMm(int8_t mm);
 
     void printLabel(const String &name, const String &labelCode,
                     const String &storageDate, const String &expiryDate,
