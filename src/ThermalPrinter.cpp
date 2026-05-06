@@ -11,7 +11,6 @@ ThermalPrinter::ThermalPrinter(HardwareSerial &serial,
 
 void ThermalPrinter::begin() {
     _baud = loadBaud();
-    _scaleFactor = loadScaleFactor();
     _serial.begin(_baud, SERIAL_8N1, _rxPin, _txPin);
     delay(50);
     init();
@@ -20,7 +19,6 @@ void ThermalPrinter::begin() {
 void ThermalPrinter::restart(uint32_t baud) {
     saveBaud(baud);
     _baud = baud;
-    _scaleFactor = loadScaleFactor();
     _serial.end();
     delay(10);
     _serial.begin(_baud, SERIAL_8N1, _rxPin, _txPin);
@@ -28,13 +26,9 @@ void ThermalPrinter::restart(uint32_t baud) {
     init();
 }
 
-void ThermalPrinter::reloadCalib() {
-    _scaleFactor = loadScaleFactor();
-}
-
 void ThermalPrinter::testPrint() {
-    uint16_t backfeedMm = loadBackfeedMm();
-    if (backfeedMm > 0) backfeedDots(backfeedMm * DOTS_PER_MM);
+    float backfeedMm = loadBackfeedMm();
+    if (backfeedMm > 0) backfeedDots((uint16_t)(backfeedMm * DOTS_PER_MM));
     init();
 
     float labelMm  = loadLabelMm();
@@ -119,63 +113,6 @@ void ThermalPrinter::saveFeedOffsetMm(float mm) {
     p.putFloat("feed_off_mm", mm); p.end();
 }
 
-// ── Kalibrierung (NVS "calib") ────────────────────────────────
-
-float ThermalPrinter::loadScaleFactor() {
-    Preferences p; p.begin("calib", false);
-    float v = p.getFloat("scale", 1.0f); p.end(); return v;
-}
-void ThermalPrinter::saveScaleFactor(float f) {
-    Preferences p; p.begin("calib", false);
-    p.putFloat("scale", f); p.end();
-}
-uint16_t ThermalPrinter::loadDeadZoneMm() {
-    Preferences p; p.begin("calib", false);
-    uint16_t v = p.getUShort("dead_mm", 0); p.end(); return v;
-}
-void ThermalPrinter::saveDeadZoneMm(uint16_t mm) {
-    Preferences p; p.begin("calib", false);
-    p.putUShort("dead_mm", mm); p.end();
-}
-
-void ThermalPrinter::printCalibMark(const String &label) {
-    init();
-    align(1);
-    bold(true);
-    printLine("----[ " + (label.isEmpty() ? String("MARK") : label) + " ]----");
-    bold(false);
-    // 3 mm Leerraum damit der Strich gut sichtbar ist
-    feedDots(3 * DOTS_PER_MM);
-    _contentDots = 0;  // kein Label-Feed nötig
-}
-
-void ThermalPrinter::printScaleTest(uint16_t targetMm) {
-    init();
-    align(1);
-    bold(true);
-    printLine("----[ A ]----");
-    bold(false);
-    // Zielabstand vorfahren (skaliert)
-    feedDots(targetMm * DOTS_PER_MM);
-    // zweiten Strich
-    bold(true);
-    printLine("----[ B ]----");
-    bold(false);
-    feedDots(5 * DOTS_PER_MM);
-    _contentDots = 0;
-}
-
-void ThermalPrinter::rawFeedMm(uint16_t mm) {
-    // Vorschub für Kalibrierung – kein _contentDots-Tracking, keine Skalierung
-    uint16_t rem = mm * DOTS_PER_MM;
-    while (rem > 0) {
-        uint8_t chunk = (rem > 255) ? 255 : (uint8_t)rem;
-        _serial.write(0x1B); _serial.write('J'); _serial.write(chunk);
-        rem -= chunk;
-        if (rem > 0) delay(20);
-    }
-    delay(mm * 10 + 50);
-}
 
 // ── ESC/POS Hilfsbefehle ──────────────────────────────────────
 
@@ -200,10 +137,7 @@ void ThermalPrinter::printLine(const String &text) {
 }
 
 void ThermalPrinter::feedDots(uint16_t dots) {
-    // Skalierungskorrektur anwenden (aus Kalibrierung)
-    uint16_t physical = (_scaleFactor == 1.0f) ? dots
-                        : (uint16_t)(dots * _scaleFactor + 0.5f);
-    uint16_t rem = physical;
+    uint16_t rem = dots;
     while (rem > 0) {
         uint8_t chunk = (rem > 255) ? 255 : (uint8_t)rem;
         _serial.write(0x1B); _serial.write('J'); _serial.write(chunk);
@@ -284,11 +218,10 @@ void ThermalPrinter::feedToNextLabel() {
 void ThermalPrinter::printLabel(const String &name, const String &labelCode,
                                  const String &storageDate, const String &expiryDate,
                                  int qty) {
-    uint16_t backfeedMm = loadBackfeedMm();
+    float backfeedMm = loadBackfeedMm();
     if (backfeedMm > 0) {
-        Serial.printf("[Printer] Backfeed %d mm (%d dots)\n",
-                      backfeedMm, backfeedMm * DOTS_PER_MM);
-        backfeedDots(backfeedMm * DOTS_PER_MM);
+        Serial.printf("[Printer] Backfeed %.1f mm\n", backfeedMm);
+        backfeedDots((uint16_t)(backfeedMm * DOTS_PER_MM));
     }
     init();
 
@@ -323,7 +256,8 @@ void ThermalPrinter::printLabel(const String &name, const String &labelCode,
                     if (strncmp(e.id, id, 7) == 0) {
                         e.x_mm    = jel["x_mm"]    | e.x_mm;
                         e.y_mm    = jel["y_mm"]    | e.y_mm;
-                        e.visible = jel["visible"] | e.visible;
+                        if (!jel["visible"].isNull())
+                            e.visible = jel["visible"].as<bool>();
                         if (strcmp(e.id, "qr") == 0)
                             e.size_mm = jel["size_mm"] | e.size_mm;
                         else
