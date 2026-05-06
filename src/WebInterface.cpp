@@ -545,64 +545,6 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     <div id="printerMsg" style="margin-top:.75rem;font-size:.85rem"></div>
     <hr style="border-color:var(--border);margin:1.5rem 0">
 
-    <!-- ── Kalibrierung ──────────────────────────────────────── -->
-    <h2 style="margin-bottom:.5rem">&#x1F4D0; Drucker-Kalibrierung</h2>
-    <p style="color:var(--muted);font-size:.9rem;margin-bottom:1.2rem">
-      Schritt&nbsp;1 misst den <b>Totbereich</b> (mechanischer Versatz vom Druckkopf zur Abreisskante).<br>
-      Schritt&nbsp;2 misst den <b>Ma&szlig;stab</b> und korrigiert die Vorschubgenauigkeit.<br>
-      Danach nur noch Etikettl&auml;nge + Abstand eingeben &ndash; der Rest wird automatisch berechnet.
-    </p>
-    <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-start">
-
-      <!-- Schritt 1: Totbereich -->
-      <div style="flex:1;min-width:240px;padding:1rem;background:var(--surface);border-radius:8px;border:1px solid var(--border)">
-        <div style="font-weight:bold;color:var(--text);margin-bottom:.6rem">Schritt 1&thinsp;&ndash;&thinsp;Totbereich</div>
-        <p style="color:var(--muted);font-size:.85rem;margin-bottom:.8rem">
-          Drucke einen Strich. Fahre dann das Papier mm-weise vor bis der Strich
-          genau an der Abreisskante steht. Dann &laquo;Speichern&raquo; klicken.
-        </p>
-        <button class="btn" style="width:fit-content;font-size:.85rem" onclick="calibPrintMark()">&#x1F5A8; Strich drucken</button>
-        <div id="calibDeadGroup" style="display:none;margin-top:.8rem">
-          <div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin-bottom:.5rem">
-            <button class="btn" style="font-size:.85rem;padding:.3rem .7rem" onclick="calibFeed(1)">+1&thinsp;mm</button>
-            <button class="btn" style="font-size:.85rem;padding:.3rem .7rem" onclick="calibFeed(5)">+5&thinsp;mm</button>
-            <button class="btn" style="font-size:.85rem;padding:.3rem .7rem" onclick="calibFeed(10)">+10&thinsp;mm</button>
-            <span style="color:var(--muted);font-size:.85rem">Vorschub: <b id="calibFeedTotal">0</b>&thinsp;mm</span>
-          </div>
-          <button class="btn btn-ok" style="width:fit-content;font-size:.85rem" onclick="calibSaveDead()">&#x2713; An Abreisskante &ndash; Speichern</button>
-        </div>
-        <div id="calibDeadResult" style="margin-top:.6rem;font-size:.85rem;color:var(--muted)"></div>
-      </div>
-
-      <!-- Schritt 2: Maßstab -->
-      <div style="flex:1;min-width:240px;padding:1rem;background:var(--surface);border-radius:8px;border:1px solid var(--border)">
-        <div style="font-weight:bold;color:var(--text);margin-bottom:.6rem">Schritt 2&thinsp;&ndash;&thinsp;Ma&szlig;stabskorrektur</div>
-        <p style="color:var(--muted);font-size:.85rem;margin-bottom:.8rem">
-          Drucke zwei Markierungen im gew&auml;hlten Abstand. Miss den tats&auml;chlichen
-          Abstand zwischen den Strichen und gib ihn ein.
-        </p>
-        <label style="display:flex;align-items:center;gap:.5rem;font-size:.85rem;color:var(--muted);margin-bottom:.5rem">
-          Zielabstand&nbsp;<input type="number" id="calibTargetMm" value="50" min="10" max="200" step="5" style="width:65px">&nbsp;mm
-        </label>
-        <button class="btn" style="width:fit-content;font-size:.85rem" onclick="calibPrintScale()">&#x1F5A8; Test drucken (A&rarr;B)</button>
-        <div id="calibScaleGroup" style="display:none;margin-top:.8rem">
-          <label style="display:flex;align-items:center;gap:.5rem;font-size:.85rem;color:var(--muted);margin-bottom:.5rem">
-            Gemessener Abstand&nbsp;<input type="number" id="calibMeasuredMm" min="1" max="300" step="0.5" style="width:65px">&nbsp;mm
-          </label>
-          <button class="btn btn-ok" style="width:fit-content;font-size:.85rem" onclick="calibSaveScale()">&#x2713; Kalibrierung speichern</button>
-        </div>
-        <div id="calibScaleResult" style="margin-top:.6rem;font-size:.85rem;color:var(--muted)"></div>
-      </div>
-
-      <!-- Status -->
-      <div style="min-width:180px;padding:1rem;background:var(--surface);border-radius:8px;border:1px solid var(--border)">
-        <div style="font-weight:bold;color:var(--text);margin-bottom:.6rem">Aktuelle Kalibrierung</div>
-        <div id="calibStatusDiv" style="font-size:.85rem;color:var(--muted);line-height:1.8">Lade&hellip;</div>
-        <button class="btn" style="width:fit-content;font-size:.8rem;margin-top:.7rem" onclick="calibReset()">&#x21BA; Zur&uuml;cksetzen</button>
-      </div>
-    </div>
-    <hr style="border-color:var(--border);margin:1.5rem 0">
-
     <!-- ── Label-Editor ──────────────────────────────────────── -->
     <h2 style="margin-bottom:.5rem">&#x1F3F7; Label-Layout Editor</h2>
     <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
@@ -652,52 +594,6 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     </div>
 
     <hr style="border-color:var(--border);margin:1.5rem 0">
-    <h2 style="margin-bottom:1rem">Schriftgr&ouml;&szlig;en am Ger&auml;t</h2>
-    <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">
-      Pixelh&ouml;he der Schrift: 8&thinsp;px, 16&thinsp;px, 24&thinsp;px oder 32&thinsp;px (Vielfaches von 8).
-      &Auml;nderungen wirken sofort ohne Neustart.
-    </p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;max-width:440px">
-      <label style="font-size:.85rem;color:var(--muted)">&#x1F4D1; &Uuml;berschriften / Titel
-        <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
-          <input type="number" id="fszTitle" min="8" max="32" step="1" style="width:70px">
-          <span style="color:var(--muted);font-size:.8rem">px</span>
-        </div>
-      </label>
-      <label style="font-size:.85rem;color:var(--muted)">&#x1F4DD; Haupttext / Namen
-        <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
-          <input type="number" id="fszBody" min="8" max="32" step="1" style="width:70px">
-          <span style="color:var(--muted);font-size:.8rem">px</span>
-        </div>
-      </label>
-      <label style="font-size:.85rem;color:var(--muted)">&#x1F50D; Kleine Hinweistexte
-        <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
-          <input type="number" id="fszSmall" min="8" max="32" step="1" style="width:70px">
-          <span style="color:var(--muted);font-size:.8rem">px</span>
-        </div>
-      </label>
-      <label style="font-size:.85rem;color:var(--muted)">&#x1F522; Hervorgehobene Zahlen
-        <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
-          <input type="number" id="fszValue" min="8" max="32" step="1" style="width:70px">
-          <span style="color:var(--muted);font-size:.8rem">px</span>
-        </div>
-      </label>
-      <label style="font-size:.85rem;color:var(--muted)">&#x1F522; Ziffernblock-Tasten
-        <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
-          <input type="number" id="fszKey" min="8" max="32" step="1" style="width:70px">
-          <span style="color:var(--muted);font-size:.8rem">px</span>
-        </div>
-      </label>
-      <label style="font-size:.85rem;color:var(--muted)">&#x1F518; Button-Beschriftungen
-        <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
-          <input type="number" id="fszBtn" min="8" max="32" step="1" style="width:70px">
-          <span style="color:var(--muted);font-size:.8rem">px</span>
-        </div>
-      </label>
-    </div>
-    <button class="btn btn-ok" style="width:fit-content;margin-top:.75rem" onclick="saveFontSizes()">Speichern</button>
-    <div id="fszMsg" style="margin-top:.75rem;font-size:.85rem"></div>
-    <hr style="border-color:var(--border);margin:1.5rem 0">
     <h2 style="margin-bottom:1rem">Diagnose</h2>
     <div style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:center">
       <button class="btn" onclick="testBuzzer()">&#x1F50A; Buzzer testen</button>
@@ -733,6 +629,7 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
   <button id="dt-layout"   class="dtab" onclick="switchDTab('layout',this)">&#x1F4D0; Layout</button>
   <button id="dt-behavior" class="dtab" onclick="switchDTab('behavior',this)">&#x2699;&#xFE0F; Verhalten</button>
   <button id="dt-portex"   class="dtab" onclick="switchDTab('portex',this)">&#x1F4E4; Export/Import</button>
+  <button id="dt-fonts"    class="dtab" onclick="switchDTab('fonts',this)">&#x1F524; Schriften</button>
 </div>
 
 <div style="display:flex;gap:2rem;flex-wrap:wrap;align-items:flex-start">
@@ -848,6 +745,50 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
     style="width:100%;font-size:.72rem;font-family:monospace;background:var(--surface);color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:.5rem;resize:vertical"></textarea>
 </div>
 
+<div id="dsec-fonts" hidden>
+  <p style="font-size:.8rem;color:var(--muted);margin-bottom:.75rem">Pixelh&ouml;he der Schrift am Ger&auml;t (8&thinsp;/&thinsp;16&thinsp;/&thinsp;24&thinsp;/&thinsp;32&thinsp;px). &Auml;nderungen wirken sofort ohne Neustart.</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;max-width:440px">
+    <label style="font-size:.85rem;color:var(--muted)">&#x1F4D1; &Uuml;berschriften / Titel
+      <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
+        <input type="number" id="fszTitle" min="8" max="32" step="1" style="width:70px">
+        <span style="color:var(--muted);font-size:.8rem">px</span>
+      </div>
+    </label>
+    <label style="font-size:.85rem;color:var(--muted)">&#x1F4DD; Haupttext / Namen
+      <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
+        <input type="number" id="fszBody" min="8" max="32" step="1" style="width:70px">
+        <span style="color:var(--muted);font-size:.8rem">px</span>
+      </div>
+    </label>
+    <label style="font-size:.85rem;color:var(--muted)">&#x1F50D; Kleine Hinweistexte
+      <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
+        <input type="number" id="fszSmall" min="8" max="32" step="1" style="width:70px">
+        <span style="color:var(--muted);font-size:.8rem">px</span>
+      </div>
+    </label>
+    <label style="font-size:.85rem;color:var(--muted)">&#x1F522; Hervorgehobene Zahlen
+      <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
+        <input type="number" id="fszValue" min="8" max="32" step="1" style="width:70px">
+        <span style="color:var(--muted);font-size:.8rem">px</span>
+      </div>
+    </label>
+    <label style="font-size:.85rem;color:var(--muted)">&#x1F522; Ziffernblock-Tasten
+      <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
+        <input type="number" id="fszKey" min="8" max="32" step="1" style="width:70px">
+        <span style="color:var(--muted);font-size:.8rem">px</span>
+      </div>
+    </label>
+    <label style="font-size:.85rem;color:var(--muted)">&#x1F518; Button-Beschriftungen
+      <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem">
+        <input type="number" id="fszBtn" min="8" max="32" step="1" style="width:70px">
+        <span style="color:var(--muted);font-size:.8rem">px</span>
+      </div>
+    </label>
+  </div>
+  <button class="btn btn-ok" style="width:fit-content;margin-top:.75rem" onclick="saveFontSizes()">&#x1F4BE; Speichern</button>
+  <div id="fszMsg" style="margin-top:.75rem;font-size:.85rem"></div>
+</div>
+
 <div style="margin-top:1.5rem;display:flex;gap:.75rem;flex-wrap:wrap;padding-top:1rem;border-top:1px solid var(--border)">
   <button class="btn btn-ok" onclick="saveDesign()">&#x1F4BE; Speichern &amp; Anwenden</button>
   <button class="btn-ghost" onclick="loadDesign()">&#x21BA; Zur&uuml;cksetzen</button>
@@ -885,9 +826,9 @@ function switchTab(id,btn){
   if(id==='mqtt'){loadMqtt();loadTelegram();}
   if(id==='shop')loadShop();
   if(id==='stats')loadStats();
-  if(id==='system'){loadOtaPw();loadDevConfig();loadScannerCfg();loadPrinterCfg();loadCalibStatus();loadFontSizes();loadLabelLayout();}
+  if(id==='system'){loadOtaPw();loadDevConfig();loadScannerCfg();loadPrinterCfg();loadLabelLayout();}
   if(id==='scanlogs')loadScanlogs();
-  if(id==='design')loadDesign();
+  if(id==='design'){loadDesign();}
 }
 async function loadWifi(){
   try{const r=await fetch('/api/wifi-config');const d=await r.json();
@@ -1300,77 +1241,6 @@ async function doTestPrint(){
 }
 
 
-
-// ── Drucker-Kalibrierung ──────────────────────────────────────
-let _calibFeedTotal=0;
-
-async function calibPrintMark(){
-  const r=await fetch('/api/calib/print-mark',{method:'POST'});
-  if(!r.ok)return;
-  _calibFeedTotal=0;
-  document.getElementById('calibFeedTotal').textContent='0';
-  document.getElementById('calibDeadGroup').style.display='';
-  document.getElementById('calibDeadResult').textContent='';
-}
-async function calibFeed(mm){
-  const r=await fetch('/api/calib/feed',{method:'POST',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify({mm})});
-  if(!r.ok)return;
-  _calibFeedTotal+=mm;
-  document.getElementById('calibFeedTotal').textContent=_calibFeedTotal;
-}
-async function calibSaveDead(){
-  await fetch('/api/calib/save-dead',{method:'POST',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify({mm:_calibFeedTotal})});
-  document.getElementById('calibDeadGroup').style.display='none';
-  document.getElementById('calibDeadResult').textContent='✓ Totbereich '+_calibFeedTotal+' mm gespeichert.';
-  loadCalibStatus();
-}
-async function calibPrintScale(){
-  const mm=parseInt(document.getElementById('calibTargetMm').value)||50;
-  const r=await fetch('/api/calib/print-scale',{method:'POST',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify({mm})});
-  if(!r.ok)return;
-  document.getElementById('calibScaleGroup').style.display='';
-  document.getElementById('calibMeasuredMm').value='';
-  document.getElementById('calibScaleResult').textContent='';
-}
-async function calibSaveScale(){
-  const target=parseFloat(document.getElementById('calibTargetMm').value)||50;
-  const measured=parseFloat(document.getElementById('calibMeasuredMm').value);
-  if(!measured||measured<=0){
-    document.getElementById('calibScaleResult').style.color='var(--danger)';
-    document.getElementById('calibScaleResult').textContent='Bitte gemessenen Wert eingeben.';
-    return;
-  }
-  const r=await fetch('/api/calib/save-scale',{method:'POST',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify({target,measured})});
-  const d=await r.json();
-  document.getElementById('calibScaleGroup').style.display='none';
-  const pct=((d.scale_factor||1)*100).toFixed(2);
-  document.getElementById('calibScaleResult').style.color='var(--ok)';
-  document.getElementById('calibScaleResult').textContent=
-    '✓ Skalierung '+pct+'% gespeichert ('+target+'→'+measured+' mm)';
-  loadCalibStatus();
-}
-async function calibReset(){
-  await fetch('/api/calib/reset',{method:'POST'});
-  document.getElementById('calibDeadResult').textContent='';
-  document.getElementById('calibScaleResult').textContent='';
-  loadCalibStatus();
-}
-async function loadCalibStatus(){
-  try{
-    const d=await fetch('/api/calib/status').then(r=>r.json());
-    const pct=((d.scale_factor||1)*100).toFixed(2);
-    const corr=d.scale_factor&&d.scale_factor!==1
-      ? (d.scale_factor>1?'(+'+((d.scale_factor-1)*100).toFixed(1)+'%)':'('+((d.scale_factor-1)*100).toFixed(1)+'%)')
-      : '';
-    document.getElementById('calibStatusDiv').innerHTML=
-      'Totbereich: <b>'+(d.dead_zone_mm||0)+'</b> mm<br>'+
-      'Skalierung: <b>'+pct+'%</b> '+corr;
-  }catch(e){}
-}
 
 // ── Label-Editor (2D, x_mm/y_mm absolut) ─────────────────────
 const _LE_PX=4; // px pro mm
@@ -1853,13 +1723,14 @@ const _themes={
 let _uiVals={};
 let _previewMode='cats';
 function switchDTab(id,btn){
-  ['themes','colors','layout','behavior','portex'].forEach(s=>{
+  ['themes','colors','layout','behavior','portex','fonts'].forEach(s=>{
     const el=document.getElementById('dsec-'+s);
     if(el)el.hidden=(s!==id);
   });
   document.querySelectorAll('.dtab').forEach(b=>b.classList.remove('dtab-active'));
   if(btn)btn.classList.add('dtab-active');
   if(id==='portex')_refreshExportPreview();
+  if(id==='fonts')loadFontSizes();
 }
 function setPreviewMode(mode,btn){
   _previewMode=mode;
@@ -3056,85 +2927,6 @@ void WebInterface::begin() {
     _server.on("/api/printer-test", HTTP_POST, [](AsyncWebServerRequest *req) {
         extern ThermalPrinter printer;
         printer.testPrint();
-        req->send(200, "application/json", "{\"ok\":true}");
-    });
-
-    // ── Kalibrierung ─────────────────────────────────────────
-    _server.on("/api/calib/status", HTTP_GET, [](AsyncWebServerRequest *req) {
-        JsonDocument doc;
-        doc["dead_zone_mm"] = ThermalPrinter::loadDeadZoneMm();
-        doc["scale_factor"] = ThermalPrinter::loadScaleFactor();
-        String out; serializeJson(doc, out);
-        req->send(200, "application/json", out);
-    });
-    _server.on("/api/calib/print-mark", HTTP_POST, [](AsyncWebServerRequest *req) {
-        extern ThermalPrinter printer;
-        printer.printCalibMark();
-        req->send(200, "application/json", "{\"ok\":true}");
-    });
-    _server.on("/api/calib/feed", HTTP_POST,
-        [](AsyncWebServerRequest *req){}, nullptr,
-        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t, size_t) {
-            extern ThermalPrinter printer;
-            JsonDocument doc;
-            if (deserializeJson(doc, (const char*)data, len)) {
-                req->send(400, "application/json", "{\"ok\":false}"); return;
-            }
-            uint16_t mm = doc["mm"] | 1;
-            printer.rawFeedMm(mm);
-            req->send(200, "application/json", "{\"ok\":true}");
-        }
-    );
-    _server.on("/api/calib/save-dead", HTTP_POST,
-        [](AsyncWebServerRequest *req){}, nullptr,
-        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t, size_t) {
-            JsonDocument doc;
-            if (deserializeJson(doc, (const char*)data, len)) {
-                req->send(400, "application/json", "{\"ok\":false}"); return;
-            }
-            ThermalPrinter::saveDeadZoneMm(doc["mm"] | (uint16_t)0);
-            req->send(200, "application/json", "{\"ok\":true}");
-        }
-    );
-    _server.on("/api/calib/print-scale", HTTP_POST,
-        [](AsyncWebServerRequest *req){}, nullptr,
-        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t, size_t) {
-            extern ThermalPrinter printer;
-            JsonDocument doc;
-            if (deserializeJson(doc, (const char*)data, len)) {
-                req->send(400, "application/json", "{\"ok\":false}"); return;
-            }
-            uint16_t mm = doc["mm"] | (uint16_t)50;
-            printer.printScaleTest(mm);
-            req->send(200, "application/json", "{\"ok\":true}");
-        }
-    );
-    _server.on("/api/calib/save-scale", HTTP_POST,
-        [](AsyncWebServerRequest *req){}, nullptr,
-        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t, size_t) {
-            extern ThermalPrinter printer;
-            JsonDocument doc;
-            if (deserializeJson(doc, (const char*)data, len)) {
-                req->send(400, "application/json", "{\"ok\":false}"); return;
-            }
-            float target   = doc["target"]   | 50.0f;
-            float measured = doc["measured"]  | 50.0f;
-            if (measured <= 0) measured = target;
-            float scale = target / measured;
-            ThermalPrinter::saveScaleFactor(scale);
-            printer.reloadCalib();
-            JsonDocument resp;
-            resp["ok"] = true;
-            resp["scale_factor"] = scale;
-            String out; serializeJson(resp, out);
-            req->send(200, "application/json", out);
-        }
-    );
-    _server.on("/api/calib/reset", HTTP_POST, [](AsyncWebServerRequest *req) {
-        extern ThermalPrinter printer;
-        ThermalPrinter::saveScaleFactor(1.0f);
-        ThermalPrinter::saveDeadZoneMm(0);
-        printer.reloadCalib();
         req->send(200, "application/json", "{\"ok\":true}");
     });
 
