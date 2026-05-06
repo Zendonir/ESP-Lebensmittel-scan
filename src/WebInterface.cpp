@@ -509,27 +509,27 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
       <div style="display:flex;gap:1rem;flex-wrap:wrap">
         <label style="font-size:.85rem;color:var(--muted)">Etikettl&auml;nge
           <div style="display:flex;align-items:center;gap:.4rem;margin-top:.3rem">
-            <input type="number" id="printerLabelMm" min="1" max="300" step="1" style="width:70px">
+            <input type="number" id="printerLabelMm" min="1" max="300" step="0.1" style="width:75px">
             <span style="color:var(--muted);font-size:.85rem">mm</span>
           </div>
         </label>
-        <label style="font-size:.85rem;color:var(--muted)">Abstand zwischen Etiketten
+        <label style="font-size:.85rem;color:var(--muted)">Nachlauf&nbsp;<span style="font-size:.75rem">(Abreiß-Puffer nach Etikett)</span>
           <div style="display:flex;align-items:center;gap:.4rem;margin-top:.3rem">
-            <input type="number" id="printerGapMm" min="0" max="50" step="1" style="width:70px">
+            <input type="number" id="printerGapMm" min="0" max="100" step="0.1" style="width:75px">
             <span style="color:var(--muted);font-size:.85rem">mm</span>
           </div>
         </label>
       </div>
-      <span style="font-size:.75rem;color:var(--muted)">Der Vorschub nach dem Inhalt wird automatisch berechnet (Pitch&nbsp;=&nbsp;L&auml;nge&nbsp;+&nbsp;Abstand).</span>
+      <span style="font-size:.75rem;color:var(--muted)">Etikettl&auml;nge = physische H&ouml;he des Etiketts. Nachlauf = extra Papier zum Abreis&szlig;en danach.</span>
       <label style="font-size:.85rem;color:var(--muted)">R&uuml;cklauf vor Druck&nbsp;<span style="font-size:.75rem">(ESC&nbsp;K, falls unterst&uuml;tzt)</span>
         <div style="display:flex;align-items:center;gap:.4rem;margin-top:.3rem">
-          <input type="number" id="printerBackfeedMm" min="0" max="30" step="1" style="width:70px">
+          <input type="number" id="printerBackfeedMm" min="0" max="30" step="0.1" style="width:75px">
           <span style="color:var(--muted);font-size:.85rem">mm</span>
         </div>
       </label>
-      <label style="font-size:.85rem;color:var(--muted)">Vorschub-Versatz&nbsp;<span style="font-size:.75rem">(negativ = Inhalt h&ouml;her, falls kein R&uuml;cklauf)</span>
+      <label style="font-size:.85rem;color:var(--muted)">Feinabstimmung&nbsp;<span style="font-size:.75rem">(+/&minus; korrigiert Inhalt-Startposition)</span>
         <div style="display:flex;align-items:center;gap:.4rem;margin-top:.3rem">
-          <input type="number" id="printerFeedOffsetMm" min="-20" max="20" step="1" style="width:70px">
+          <input type="number" id="printerFeedOffsetMm" min="-20" max="20" step="0.1" style="width:75px">
           <span style="color:var(--muted);font-size:.85rem">mm</span>
         </div>
       </label>
@@ -1280,15 +1280,15 @@ async function loadPrinterCfg(){
 async function savePrinterCfg(){
   const msg=document.getElementById('printerMsg');
   const baud        =parseInt(document.getElementById('printerBaud').value)||9600;
-  const label_mm    =parseInt(document.getElementById('printerLabelMm').value)||29;
-  const gap_mm      =parseInt(document.getElementById('printerGapMm').value)||6;
-  const backfeed_mm    =parseInt(document.getElementById('printerBackfeedMm').value)||0;
-  const feed_offset_mm =parseInt(document.getElementById('printerFeedOffsetMm').value)||0;
+  const label_mm    =parseFloat(document.getElementById('printerLabelMm').value)||29;
+  const gap_mm      =parseFloat(document.getElementById('printerGapMm').value)||10;
+  const backfeed_mm    =parseFloat(document.getElementById('printerBackfeedMm').value)||0;
+  const feed_offset_mm =parseFloat(document.getElementById('printerFeedOffsetMm').value)||0;
   const use_cut        =document.getElementById('printerUseCut').checked;
   msg.style.color='var(--muted)';msg.textContent='Speichere…';
   const r=await fetch('/api/printer-config',{method:'POST',
     headers:{'Content-Type':'application/json'},body:JSON.stringify({baud,label_mm,gap_mm,backfeed_mm,feed_offset_mm,use_cut})});
-  if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert. Pitch: '+(label_mm+gap_mm)+' mm';}
+  if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert. Gesamt: '+(label_mm+gap_mm).toFixed(1)+' mm';}
   else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
 }
 async function doTestPrint(){
@@ -1386,8 +1386,8 @@ let _selectedId=null;
 let _drag=null;
 
 function renderLabelPreview(){
-  const labelMm=parseInt(document.getElementById('printerLabelMm')?.value||29);
-  const gapMm=parseInt(document.getElementById('printerGapMm')?.value||6);
+  const labelMm=parseFloat(document.getElementById('printerLabelMm')?.value||29);
+  const gapMm=parseFloat(document.getElementById('printerGapMm')?.value||10);
   const W=Math.round(57*_LE_PX), H=Math.round(labelMm*_LE_PX);
   const cv=document.getElementById('labelCanvas');
   const hint=document.getElementById('labelSizeHint');
@@ -3032,21 +3032,21 @@ void WebInterface::begin() {
             if (!doc["baud"].isNull())
                 printer.restart(doc["baud"].as<uint32_t>());
             if (!doc["label_mm"].isNull()) {
-                uint16_t mm = doc["label_mm"].as<uint16_t>();
+                float mm = doc["label_mm"].as<float>();
                 ThermalPrinter::saveLabelMm(mm);
-                Serial.printf("[Printer] saveLabelMm(%d) → verify=%d\n",
+                Serial.printf("[Printer] saveLabelMm(%.1f) → verify=%.1f\n",
                               mm, ThermalPrinter::loadLabelMm());
             }
             if (!doc["gap_mm"].isNull()) {
-                uint16_t mm = doc["gap_mm"].as<uint16_t>();
+                float mm = doc["gap_mm"].as<float>();
                 ThermalPrinter::saveGapMm(mm);
-                Serial.printf("[Printer] saveGapMm(%d) → verify=%d\n",
+                Serial.printf("[Printer] saveGapMm(%.1f) → verify=%.1f\n",
                               mm, ThermalPrinter::loadGapMm());
             }
             if (!doc["backfeed_mm"].isNull())
-                ThermalPrinter::saveBackfeedMm(doc["backfeed_mm"].as<uint16_t>());
+                ThermalPrinter::saveBackfeedMm(doc["backfeed_mm"].as<float>());
             if (!doc["feed_offset_mm"].isNull())
-                ThermalPrinter::saveFeedOffsetMm(doc["feed_offset_mm"].as<int8_t>());
+                ThermalPrinter::saveFeedOffsetMm(doc["feed_offset_mm"].as<float>());
             if (!doc["use_cut"].isNull())
                 ThermalPrinter::saveUseCut(doc["use_cut"].as<bool>());
             req->send(200, "application/json", "{\"ok\":true}");
