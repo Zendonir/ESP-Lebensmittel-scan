@@ -12,16 +12,16 @@ public:
     // Drucker-Konfiguration (NVS "printer")
     static uint32_t loadBaud();
     static void     saveBaud(uint32_t baud);
-    static uint16_t loadLabelMm();
-    static void     saveLabelMm(uint16_t mm);
-    static uint16_t loadGapMm();
-    static void     saveGapMm(uint16_t mm);
+    static float    loadLabelMm();
+    static void     saveLabelMm(float mm);
+    static float    loadGapMm();       // "Nachlauf" nach Etikett für Abreiß-Puffer
+    static void     saveGapMm(float mm);
     static bool     loadUseCut();
     static void     saveUseCut(bool cut);
-    static uint16_t loadBackfeedMm();
-    static void     saveBackfeedMm(uint16_t mm);
-    static int8_t   loadFeedOffsetMm();
-    static void     saveFeedOffsetMm(int8_t mm);
+    static float    loadBackfeedMm();
+    static void     saveBackfeedMm(float mm);
+    static float    loadFeedOffsetMm();
+    static void     saveFeedOffsetMm(float mm);
 
     // Kalibrierung (NVS "calib")
     static float    loadScaleFactor();

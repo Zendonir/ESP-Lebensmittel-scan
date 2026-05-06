@@ -37,9 +37,9 @@ void ThermalPrinter::testPrint() {
     if (backfeedMm > 0) backfeedDots(backfeedMm * DOTS_PER_MM);
     init();
 
-    uint16_t labelMm  = loadLabelMm();
-    uint16_t gapMm    = loadGapMm();
-    int8_t   offsetMm = loadFeedOffsetMm();
+    float labelMm  = loadLabelMm();
+    float nachlMm  = loadGapMm();
+    float offsetMm = loadFeedOffsetMm();
 
     // Obere Rahmenlinie = Etiketten-Oberkante
     align(0);
@@ -47,16 +47,16 @@ void ThermalPrinter::testPrint() {
 
     // Info zentriert
     align(1);
-    printLine("Etikett: " + String(labelMm) + " mm");
-    printLine("Abstand: " + String(gapMm)   + " mm");
-    if (offsetMm != 0)
-        printLine("Offset:  " + String(offsetMm) + " mm");
-    if (backfeedMm > 0)
-        printLine("Rücklauf:" + String(backfeedMm) + " mm");
+    printLine("Etikett: " + String(labelMm, 1) + " mm");
+    printLine("Nachlauf:" + String(nachlMm, 1) + " mm");
+    if (offsetMm != 0.0f)
+        printLine("Offset:  " + String(offsetMm, 1) + " mm");
+    if (backfeedMm > 0.0f)
+        printLine("Rücklauf:" + String(backfeedMm, 1) + " mm");
     align(0);
 
-    // Fülle Etikett bis zur unteren Rahmenlinie
-    uint16_t labelDots = labelMm * DOTS_PER_MM;
+    // Fülle Etikett bis zur unteren Rahmenlinie (exakt labelMm)
+    uint16_t labelDots = (uint16_t)(labelMm * DOTS_PER_MM + 0.5f);
     if (labelDots > _contentDots + LINE_DOTS)
         feedDots(labelDots - _contentDots - LINE_DOTS);
 
@@ -78,21 +78,21 @@ void ThermalPrinter::saveBaud(uint32_t baud) {
     Preferences p; p.begin("printer", false);
     p.putUInt("baud", baud); p.end();
 }
-uint16_t ThermalPrinter::loadLabelMm() {
+float ThermalPrinter::loadLabelMm() {
     Preferences p; p.begin("printer", false);
-    uint16_t v = p.getUShort("label_mm", 29); p.end(); return v;
+    float v = p.getFloat("label_mm", 29.0f); p.end(); return v;
 }
-void ThermalPrinter::saveLabelMm(uint16_t mm) {
+void ThermalPrinter::saveLabelMm(float mm) {
     Preferences p; p.begin("printer", false);
-    p.putUShort("label_mm", mm); p.end();
+    p.putFloat("label_mm", mm); p.end();
 }
-uint16_t ThermalPrinter::loadGapMm() {
+float ThermalPrinter::loadGapMm() {
     Preferences p; p.begin("printer", false);
-    uint16_t v = p.getUShort("gap_mm", 6); p.end(); return v;
+    float v = p.getFloat("gap_mm", 10.0f); p.end(); return v;
 }
-void ThermalPrinter::saveGapMm(uint16_t mm) {
+void ThermalPrinter::saveGapMm(float mm) {
     Preferences p; p.begin("printer", false);
-    p.putUShort("gap_mm", mm); p.end();
+    p.putFloat("gap_mm", mm); p.end();
 }
 bool ThermalPrinter::loadUseCut() {
     Preferences p; p.begin("printer", false);
@@ -102,21 +102,21 @@ void ThermalPrinter::saveUseCut(bool cut) {
     Preferences p; p.begin("printer", false);
     p.putBool("use_cut", cut); p.end();
 }
-uint16_t ThermalPrinter::loadBackfeedMm() {
+float ThermalPrinter::loadBackfeedMm() {
     Preferences p; p.begin("printer", false);
-    uint16_t v = p.getUShort("backfeed_mm", 0); p.end(); return v;
+    float v = p.getFloat("backfeed_mm", 0.0f); p.end(); return v;
 }
-void ThermalPrinter::saveBackfeedMm(uint16_t mm) {
+void ThermalPrinter::saveBackfeedMm(float mm) {
     Preferences p; p.begin("printer", false);
-    p.putUShort("backfeed_mm", mm); p.end();
+    p.putFloat("backfeed_mm", mm); p.end();
 }
-int8_t ThermalPrinter::loadFeedOffsetMm() {
+float ThermalPrinter::loadFeedOffsetMm() {
     Preferences p; p.begin("printer", false);
-    int8_t v = (int8_t)p.getChar("feed_off_mm", 0); p.end(); return v;
+    float v = p.getFloat("feed_off_mm", 0.0f); p.end(); return v;
 }
-void ThermalPrinter::saveFeedOffsetMm(int8_t mm) {
+void ThermalPrinter::saveFeedOffsetMm(float mm) {
     Preferences p; p.begin("printer", false);
-    p.putChar("feed_off_mm", mm); p.end();
+    p.putFloat("feed_off_mm", mm); p.end();
 }
 
 // ── Kalibrierung (NVS "calib") ────────────────────────────────
@@ -268,14 +268,13 @@ void ThermalPrinter::qrCode(const String &data, uint8_t moduleSize) {
 }
 
 void ThermalPrinter::feedToNextLabel() {
-    uint16_t labelDots  = loadLabelMm()    * DOTS_PER_MM;
-    uint16_t gapDots    = loadGapMm()      * DOTS_PER_MM;
-    int16_t  offsetDots = loadFeedOffsetMm() * (int16_t)DOTS_PER_MM;
-    int16_t  remaining  = (int16_t)(labelDots + gapDots) - (int16_t)_contentDots + offsetDots;
-    uint16_t feed       = (remaining > (int16_t)gapDots) ? (uint16_t)remaining : gapDots;
-    Serial.printf("[Printer] contentDots=%d labelMm=%d gapMm=%d offsetMm=%d feedDots=%d\n",
-                  _contentDots, loadLabelMm(), loadGapMm(), loadFeedOffsetMm(), feed);
-    if (feed > 0) feedDots(feed);
+    // Einfache Formel: Etikett + Nachlauf + Versatz → Zielposition
+    float totalMm = loadLabelMm() + loadGapMm() + loadFeedOffsetMm();
+    uint16_t targetDots = (uint16_t)(totalMm * DOTS_PER_MM + 0.5f);
+    Serial.printf("[Printer] contentDots=%d totalMm=%.1f targetDots=%d\n",
+                  _contentDots, totalMm, targetDots);
+    if (targetDots > _contentDots)
+        feedDots(targetDots - _contentDots);
 }
 
 // ── Label ─────────────────────────────────────────────────────
