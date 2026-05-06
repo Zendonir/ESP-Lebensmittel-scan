@@ -521,6 +521,12 @@ static const char INDEX_HTML[] = R"RAW(<!DOCTYPE html>
         </label>
       </div>
       <span style="font-size:.75rem;color:var(--muted)">Der Vorschub nach dem Inhalt wird automatisch berechnet (Pitch&nbsp;=&nbsp;L&auml;nge&nbsp;+&nbsp;Abstand).</span>
+      <label style="font-size:.85rem;color:var(--muted)">R&uuml;cklauf vor Druck (0&nbsp;=&nbsp;aus)
+        <div style="display:flex;align-items:center;gap:.4rem;margin-top:.3rem">
+          <input type="number" id="printerBackfeedMm" min="0" max="30" step="1" style="width:70px">
+          <span style="color:var(--muted);font-size:.85rem">mm &nbsp;<span style="font-size:.75rem">(ESC&nbsp;K)</span></span>
+        </div>
+      </label>
       <label style="font-size:.85rem;color:var(--muted);display:flex;align-items:center;gap:.5rem;margin-top:.25rem">
         <input type="checkbox" id="printerUseCut" style="width:16px;height:16px">
         Automatisch schneiden (nur wenn Drucker Messer hat)
@@ -1150,20 +1156,22 @@ async function startBLEScan(){
 // ── Drucker ───────────────────────────────────────────────────
 async function loadPrinterCfg(){
   try{const d=await fetch('/api/printer-config').then(r=>r.json());
-    const b=document.getElementById('printerBaud');    if(b)b.value=String(d.baud||9600);
-    const l=document.getElementById('printerLabelMm'); if(l)l.value=d.label_mm||29;
-    const g=document.getElementById('printerGapMm');   if(g)g.value=d.gap_mm||6;
-    const c=document.getElementById('printerUseCut');  if(c)c.checked=d.use_cut!==false;}catch(e){}
+    const b=document.getElementById('printerBaud');       if(b)b.value=String(d.baud||9600);
+    const l=document.getElementById('printerLabelMm');    if(l)l.value=d.label_mm||29;
+    const g=document.getElementById('printerGapMm');      if(g)g.value=d.gap_mm||6;
+    const bf=document.getElementById('printerBackfeedMm');if(bf)bf.value=d.backfeed_mm||0;
+    const c=document.getElementById('printerUseCut');     if(c)c.checked=d.use_cut===true;}catch(e){}
 }
 async function savePrinterCfg(){
   const msg=document.getElementById('printerMsg');
-  const baud     =parseInt(document.getElementById('printerBaud').value)||9600;
-  const label_mm =parseInt(document.getElementById('printerLabelMm').value)||29;
-  const gap_mm   =parseInt(document.getElementById('printerGapMm').value)||6;
-  const use_cut  =document.getElementById('printerUseCut').checked;
+  const baud        =parseInt(document.getElementById('printerBaud').value)||9600;
+  const label_mm    =parseInt(document.getElementById('printerLabelMm').value)||29;
+  const gap_mm      =parseInt(document.getElementById('printerGapMm').value)||6;
+  const backfeed_mm =parseInt(document.getElementById('printerBackfeedMm').value)||0;
+  const use_cut     =document.getElementById('printerUseCut').checked;
   msg.style.color='var(--muted)';msg.textContent='Speichere…';
   const r=await fetch('/api/printer-config',{method:'POST',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify({baud,label_mm,gap_mm,use_cut})});
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({baud,label_mm,gap_mm,backfeed_mm,use_cut})});
   if(r.ok){msg.style.color='var(--ok)';msg.textContent='✓ Gespeichert. Pitch: '+(label_mm+gap_mm)+' mm';}
   else{msg.style.color='var(--danger)';msg.textContent='Fehler.';}
 }
@@ -2617,10 +2625,11 @@ void WebInterface::begin() {
 
     _server.on("/api/printer-config", HTTP_GET, [](AsyncWebServerRequest *req) {
         JsonDocument doc;
-        doc["baud"]     = ThermalPrinter::loadBaud();
-        doc["label_mm"] = ThermalPrinter::loadLabelMm();
-        doc["gap_mm"]   = ThermalPrinter::loadGapMm();
-        doc["use_cut"]  = ThermalPrinter::loadUseCut();
+        doc["baud"]        = ThermalPrinter::loadBaud();
+        doc["label_mm"]    = ThermalPrinter::loadLabelMm();
+        doc["gap_mm"]      = ThermalPrinter::loadGapMm();
+        doc["backfeed_mm"] = ThermalPrinter::loadBackfeedMm();
+        doc["use_cut"]     = ThermalPrinter::loadUseCut();
         String out; serializeJson(doc, out);
         req->send(200, "application/json", out);
     });
@@ -2648,6 +2657,8 @@ void WebInterface::begin() {
                 Serial.printf("[Printer] saveGapMm(%d) → verify=%d\n",
                               mm, ThermalPrinter::loadGapMm());
             }
+            if (!doc["backfeed_mm"].isNull())
+                ThermalPrinter::saveBackfeedMm(doc["backfeed_mm"].as<uint16_t>());
             if (!doc["use_cut"].isNull())
                 ThermalPrinter::saveUseCut(doc["use_cut"].as<bool>());
             req->send(200, "application/json", "{\"ok\":true}");

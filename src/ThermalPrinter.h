@@ -17,6 +17,8 @@ public:
     static void     saveGapMm(uint16_t mm);
     static bool     loadUseCut();
     static void     saveUseCut(bool cut);
+    static uint16_t loadBackfeedMm();
+    static void     saveBackfeedMm(uint16_t mm);
 
     void printLabel(const String &name, const String &labelCode,
                     const String &storageDate, const String &expiryDate,
@@ -33,6 +35,8 @@ private:
     void bold(bool on);
     void printLine(const String &text);
     void feedMm(uint16_t mm);
+    void feedDots(uint16_t dots);
+    void backfeedDots(uint16_t dots);
     void cut();
     void qrCode(const String &data, uint8_t moduleSize = 3);
     void feedToNextLabel();

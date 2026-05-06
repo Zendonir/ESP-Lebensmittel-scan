@@ -78,6 +78,14 @@ void ThermalPrinter::saveUseCut(bool cut) {
     Preferences p; p.begin("printer", false);
     p.putBool("use_cut", cut); p.end();
 }
+uint16_t ThermalPrinter::loadBackfeedMm() {
+    Preferences p; p.begin("printer", false);
+    uint16_t v = p.getUShort("backfeed_mm", 0); p.end(); return v;
+}
+void ThermalPrinter::saveBackfeedMm(uint16_t mm) {
+    Preferences p; p.begin("printer", false);
+    p.putUShort("backfeed_mm", mm); p.end();
+}
 
 // ── ESC/POS Hilfsbefehle ──────────────────────────────────────
 
@@ -101,15 +109,31 @@ void ThermalPrinter::printLine(const String &text) {
     _contentDots += LINE_DOTS;
 }
 
-void ThermalPrinter::feedMm(uint16_t mm) {
-    uint16_t dots = mm * DOTS_PER_MM;
-    while (dots > 0) {
-        uint8_t chunk = (dots > 255) ? 255 : (uint8_t)dots;
+void ThermalPrinter::feedDots(uint16_t dots) {
+    uint16_t rem = dots;
+    while (rem > 0) {
+        uint8_t chunk = (rem > 255) ? 255 : (uint8_t)rem;
         _serial.write(0x1B); _serial.write('J'); _serial.write(chunk);
-        dots -= chunk;
-        if (dots > 0) delay(20);
+        rem -= chunk;
+        if (rem > 0) delay(20);
     }
-    _contentDots += mm * DOTS_PER_MM;
+    _contentDots += dots;
+}
+
+void ThermalPrinter::backfeedDots(uint16_t dots) {
+    // ESC K n – Rücklauf um n Punkte (falls vom Drucker unterstützt)
+    uint16_t rem = dots;
+    while (rem > 0) {
+        uint8_t chunk = (rem > 255) ? 255 : (uint8_t)rem;
+        _serial.write(0x1B); _serial.write('K'); _serial.write(chunk);
+        rem -= chunk;
+        if (rem > 0) delay(20);
+    }
+    delay(dots / 2 + 50);   // Zeit für Motorbewegung
+}
+
+void ThermalPrinter::feedMm(uint16_t mm) {
+    feedDots(mm * DOTS_PER_MM);
 }
 
 void ThermalPrinter::cut() {
@@ -154,11 +178,10 @@ void ThermalPrinter::feedToNextLabel() {
     uint16_t labelDots = loadLabelMm() * DOTS_PER_MM;
     uint16_t gapDots   = loadGapMm()   * DOTS_PER_MM;
     int16_t  remaining = (int16_t)(labelDots + gapDots) - (int16_t)_contentDots;
-    // Mindestens Abstand vorschieben, auch wenn Inhalt das Etikett überläuft
-    uint16_t feedDots  = (remaining > (int16_t)gapDots) ? (uint16_t)remaining : gapDots;
+    uint16_t feed      = (remaining > (int16_t)gapDots) ? (uint16_t)remaining : gapDots;
     Serial.printf("[Printer] contentDots=%d labelMm=%d gapMm=%d feedDots=%d\n",
-                  _contentDots, loadLabelMm(), loadGapMm(), feedDots);
-    if (feedDots > 0) feedMm(feedDots / DOTS_PER_MM + 1);
+                  _contentDots, loadLabelMm(), loadGapMm(), feed);
+    if (feed > 0) feedDots(feed);
 }
 
 // ── Label ─────────────────────────────────────────────────────
@@ -174,6 +197,13 @@ void ThermalPrinter::feedToNextLabel() {
 void ThermalPrinter::printLabel(const String &name, const String &labelCode,
                                  const String &storageDate, const String &expiryDate,
                                  int qty) {
+    // Rücklauf vor dem Druck (falls konfiguriert und vom Drucker unterstützt)
+    uint16_t backfeedMm = loadBackfeedMm();
+    if (backfeedMm > 0) {
+        Serial.printf("[Printer] Backfeed %d mm (%d dots)\n",
+                      backfeedMm, backfeedMm * DOTS_PER_MM);
+        backfeedDots(backfeedMm * DOTS_PER_MM);
+    }
     init();
 
     // QR-Code zentriert
