@@ -379,12 +379,12 @@ void BarcodeScanner::disable() {
 // ── NVS-Konfiguration ─────────────────────────────────────────
 
 bool BarcodeScanner::loadBTMode() {
-    Preferences p; p.begin("scanner", true);
+    Preferences p; p.begin("scanner", false);
     bool bt = p.getBool("bt", false); p.end(); return bt;
 }
 
 String BarcodeScanner::loadBTName() {
-    Preferences p; p.begin("scanner", true);
+    Preferences p; p.begin("scanner", false);
     String n = p.getString("btname", ""); p.end(); return n;
 }
 
