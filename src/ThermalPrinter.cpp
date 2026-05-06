@@ -208,7 +208,9 @@ void ThermalPrinter::feedDots(uint16_t dots) {
         uint8_t chunk = (rem > 255) ? 255 : (uint8_t)rem;
         _serial.write(0x1B); _serial.write('J'); _serial.write(chunk);
         rem -= chunk;
-        if (rem > 0) delay(20);
+        _serial.flush();
+        // Motorlauf abwarten: ~8 dots/mm, ca. 70mm/s → ~1.8ms/dot + Puffer
+        delay((uint16_t)chunk * 2 + 50);
     }
     _contentDots += dots;  // logische Dots tracken (unkorrigiert)
 }
@@ -220,9 +222,9 @@ void ThermalPrinter::backfeedDots(uint16_t dots) {
         uint8_t chunk = (rem > 255) ? 255 : (uint8_t)rem;
         _serial.write(0x1B); _serial.write('K'); _serial.write(chunk);
         rem -= chunk;
-        if (rem > 0) delay(20);
+        _serial.flush();
+        delay((uint16_t)chunk * 2 + 50);
     }
-    delay(dots / 2 + 50);   // Zeit für Motorbewegung
 }
 
 void ThermalPrinter::feedMm(uint16_t mm) {
