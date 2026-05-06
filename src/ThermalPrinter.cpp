@@ -11,6 +11,7 @@ ThermalPrinter::ThermalPrinter(HardwareSerial &serial,
 
 void ThermalPrinter::begin() {
     _baud = loadBaud();
+    _scaleFactor = loadScaleFactor();
     _serial.begin(_baud, SERIAL_8N1, _rxPin, _txPin);
     delay(50);
     init();
@@ -19,6 +20,7 @@ void ThermalPrinter::begin() {
 void ThermalPrinter::restart(uint32_t baud) {
     saveBaud(baud);
     _baud = baud;
+    _scaleFactor = loadScaleFactor();
     _serial.end();
     delay(10);
     _serial.begin(_baud, SERIAL_8N1, _rxPin, _txPin);
@@ -26,23 +28,12 @@ void ThermalPrinter::restart(uint32_t baud) {
     init();
 }
 
+void ThermalPrinter::reloadCalib() {
+    _scaleFactor = loadScaleFactor();
+}
+
 void ThermalPrinter::testPrint() {
-    init();
-    align(1);
-    bold(true);
-    printLine("*** Testdruck ***");
-    bold(false);
-    align(0);
-    printLine("ESP32 Lebensmittel-Scanner");
-    printLine("Baudrate: " + String(_baud));
-    printLine("Etikett:  " + String(loadLabelMm()) + " mm");
-    printLine("Abstand:  " + String(loadGapMm()) + " mm");
-    printLine("Schnitt:  " + String(loadUseCut() ? "ja" : "nein"));
-    printLine("");
-    align(1);
-    qrCode("TEST001");
-    feedToNextLabel();
-    if (loadUseCut()) cut();
+    printLabel("Testprodukt", "TEST001", "06.05.2026", "31.12.2026", 1);
 }
 
 // ── NVS ──────────────────────────────────────────────────────
@@ -96,6 +87,64 @@ void ThermalPrinter::saveFeedOffsetMm(int8_t mm) {
     p.putChar("feed_off_mm", mm); p.end();
 }
 
+// ── Kalibrierung (NVS "calib") ────────────────────────────────
+
+float ThermalPrinter::loadScaleFactor() {
+    Preferences p; p.begin("calib", false);
+    float v = p.getFloat("scale", 1.0f); p.end(); return v;
+}
+void ThermalPrinter::saveScaleFactor(float f) {
+    Preferences p; p.begin("calib", false);
+    p.putFloat("scale", f); p.end();
+}
+uint16_t ThermalPrinter::loadDeadZoneMm() {
+    Preferences p; p.begin("calib", false);
+    uint16_t v = p.getUShort("dead_mm", 0); p.end(); return v;
+}
+void ThermalPrinter::saveDeadZoneMm(uint16_t mm) {
+    Preferences p; p.begin("calib", false);
+    p.putUShort("dead_mm", mm); p.end();
+}
+
+void ThermalPrinter::printCalibMark(const String &label) {
+    init();
+    align(1);
+    bold(true);
+    printLine("----[ " + (label.isEmpty() ? String("MARK") : label) + " ]----");
+    bold(false);
+    // 3 mm Leerraum damit der Strich gut sichtbar ist
+    feedDots(3 * DOTS_PER_MM);
+    _contentDots = 0;  // kein Label-Feed nötig
+}
+
+void ThermalPrinter::printScaleTest(uint16_t targetMm) {
+    init();
+    align(1);
+    bold(true);
+    printLine("----[ A ]----");
+    bold(false);
+    // Zielabstand vorfahren (skaliert)
+    feedDots(targetMm * DOTS_PER_MM);
+    // zweiten Strich
+    bold(true);
+    printLine("----[ B ]----");
+    bold(false);
+    feedDots(5 * DOTS_PER_MM);
+    _contentDots = 0;
+}
+
+void ThermalPrinter::rawFeedMm(uint16_t mm) {
+    // Vorschub für Kalibrierung – kein _contentDots-Tracking, keine Skalierung
+    uint16_t rem = mm * DOTS_PER_MM;
+    while (rem > 0) {
+        uint8_t chunk = (rem > 255) ? 255 : (uint8_t)rem;
+        _serial.write(0x1B); _serial.write('J'); _serial.write(chunk);
+        rem -= chunk;
+        if (rem > 0) delay(20);
+    }
+    delay(mm * 10 + 50);
+}
+
 // ── ESC/POS Hilfsbefehle ──────────────────────────────────────
 
 void ThermalPrinter::init() {
@@ -119,14 +168,17 @@ void ThermalPrinter::printLine(const String &text) {
 }
 
 void ThermalPrinter::feedDots(uint16_t dots) {
-    uint16_t rem = dots;
+    // Skalierungskorrektur anwenden (aus Kalibrierung)
+    uint16_t physical = (_scaleFactor == 1.0f) ? dots
+                        : (uint16_t)(dots * _scaleFactor + 0.5f);
+    uint16_t rem = physical;
     while (rem > 0) {
         uint8_t chunk = (rem > 255) ? 255 : (uint8_t)rem;
         _serial.write(0x1B); _serial.write('J'); _serial.write(chunk);
         rem -= chunk;
         if (rem > 0) delay(20);
     }
-    _contentDots += dots;
+    _contentDots += dots;  // logische Dots tracken (unkorrigiert)
 }
 
 void ThermalPrinter::backfeedDots(uint16_t dots) {
