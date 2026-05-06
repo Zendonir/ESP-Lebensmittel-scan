@@ -212,35 +212,37 @@ void ThermalPrinter::printLabel(const String &name, const String &labelCode,
     String layoutJson = prefs.getString("json", "{}");
     prefs.end();
 
-    uint8_t alignCode = 1;   // center
-    uint8_t fontSize  = 2;   // 1=normal 2=double 3=triple
-
-    struct Elem { char id[8]; uint8_t y_pct; bool visible; };
+    struct Elem {
+        char  id[8];
+        float x_mm;   // horizontal start
+        float y_mm;   // vertical start (from top of label)
+        float size_mm; // QR: physical size; Text: ignored (w_mm)
+        float h_mm;    // Text: height → determines font multiplier
+        bool  visible;
+    };
     Elem elems[5] = {
-        {"qr",      5,  true},
-        {"name",    52, true},
-        {"storage", 63, true},
-        {"expiry",  74, true},
-        {"qty",     85, false},
+        {"qr",      23.0f,  2.0f, 11.0f,  0.0f, true},
+        {"name",     0.0f, 14.0f,  0.0f,  5.0f, true},
+        {"storage",  0.0f, 20.0f,  0.0f,  4.0f, true},
+        {"expiry",   0.0f, 25.0f,  0.0f,  4.0f, true},
+        {"qty",      0.0f, 30.0f,  0.0f,  4.0f, false},
     };
 
     JsonDocument doc;
     if (!deserializeJson(doc, layoutJson)) {
-        const char* al = doc["align"] | "center";
-        if      (strcmp(al, "left")  == 0) alignCode = 0;
-        else if (strcmp(al, "right") == 0) alignCode = 2;
-        fontSize = (uint8_t)(doc["fontSize"] | 2);
-        if (fontSize < 1) fontSize = 1;
-        if (fontSize > 3) fontSize = 3;
-
         JsonArray arr = doc["elements"];
         if (arr) {
-            for (JsonObject el : arr) {
-                const char* id = el["id"] | "";
+            for (JsonObject jel : arr) {
+                const char* id = jel["id"] | "";
                 for (auto& e : elems) {
                     if (strncmp(e.id, id, 7) == 0) {
-                        e.y_pct  = (uint8_t)(el["y_pct"]  | (int)e.y_pct);
-                        e.visible = el["visible"] | e.visible;
+                        e.x_mm    = jel["x_mm"]    | e.x_mm;
+                        e.y_mm    = jel["y_mm"]    | e.y_mm;
+                        e.visible = jel["visible"] | e.visible;
+                        if (strcmp(e.id, "qr") == 0)
+                            e.size_mm = jel["size_mm"] | e.size_mm;
+                        else
+                            e.h_mm = jel["h_mm"] | e.h_mm;
                         break;
                     }
                 }
@@ -248,59 +250,57 @@ void ThermalPrinter::printLabel(const String &name, const String &labelCode,
         }
     }
 
-    // Sort by y_pct ascending
+    // Sort by y_mm ascending (thermal printer prints top-to-bottom)
     for (int i = 0; i < 4; i++)
         for (int j = 0; j < 4 - i; j++)
-            if (elems[j].y_pct > elems[j+1].y_pct) { Elem t = elems[j]; elems[j] = elems[j+1]; elems[j+1] = t; }
+            if (elems[j].y_mm > elems[j+1].y_mm) { Elem t = elems[j]; elems[j] = elems[j+1]; elems[j+1] = t; }
 
-    // Set global font size (GS ! n)
-    uint8_t gsn = 0x00;
-    if (fontSize == 2) gsn = 0x11;
-    else if (fontSize == 3) gsn = 0x22;
-    _serial.write(0x1D); _serial.write('!'); _serial.write(gsn);
-    uint16_t lineDots = LINE_DOTS * fontSize;
-
-    uint16_t labelDots = loadLabelMm() * DOTS_PER_MM;
+    // Left-align base setting
+    align(0);
 
     for (auto& el : elems) {
         if (!el.visible) continue;
 
-        uint16_t targetDots = (uint32_t)el.y_pct * labelDots / 100;
+        uint16_t targetDots = (uint16_t)(el.y_mm * DOTS_PER_MM);
         if (targetDots > _contentDots)
             feedDots(targetDots - _contentDots);
 
+        // Set absolute horizontal position (ESC $ nL nH)
+        uint16_t xDots = (uint16_t)(el.x_mm * DOTS_PER_MM);
+        _serial.write(0x1B); _serial.write('$');
+        _serial.write((uint8_t)(xDots & 0xFF)); _serial.write((uint8_t)(xDots >> 8));
+
         if (strncmp(el.id, "qr", 7) == 0) {
-            align(1);
-            uint8_t modSize = (fontSize <= 2) ? 3 : 4;
+            // size_mm → module size: 29 modules (incl. quiet zone) × modSize dots = size
+            uint8_t modSize = (uint8_t)roundf(el.size_mm * DOTS_PER_MM / 29.0f);
+            if (modSize < 1) modSize = 1;
+            if (modSize > 5) modSize = 5;
             qrCode(labelCode, modSize);
             _serial.write('\n'); _contentDots += 8;
-        } else if (strncmp(el.id, "name", 7) == 0) {
-            align(alignCode);
-            bold(true);
-            String n = name.length() > 18 ? name.substring(0, 18) : name;
-            printLine(n);
-            bold(false);
-            _contentDots += lineDots - LINE_DOTS;
-        } else if (strncmp(el.id, "storage", 7) == 0) {
-            align(alignCode);
-            printLine("Einlag: " + storageDate);
-            _contentDots += lineDots - LINE_DOTS;
-        } else if (strncmp(el.id, "expiry", 7) == 0) {
-            if (!expiryDate.isEmpty()) {
-                align(alignCode);
-                printLine("MHD:    " + expiryDate);
-                _contentDots += lineDots - LINE_DOTS;
+        } else {
+            // h_mm → font height multiplier (1x=3.75mm, 2x=7.5mm, 3x=11.25mm)
+            uint8_t fm = (uint8_t)roundf(el.h_mm / 3.75f);
+            if (fm < 1) fm = 1;
+            if (fm > 3) fm = 3;
+            uint8_t gsn = (fm == 1) ? 0x00 : (fm == 2) ? 0x11 : 0x22;
+            _serial.write(0x1D); _serial.write('!'); _serial.write(gsn);
+
+            if (strncmp(el.id, "name", 7) == 0) {
+                bold(true);
+                printLine(name);
+                bold(false);
+            } else if (strncmp(el.id, "storage", 7) == 0) {
+                printLine("Einlag: " + storageDate);
+            } else if (strncmp(el.id, "expiry", 7) == 0) {
+                if (!expiryDate.isEmpty()) printLine("MHD:    " + expiryDate);
+            } else if (strncmp(el.id, "qty", 7) == 0) {
+                if (qty > 1) printLine("Menge:  " + String(qty) + " Stk.");
             }
-        } else if (strncmp(el.id, "qty", 7) == 0) {
-            if (qty > 1) {
-                align(alignCode);
-                printLine("Menge:  " + String(qty) + " Stk.");
-                _contentDots += lineDots - LINE_DOTS;
-            }
+            _contentDots += LINE_DOTS * (fm - 1);
         }
     }
 
-    // Reset font size to normal before feed
+    // Reset font size to normal
     _serial.write(0x1D); _serial.write('!'); _serial.write((uint8_t)0x00);
 
     feedToNextLabel();
