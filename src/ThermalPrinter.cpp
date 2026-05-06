@@ -27,22 +27,7 @@ void ThermalPrinter::restart(uint32_t baud) {
 }
 
 void ThermalPrinter::testPrint() {
-    init();
-    align(1);
-    bold(true);
-    printLine("*** Testdruck ***");
-    bold(false);
-    align(0);
-    printLine("ESP32 Lebensmittel-Scanner");
-    printLine("Baudrate: " + String(_baud));
-    printLine("Etikett:  " + String(loadLabelMm()) + " mm");
-    printLine("Abstand:  " + String(loadGapMm()) + " mm");
-    printLine("Schnitt:  " + String(loadUseCut() ? "ja" : "nein"));
-    printLine("");
-    align(1);
-    qrCode("TEST001");
-    feedToNextLabel();
-    if (loadUseCut()) cut();
+    printLabel("Testprodukt", "TEST001", "06.05.2026", "31.12.2026", 1);
 }
 
 // ── NVS ──────────────────────────────────────────────────────

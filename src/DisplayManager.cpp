@@ -410,7 +410,7 @@ void DisplayManager::showError(const String &msg) {
 // ── Auslagerung (Label-Barcode gescannt) ──────────────────────
 
 void DisplayManager::showRetrieve(const String &name, const String &storageDate,
-                                   const String &expiryDate, int daysLeft, bool reStore) {
+                                   const String &expiryDate, int daysLeft, bool reStore, bool autoMode) {
     _gfx->fillScreen(COLOR_BG);
     drawHeader(reStore ? "Re-Einlagerung" : "Auslagerung", COLOR_ACCENT);
     String n = name.length() > 28 ? name.substring(0, 28) : name;
@@ -427,11 +427,16 @@ void DisplayManager::showRetrieve(const String &name, const String &storageDate,
         textCenter(daysLabel(daysLeft), W / 2, H/2 + 20, g_fontCfg.value, sc);
         if (daysLeft >= 0) textCenter("verbleibend", W / 2, H/2 + 60, g_fontCfg.small, COLOR_SUBTEXT);
     }
-    drawTouchButton(TBTN_X, TBTN_SECONDARY_Y, TBTN_W, TBTN_H,
-                    "Abbrechen", COLOR_SURFACE, COLOR_SUBTEXT, g_fontCfg.small);
-    drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H,
-                    reStore ? "Einlagern" : "Auslagern",
-                    reStore ? COLOR_ACCENT : COLOR_BTN_OK, COLOR_TEXT, g_fontCfg.btn);
+    if (autoMode) {
+        textCenter(reStore ? "✓ Eingelagert" : "✓ Ausgelagert",
+                   W / 2, H - 60, g_fontCfg.btn, COLOR_OK);
+    } else {
+        drawTouchButton(TBTN_X, TBTN_SECONDARY_Y, TBTN_W, TBTN_H,
+                        "Abbrechen", COLOR_SURFACE, COLOR_SUBTEXT, g_fontCfg.small);
+        drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H,
+                        reStore ? "Einlagern" : "Auslagern",
+                        reStore ? COLOR_ACCENT : COLOR_BTN_OK, COLOR_TEXT, g_fontCfg.btn);
+    }
     _gfx->flush();
 }
 

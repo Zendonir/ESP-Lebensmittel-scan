@@ -991,16 +991,8 @@ void loop() {
     // ── RETRIEVE ─────────────────────────────────────────────
     case State::RETRIEVE: {
         if (screenDirty) {
-            int days = daysUntilExpiry(retrieveItem.expiryDate);
-            display.showRetrieve(retrieveItem.name,
-                                  isoToDisplay(retrieveItem.addedDate),
-                                  isoToDisplay(retrieveItem.expiryDate),
-                                  days, g_isRestore);
-            screenDirty = false;
-        }
-        if (hit(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H)) {
+            // Aktion sofort ausführen, keine Bestätigung nötig
             if (g_isRestore) {
-                // Re-Einlagerung
                 retrieveItem.addedDate = todayStr();
                 if (inventory.addItem(retrieveItem)) {
                     lastAddedItem   = retrieveItem;
@@ -1008,7 +1000,6 @@ void loop() {
                     buzzOk();
                 }
             } else {
-                // Auslagerung
                 int storageDays = max(0, -daysUntilExpiry(retrieveItem.addedDate));
                 storageStats.record(retrieveItem, todayStr(), storageDays);
                 shoppingList.add(retrieveItem.name, retrieveItem.category);
@@ -1020,9 +1011,16 @@ void loop() {
                 lastRemovedItem = retrieveItem;
                 buzzOk();
             }
-            setState(State::MAIN);
+            // Kurze Bestätigungsanzeige (kein Button nötig)
+            int days = daysUntilExpiry(retrieveItem.expiryDate);
+            display.showRetrieve(retrieveItem.name,
+                                  isoToDisplay(retrieveItem.addedDate),
+                                  isoToDisplay(retrieveItem.expiryDate),
+                                  days, g_isRestore, true);
+            screenDirty = false;
         }
-        if (hit(TBTN_X, TBTN_SECONDARY_Y, TBTN_W, TBTN_H) || hardBack)
+        // Nach 3 s oder Tipp zurück zum Hauptmenü
+        if (tapped || hardBack || millis()-stateEnter > 3000)
             setState(State::MAIN);
         break;
     }
