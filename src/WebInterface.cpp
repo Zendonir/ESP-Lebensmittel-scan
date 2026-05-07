@@ -1,6 +1,7 @@
 #include "WebInterface.h"
 #include "config.h"
 #include "UIConfig.h"
+#include "Beeper.h"
 #include "FontConfig.h"
 #include "BarcodeScanner.h"
 #include "ThermalPrinter.h"
@@ -15,6 +16,7 @@ extern bool g_useNumpad;
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <esp_http_client.h>
+#include <esp_crt_bundle.h>
 #include <time.h>
 
 static const char OTA_PAGE_HTML[] = R"HTML(<!DOCTYPE html>
@@ -2601,6 +2603,7 @@ void WebInterface::begin() {
 
                 esp_http_client_config_t cfg = {};
                 cfg.url                       = _otaUrl.c_str();
+                cfg.crt_bundle_attach         = esp_crt_bundle_attach;
                 cfg.skip_cert_common_name_check = true;
                 cfg.timeout_ms                = 30000;
                 cfg.buffer_size               = 2048;   // Header-Buffer
@@ -2836,11 +2839,9 @@ void WebInterface::begin() {
     });
 
     _server.on("/api/buzzer-test", HTTP_POST, [](AsyncWebServerRequest *req) {
-#if defined(BUZZER_PIN) && BUZZER_PIN >= 0
-        tone(BUZZER_PIN, 2200, 80);
+        Beeper::instance().tone(2200, 80);
         delay(120);
-        tone(BUZZER_PIN, 1800, 80);
-#endif
+        Beeper::instance().tone(1800, 80);
         req->send(200, "application/json", "{\"ok\":true}");
     });
 
