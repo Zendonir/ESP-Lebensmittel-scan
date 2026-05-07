@@ -14,6 +14,7 @@ extern bool g_useNumpad;
 #include <Update.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <esp_http_client.h>
 #include <time.h>
 
 static const char OTA_PAGE_HTML[] = R"HTML(<!DOCTYPE html>
@@ -2592,94 +2593,76 @@ void WebInterface::begin() {
             _otaMsg = "Starte…"; _otaActive = true;
             req->send(200, "application/json", "{\"ok\":true}");
 
+            // esp_http_client folgt HTTPS-Redirects nativ (github.com → CDN)
+            // und ist zuverlässiger als WiFiClientSecure im FreeRTOS-Task-Kontext
             xTaskCreate([](void *) {
-                vTaskDelay(pdMS_TO_TICKS(300));
-                _otaMsg = "Verbinde mit GitHub…";
+                vTaskDelay(pdMS_TO_TICKS(200));
+                _otaMsg = "Verbinde…";
 
-                // Phase 1 – CDN-URL via api.github.com/assets holen
-                // Die asset-URL (api.github.com) liefert 302 → objects.githubusercontent.com
-                // Vorteil: kein TLS-Handshake mit github.com nötig (schlägt auf ESP32 häufig fehl)
-                String directUrl;
-                {
-                    WiFiClientSecure c1; c1.setInsecure();
-                    HTTPClient h1;
-                    h1.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
-                    h1.setTimeout(20000);
-                    if (h1.begin(c1, _otaUrl)) {
-                        h1.addHeader("User-Agent", "ESP32-Lebensmittel");
-                        h1.addHeader("Accept", "application/octet-stream");
-                        const char *hdrs[] = {"Location"};
-                        h1.collectHeaders(hdrs, 1);
-                        int c = h1.GET();
-                        if (c >= 300 && c < 400) {
-                            directUrl = h1.header("Location");
-                            _otaMsg = "Weiterleitung zu CDN…";
-                        } else if (c == 200) {
-                            directUrl = _otaUrl;
-                        } else {
-                            _otaMsg = "GitHub HTTP " + String(c);
-                            _otaError = true; _otaActive = false;
-                            h1.end(); vTaskDelete(nullptr); return;
-                        }
-                        h1.end();
-                    } else {
-                        _otaMsg = "GitHub-Verbindung fehlgeschlagen";
-                        _otaError = true; _otaActive = false;
-                        vTaskDelete(nullptr); return;
-                    }
-                }
+                esp_http_client_config_t cfg = {};
+                cfg.url                       = _otaUrl.c_str();
+                cfg.skip_cert_common_name_check = true;
+                cfg.timeout_ms                = 30000;
+                cfg.buffer_size               = 2048;   // Header-Buffer
+                cfg.buffer_size_tx            = 512;
+                cfg.follow_redirects          = true;
+                cfg.max_redirection_count     = 5;
 
-                if (directUrl.isEmpty()) {
-                    _otaMsg = "Keine Download-URL";
+                esp_http_client_handle_t client = esp_http_client_init(&cfg);
+                esp_http_client_set_header(client, "User-Agent", "ESP32-Lebensmittel");
+                esp_http_client_set_header(client, "Accept", "application/octet-stream");
+
+                esp_err_t err = esp_http_client_open(client, 0);
+                if (err != ESP_OK) {
+                    _otaMsg = "Verbindung fehlgeschlagen (" + String(esp_err_to_name(err)) + ")";
                     _otaError = true; _otaActive = false;
-                    vTaskDelete(nullptr); return;
+                    esp_http_client_cleanup(client); vTaskDelete(nullptr); return;
                 }
 
-                // Phase 2 – Firmware direkt vom CDN laden
-                _otaMsg = "Lade Firmware…";
-                WiFiClientSecure c2; c2.setInsecure();
-                HTTPClient https;
-                https.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
-                https.setTimeout(60000);
-                if (!https.begin(c2, directUrl)) {
-                    _otaMsg = "CDN-Verbindung fehlgeschlagen";
-                    _otaError = true; _otaActive = false; vTaskDelete(nullptr); return;
-                }
-                https.addHeader("User-Agent", "ESP32-Lebensmittel");
-                int code = https.GET();
-                if (code != 200) {
-                    _otaMsg = "CDN HTTP " + String(code);
+                int64_t fwLen = esp_http_client_fetch_headers(client);
+                int status = esp_http_client_get_status_code(client);
+
+                if (status != 200) {
+                    _otaMsg = "HTTP " + String(status);
                     _otaError = true; _otaActive = false;
-                    https.end(); vTaskDelete(nullptr); return;
+                    esp_http_client_cleanup(client); vTaskDelete(nullptr); return;
                 }
-                int fwSize = https.getSize();
-                if (!Update.begin(fwSize > 0 ? fwSize : UPDATE_SIZE_UNKNOWN)) {
+
+                _otaMsg = "Flashe…";
+                if (!Update.begin(fwLen > 0 ? (size_t)fwLen : UPDATE_SIZE_UNKNOWN)) {
                     _otaMsg = "Update.begin() fehlgeschlagen";
                     _otaError = true; _otaActive = false;
-                    https.end(); vTaskDelete(nullptr); return;
+                    esp_http_client_cleanup(client); vTaskDelete(nullptr); return;
                 }
-                WiFiClient *stream = https.getStreamPtr();
-                uint8_t buf[4096];
+
+                uint8_t *buf = (uint8_t*)malloc(4096);
+                if (!buf) {
+                    _otaMsg = "Kein Speicher";
+                    _otaError = true; _otaActive = false;
+                    esp_http_client_cleanup(client); Update.abort(); vTaskDelete(nullptr); return;
+                }
                 size_t written = 0;
-                _otaMsg = "Flashe…";
                 while (true) {
-                    size_t avail = stream->available();
-                    if (!avail) {
-                        if (!stream->connected()) break;
-                        vTaskDelay(pdMS_TO_TICKS(10)); continue;
+                    int n = esp_http_client_read(client, (char*)buf, 4096);
+                    if (n < 0) {
+                        _otaMsg = "Lesefehler";
+                        _otaError = true; _otaActive = false;
+                        free(buf); esp_http_client_cleanup(client);
+                        Update.abort(); vTaskDelete(nullptr); return;
                     }
-                    size_t n = stream->readBytes(buf, min(avail, sizeof(buf)));
-                    if (!n) break;
-                    if (Update.write(buf, n) != n) {
+                    if (n == 0) break;
+                    if (Update.write(buf, (size_t)n) != (size_t)n) {
                         _otaMsg = "Schreibfehler";
                         _otaError = true; _otaActive = false;
-                        https.end(); Update.abort(); vTaskDelete(nullptr); return;
+                        free(buf); esp_http_client_cleanup(client);
+                        Update.abort(); vTaskDelete(nullptr); return;
                     }
                     written += n;
-                    if (fwSize > 0) _otaPercent = (int)((written * 100) / fwSize);
-                    if (fwSize > 0 && written >= (size_t)fwSize) break;
+                    if (fwLen > 0) _otaPercent = (int)((written * 100LL) / fwLen);
                 }
-                https.end();
+                free(buf);
+                esp_http_client_cleanup(client);
+
                 if (Update.end(true)) {
                     _otaPercent = 100; _otaMsg = "Neustart…";
                     _otaDone = true; _otaActive = false;
@@ -2690,7 +2673,7 @@ void WebInterface::begin() {
                     _otaError = true; _otaActive = false;
                 }
                 vTaskDelete(nullptr);
-            }, "ghota", 32768, nullptr, 1, nullptr);
+            }, "ghota", 8192, nullptr, 5, nullptr);
         }
     );
 
