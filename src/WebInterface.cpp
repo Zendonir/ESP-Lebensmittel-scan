@@ -2605,7 +2605,7 @@ void WebInterface::begin() {
                 cfg.timeout_ms                = 30000;
                 cfg.buffer_size               = 2048;   // Header-Buffer
                 cfg.buffer_size_tx            = 512;
-                cfg.follow_redirects          = true;
+                // disable_auto_redirect defaults false → Redirects aktiv
                 cfg.max_redirection_count     = 5;
 
                 esp_http_client_handle_t client = esp_http_client_init(&cfg);
