@@ -2556,7 +2556,7 @@ void WebInterface::begin() {
             for (JsonObject a : rel["assets"].as<JsonArray>()) {
                 String name = a["name"] | String("");
                 if (name.endsWith(".bin")) {
-                    url     = a["browser_download_url"] | String("");
+                    url     = a["url"] | String("");   // api.github.com/...assets/ID → kein github.com-TLS nötig
                     int sz  = a["size"] | 0;
                     sizeStr = String(sz / 1024) + " KB";
                     break;
@@ -2596,23 +2596,26 @@ void WebInterface::begin() {
                 vTaskDelay(pdMS_TO_TICKS(300));
                 _otaMsg = "Verbinde mit GitHub…";
 
-                // Phase 1 – Redirect-URL holen (github.com → objects.githubusercontent.com)
+                // Phase 1 – CDN-URL via api.github.com/assets holen
+                // Die asset-URL (api.github.com) liefert 302 → objects.githubusercontent.com
+                // Vorteil: kein TLS-Handshake mit github.com nötig (schlägt auf ESP32 häufig fehl)
                 String directUrl;
                 {
                     WiFiClientSecure c1; c1.setInsecure();
                     HTTPClient h1;
                     h1.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
-                    h1.setTimeout(15000);
+                    h1.setTimeout(20000);
                     if (h1.begin(c1, _otaUrl)) {
                         h1.addHeader("User-Agent", "ESP32-Lebensmittel");
+                        h1.addHeader("Accept", "application/octet-stream");
                         const char *hdrs[] = {"Location"};
                         h1.collectHeaders(hdrs, 1);
                         int c = h1.GET();
                         if (c >= 300 && c < 400) {
                             directUrl = h1.header("Location");
-                            _otaMsg = "Weiterleitung…";
+                            _otaMsg = "Weiterleitung zu CDN…";
                         } else if (c == 200) {
-                            directUrl = _otaUrl; // Already direct
+                            directUrl = _otaUrl;
                         } else {
                             _otaMsg = "GitHub HTTP " + String(c);
                             _otaError = true; _otaActive = false;
