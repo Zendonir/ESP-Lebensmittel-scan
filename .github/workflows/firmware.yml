@@ -49,7 +49,7 @@ jobs:
         run: pip install platformio
 
       - name: Build firmware
-        run: platformio run -e waveshare_esp32s3_amoled_164
+        run: platformio run -e waveshare_esp32s3_touch_lcd_35
 
       - name: Determine version
         id: ver
@@ -80,7 +80,7 @@ jobs:
       - name: Rename artifact
         run: |
           mkdir -p dist
-          cp .pio/build/waveshare_esp32s3_amoled_164/firmware.bin \
+          cp .pio/build/waveshare_esp32s3_touch_lcd_35/firmware.bin \
              dist/firmware-${{ steps.ver.outputs.tag }}.bin
 
       - name: Upload artifact
