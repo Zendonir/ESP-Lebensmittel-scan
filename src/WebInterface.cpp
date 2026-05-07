@@ -15,6 +15,7 @@ extern bool g_useNumpad;
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <esp_http_client.h>
+#include <esp_crt_bundle.h>
 #include <time.h>
 
 static const char OTA_PAGE_HTML[] = R"HTML(<!DOCTYPE html>
@@ -2601,6 +2602,7 @@ void WebInterface::begin() {
 
                 esp_http_client_config_t cfg = {};
                 cfg.url                       = _otaUrl.c_str();
+                cfg.crt_bundle_attach         = esp_crt_bundle_attach;
                 cfg.skip_cert_common_name_check = true;
                 cfg.timeout_ms                = 30000;
                 cfg.buffer_size               = 2048;   // Header-Buffer
