@@ -15,30 +15,30 @@
 #define WIFI_CONFIG_FILE "/wifi_config.json"
 
 // ============================================================
-//  Display – Waveshare ESP32-S3 1.64" AMOLED (CO5300, QSPI)
-//  Pins intern auf der Platine verdrahtet
+//  Display – Waveshare ESP32-S3-Touch-LCD-3.5 (ST7796, SPI)
+//  !! Pins aus dem Waveshare-Schaltplan – bitte bei Abweichungen anpassen !!
 // ============================================================
-#define LCD_CS    9
-#define LCD_SCK  10
-#define LCD_D0   11
-#define LCD_D1   12
-#define LCD_D2   13
-#define LCD_D3   14
-#define LCD_RST  21
+#define LCD_MOSI  11   // SPI2 FSPID
+#define LCD_SCK   12   // SPI2 FSPICLK
+#define LCD_CS    10   // SPI2 FSPICS0
+#define LCD_DC     8   // Data/Command
+#define LCD_RST    9   // Reset (oder GFX_NOT_DEFINED falls nicht verdrahtet)
+#define LCD_BL    46   // Hintergrundbeleuchtung (PWM)
 
 #ifndef DISPLAY_W
-  #define DISPLAY_W 456
+  #define DISPLAY_W 320
 #endif
 #ifndef DISPLAY_H
-  #define DISPLAY_H 280
+  #define DISPLAY_H 480
 #endif
 
 // ============================================================
-//  Touch – FT3168 (I2C, intern auf der Platine)
+//  Touch – FT6336 (I2C, kompatibel mit FT3168, Adresse 0x38)
+//  !! Pins aus dem Waveshare-Schaltplan – bitte bei Abweichungen anpassen !!
 // ============================================================
-#define TOUCH_SDA  47
-#define TOUCH_SCL  48
-#define TOUCH_INT  -1
+#define TOUCH_SDA  39
+#define TOUCH_SCL  40
+#define TOUCH_INT  38
 #define TOUCH_RST  -1
 
 // ============================================================
@@ -115,7 +115,6 @@
 // ============================================================
 //  KY-006 Passiv-Buzzer
 //  S  → GPIO45  |  +  → 3V3  |  -  → GND
-//  (GPIO38-41 sind intern für SD-Karte reserviert!)
 // ============================================================
 #define BUZZER_PIN  45
 
