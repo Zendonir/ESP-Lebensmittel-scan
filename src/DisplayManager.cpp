@@ -25,9 +25,10 @@ static constexpr int16_t HDR = 40;   // used by legacy drawHeader()
 DisplayManager::DisplayManager() : _bus(nullptr), _panel(nullptr), _gfx(nullptr) {}
 
 bool DisplayManager::begin() {
-    Serial.printf("[Disp] MOSI=%d SCK=%d CS=%d DC=%d RST=%d BL=%d\n",
-                  LCD_MOSI, LCD_SCK, LCD_CS, LCD_DC, LCD_RST, LCD_BL);
-    _bus   = new Arduino_ESP32SPI(LCD_DC, LCD_CS, LCD_SCK, LCD_MOSI, GFX_NOT_DEFINED);
+    Serial.printf("[Disp] MOSI=%d SCK=%d DC=%d RST=%d BL=%d\n",
+                  LCD_MOSI, LCD_SCK, LCD_DC, LCD_RST, LCD_BL);
+    // CS ist auf der Platine mit GND verbunden → GFX_NOT_DEFINED
+    _bus   = new Arduino_ESP32SPI(LCD_DC, GFX_NOT_DEFINED, LCD_SCK, LCD_MOSI, GFX_NOT_DEFINED);
     _panel = new Arduino_ST7796(_bus, LCD_RST, 0 /* rotation */, false /* ips */);
     _gfx   = new Arduino_Canvas(W, H, _panel);
     Serial.printf("[Disp] canvas ptr=%p\n", (void*)_gfx);
@@ -39,7 +40,7 @@ bool DisplayManager::begin() {
     _gfx->fillScreen(COLOR_BG);
     _gfx->flush();
     Serial.println("[Disp] flush() done");
-    // Hintergrundbeleuchtung per PWM einschalten (GPIO46)
+    // Hintergrundbeleuchtung per PWM einschalten (IO6)
     pinMode(LCD_BL, OUTPUT);
     analogWrite(LCD_BL, 220);
     return true;

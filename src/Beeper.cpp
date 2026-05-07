@@ -23,7 +23,7 @@ bool Beeper::begin() {
     std_cfg.clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(44100);
     std_cfg.slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,
                                                          I2S_SLOT_MODE_STEREO);
-    std_cfg.gpio_cfg.mclk = I2S_GPIO_UNUSED;
+    std_cfg.gpio_cfg.mclk = (gpio_num_t)I2S_SPK_MCLK;
     std_cfg.gpio_cfg.bclk = (gpio_num_t)I2S_SPK_BCK;
     std_cfg.gpio_cfg.ws   = (gpio_num_t)I2S_SPK_WS;
     std_cfg.gpio_cfg.dout = (gpio_num_t)I2S_SPK_DOUT;

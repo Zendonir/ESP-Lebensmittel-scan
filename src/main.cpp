@@ -292,6 +292,46 @@ void telegramSend(const String &text) {
     https.end();
 }
 
+// ── IO-Expander PCA9554 (Adresse 0x20) ───────────────────────
+// Steuert: LCD_RST(EXIO1), TP_INT(EXIO2), SD_CS(EXIO3), PA_CTRL(EXIO7)
+static void initIOExpander() {
+    i2c_master_bus_handle_t bus = touch.getBusHandle();
+    if (!bus) { Serial.println("[IOExp] kein I2C-Bus (Touch nicht initialisiert)"); return; }
+
+    i2c_device_config_t dev_cfg = {};
+    dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+    dev_cfg.device_address  = IOEXP_ADDR;
+    dev_cfg.scl_speed_hz    = 400000;
+
+    i2c_master_dev_handle_t ioexp = nullptr;
+    if (i2c_master_bus_add_device(bus, &dev_cfg, &ioexp) != ESP_OK) {
+        Serial.println("[IOExp] i2c_master_bus_add_device FEHLER"); return;
+    }
+
+    // Ausgangsregister vorab auf 0xFF setzen – PCA9554 übernimmt diesen Wert beim
+    // Umschalten auf Output (LCD_RST bleibt zunächst HIGH = inaktiv).
+    uint8_t out_pre[2] = { 0x01, 0xFF };
+    i2c_master_transmit(ioexp, out_pre, 2, pdMS_TO_TICKS(50));
+
+    // Alle Pins als Ausgang (Konfigurationsregister 3, 0x00 = alle Output)
+    uint8_t cfg_cmd[2] = { 0x03, 0x00 };
+    i2c_master_transmit(ioexp, cfg_cmd, 2, pdMS_TO_TICKS(50));
+
+    // LCD_RST LOW – Reset-Puls (ST7796 min. 10 ms)
+    uint8_t out_low[2] = { 0x01, (uint8_t)(0xFF & ~(1 << IOEXP_LCD_RST)) };
+    i2c_master_transmit(ioexp, out_low, 2, pdMS_TO_TICKS(50));
+    delay(15);
+
+    // LCD_RST HIGH freigeben + PA_CTRL HIGH (Lautsprecher-Verstärker ein)
+    // ST7796 benötigt nach RST↑ mindestens 120 ms bis zur ersten Initialisierung.
+    uint8_t out_high[2] = { 0x01, 0xFF };
+    i2c_master_transmit(ioexp, out_high, 2, pdMS_TO_TICKS(50));
+    delay(120);
+
+    i2c_master_bus_rm_device(ioexp);
+    Serial.println("[IOExp] LCD_RST gepulst, PA_CTRL HIGH");
+}
+
 // ── Lautsprecher-Feedback (I2S) ───────────────────────────────
 inline void buzz(uint16_t freq = 2000, uint32_t dur = 80) {
     Beeper::instance().tone(freq, dur);
@@ -447,9 +487,12 @@ void setup() {
     backBtn.begin();
 #endif
 
-    // Touch VOR Display (teilen GPIO21 als RST)
+    // Touch VOR Display – teilt I2C-Bus mit IO-Expander und ES8311
     bool touchOk = touch.begin();
-    if (!touchOk) Serial.println("[Touch] CST816S nicht gefunden!");
+    if (!touchOk) Serial.println("[Touch] FT6336 nicht gefunden!");
+
+    // IO-Expander: LCD_RST pulsieren + PA_CTRL (Lautsprecher) einschalten
+    initIOExpander();
 
     Serial.printf("[Boot] heap=%u psram=%u\n", ESP.getFreeHeap(), ESP.getFreePsram());
     bool dispOk = display.begin();
