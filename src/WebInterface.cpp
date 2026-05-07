@@ -1,6 +1,7 @@
 #include "WebInterface.h"
 #include "config.h"
 #include "UIConfig.h"
+#include "Beeper.h"
 #include "FontConfig.h"
 #include "BarcodeScanner.h"
 #include "ThermalPrinter.h"
@@ -2838,11 +2839,9 @@ void WebInterface::begin() {
     });
 
     _server.on("/api/buzzer-test", HTTP_POST, [](AsyncWebServerRequest *req) {
-#if defined(BUZZER_PIN) && BUZZER_PIN >= 0
-        tone(BUZZER_PIN, 2200, 80);
+        Beeper::instance().tone(2200, 80);
         delay(120);
-        tone(BUZZER_PIN, 1800, 80);
-#endif
+        Beeper::instance().tone(1800, 80);
         req->send(200, "application/json", "{\"ok\":true}");
     });
 

@@ -23,6 +23,7 @@
 #include "ShoppingList.h"
 #include "ServerSync.h"
 #include "WebInterface.h"
+#include "Beeper.h"
 #include <HTTPClient.h>
 
 // ── States ────────────────────────────────────────────────────
@@ -49,9 +50,12 @@ enum class State {
 
 // ── Globale Objekte ───────────────────────────────────────────
 
-HardwareSerial scannerSerial(0);  // UART0 = native GPIO44(RX) / GPIO43(TX)
+// UART0 (GPIO43 TX / GPIO44 RX) → Drucker am Expansion-Connector
+HardwareSerial printerSerial(0);
+// UART1 (GPIO17 TX / GPIO18 RX) → GM861 Barcode-Scanner
+HardwareSerial scannerSerial(1);
 BarcodeScanner scanner(scannerSerial, BARCODE_RX_PIN, BARCODE_TX_PIN, BARCODE_BAUD);
-ThermalPrinter printer(Serial1, PRINTER_TX_PIN, PRINTER_RX_PIN, PRINTER_BAUD);
+ThermalPrinter printer(printerSerial, PRINTER_TX_PIN, PRINTER_RX_PIN, PRINTER_BAUD);
 DisplayManager display;
 TouchController touch(TOUCH_SDA, TOUCH_SCL, TOUCH_INT, TOUCH_RST);
 FoodAPI        foodAPI;
@@ -288,18 +292,13 @@ void telegramSend(const String &text) {
     https.end();
 }
 
-// ── Buzzer-Feedback ───────────────────────────────────────────
-#if defined(BUZZER_PIN) && BUZZER_PIN >= 0
-inline void buzz(uint16_t freq = 2000, uint32_t dur = 80)  { tone(BUZZER_PIN, freq, dur); }
+// ── Lautsprecher-Feedback (I2S) ───────────────────────────────
+inline void buzz(uint16_t freq = 2000, uint32_t dur = 80) {
+    Beeper::instance().tone(freq, dur);
+}
 inline void buzzOk()    { if (g_uiCfg.sound_ok)  buzz(2200, 80); }
 inline void buzzError() { if (g_uiCfg.sound_err) buzz(600, 300); }
-inline void buzzTick()  { buzz(120, 12); }
-#else
-inline void buzz(uint16_t = 0, uint32_t = 0) {}
-inline void buzzOk()    {}
-inline void buzzError() {}
-inline void buzzTick()  {}
-#endif
+inline void buzzTick()  { buzz(1200, 12); }
 
 // ── Hilfs-Funktionen ──────────────────────────────────────────
 
@@ -442,10 +441,7 @@ void applyUIBrightness() {
 
 void setup() {
     Serial.begin(115200); delay(100);
-#if defined(BUZZER_PIN) && BUZZER_PIN >= 0
-    pinMode(BUZZER_PIN, OUTPUT);
-    digitalWrite(BUZZER_PIN, LOW);
-#endif
+    Beeper::instance().begin();
 
 #if BTN_BACK >= 0
     backBtn.begin();

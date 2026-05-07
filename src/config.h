@@ -47,19 +47,20 @@
 #define BTN_BACK   0
 
 // ============================================================
-//  GM861 Barcode-Scanner (Hardware Serial)
-//  GM861 TX → GPIO44 (RXD)  |  GM861 RX → GPIO43 (TXD)
+//  GM861 Barcode-Scanner (Hardware Serial1, UART1)
+//  GM861 TX → GPIO18 (ESP32 RX)  |  GM861 RX ← GPIO17 (ESP32 TX)
 // ============================================================
-#define BARCODE_RX_PIN  44
-#define BARCODE_TX_PIN  43
+#define BARCODE_RX_PIN  18
+#define BARCODE_TX_PIN  17
 #define BARCODE_BAUD  9600
 
 // ============================================================
-//  RS232/TTL Mini-Thermodrucker (Hardware Serial2)
-//  ESP32 GPIO17 → Drucker RX  |  ESP32 GPIO18 → Drucker TX
+//  RS232/TTL Mini-Thermodrucker (UART0 = Expansion-Connector)
+//  Connector-Label "RXD"(GPIO43) = ESP32-TX → Drucker RX
+//  Connector-Label "TXD"(GPIO44) = ESP32-RX ← Drucker TX
 // ============================================================
-#define PRINTER_TX_PIN   17
-#define PRINTER_RX_PIN   18
+#define PRINTER_TX_PIN   43
+#define PRINTER_RX_PIN   44
 #define PRINTER_BAUD   9600
 
 // ============================================================
@@ -113,10 +114,16 @@
 #define COLOR_BTN_BACK  (g_uiCfg.btn_back)
 
 // ============================================================
-//  KY-006 Passiv-Buzzer
-//  S  → GPIO45  |  +  → 3V3  |  -  → GND
+//  Integrierter Lautsprecher – I2S-Ausgang
+//  !! GPIO-Pins bitte aus Waveshare-Schaltplan entnehmen und anpassen !!
+//  Typisch: BCK=2, WS=4, DOUT=3 – abhängig von Boardrevision
 // ============================================================
-#define BUZZER_PIN  45
+#define I2S_SPK_BCK   2    // I2S Bit Clock  → Schaltplan prüfen
+#define I2S_SPK_WS    4    // I2S Word Select → Schaltplan prüfen
+#define I2S_SPK_DOUT  3    // I2S Data Out   → Schaltplan prüfen
+
+// Kein externer GPIO-Buzzer (Signalton über I2S-Lautsprecher)
+#define BUZZER_PIN  -1
 
 // ============================================================
 //  MQTT (optional) – wird über Web-Interface konfiguriert
