@@ -13,7 +13,7 @@ struct DateInput {
     DateField activeField;
 };
 
-// ── Hauptscreen (Kategorie-Grid) — Hochformat 280×456 ────────
+// ── Hauptscreen (Kategorie-Grid) — Hochformat 320×480 ────────
 #define CAT_HDR       ((int16_t)g_uiCfg.cat_hdr_h)
 #define CAT_COLS      ((int16_t)(g_uiCfg.cat_cols < 1 ? 1 : g_uiCfg.cat_cols > 3 ? 3 : g_uiCfg.cat_cols))
 #define CAT_GAP       ((int16_t)g_uiCfg.cat_gap)
@@ -27,7 +27,7 @@ struct DateInput {
 #define LIST_RADIUS   ((int16_t)g_uiCfg.list_radius)
 #define LIST_MAX_VIS  ((int16_t)((DISPLAY_H - SUB_HDR) / LIST_ITEM_H))
 
-// ── Datumseingabe (▲ Drum Roller ▼) — Hochformat 280×456 ─────
+// ── Datumseingabe (▲ Drum Roller ▼) — Hochformat 320×480 ─────
 static constexpr int16_t DRUM_COL_W    = DISPLAY_W / 3;                         // 93
 static constexpr int16_t DRUM_HDR_H    = 60;
 static constexpr int16_t DRUM_ARR_H    = 60;
@@ -39,7 +39,7 @@ static constexpr int16_t DRUM_SEL_Y    = DRUM_TOP + DRUM_ROW_H;                 
 static constexpr int16_t DRUM_ARRDWN_Y = DRUM_TOP + DRUM_ROWS * DRUM_ROW_H;    // 300
 static constexpr int16_t DRUM_BTN_Y    = DRUM_ARRDWN_Y + DRUM_ARR_H;           // 360
 
-// ── Ziffernblock-Datumseingabe — Hochformat 280×456 ──────────
+// ── Ziffernblock-Datumseingabe — Hochformat 320×480 ──────────
 static constexpr int16_t NP_HDR_H  = 54;
 static constexpr int16_t NP_DATE_H = 72;
 static constexpr int16_t NP_TOP    = NP_HDR_H + NP_DATE_H;          // 126
@@ -103,7 +103,7 @@ public:
 
 private:
     Arduino_DataBus *_bus;
-    Arduino_CO5300  *_panel;
+    Arduino_ST7796  *_panel;
     Arduino_Canvas  *_gfx;
 
     void applyFont(uint8_t px);

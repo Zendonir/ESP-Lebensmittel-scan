@@ -28,6 +28,9 @@ public:
     int16_t tapY() const { return _y; }
     bool    hits(int16_t bx, int16_t by, int16_t bw, int16_t bh) const;
 
+    // I2C-Bus-Handle für weitere Geräte (IO-Expander, ES8311, …)
+    i2c_master_bus_handle_t getBusHandle() const { return _i2c_bus; }
+
 private:
     uint8_t _sda, _scl, _int, _rst;
     bool    _initialized = false;
