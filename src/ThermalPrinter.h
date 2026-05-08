@@ -9,14 +9,19 @@ public:
     void restart(uint32_t baud);
     void testPrint();
 
+    // Drucker-Konfiguration (NVS "printer")
     static uint32_t loadBaud();
     static void     saveBaud(uint32_t baud);
-    static uint16_t loadLabelMm();
-    static void     saveLabelMm(uint16_t mm);
-    static uint16_t loadGapMm();
-    static void     saveGapMm(uint16_t mm);
+    static float    loadLabelMm();
+    static void     saveLabelMm(float mm);
+    static float    loadGapMm();       // "Nachlauf" nach Etikett für Abreiß-Puffer
+    static void     saveGapMm(float mm);
     static bool     loadUseCut();
     static void     saveUseCut(bool cut);
+    static float    loadBackfeedMm();
+    static void     saveBackfeedMm(float mm);
+    static float    loadFeedOffsetMm();
+    static void     saveFeedOffsetMm(float mm);
 
     void printLabel(const String &name, const String &labelCode,
                     const String &storageDate, const String &expiryDate,
@@ -33,6 +38,8 @@ private:
     void bold(bool on);
     void printLine(const String &text);
     void feedMm(uint16_t mm);
+    void feedDots(uint16_t dots);
+    void backfeedDots(uint16_t dots);
     void cut();
     void qrCode(const String &data, uint8_t moduleSize = 3);
     void feedToNextLabel();

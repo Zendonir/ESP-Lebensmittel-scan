@@ -68,7 +68,7 @@ inline void resetUIConfig(UIConfig &c) {
 
 inline void loadUIConfig() {
     resetUIConfig(g_uiCfg);
-    Preferences p; p.begin("uicfg", true);
+    Preferences p; p.begin("uicfg", false);
     g_uiCfg.bg          = p.getUShort("bg",      g_uiCfg.bg);
     g_uiCfg.text        = p.getUShort("text",     g_uiCfg.text);
     g_uiCfg.subtext     = p.getUShort("subtext",  g_uiCfg.subtext);

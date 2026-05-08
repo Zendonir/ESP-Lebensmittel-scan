@@ -70,7 +70,12 @@ bool TouchController::readRegisters() {
     uint8_t reg = 0x02;
     uint8_t buf[5] = {};
     esp_err_t err = i2c_master_transmit_receive(_i2c_dev, &reg, 1, buf, 5, 10);
-    if (err != ESP_OK) return false;
+    if (err != ESP_OK) {
+        static unsigned long _lastErr = 0;
+        if (millis() - _lastErr > 10000) { _lastErr = millis();
+            Serial.printf("[Touch] I2C Fehler 0x%x\n", err); }
+        return false;
+    }
 
     uint8_t touches = buf[0] & 0x0F;
     if (touches == 0) return false;

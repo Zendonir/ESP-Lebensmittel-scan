@@ -1,5 +1,6 @@
 #include "ThermalPrinter.h"
 #include <Preferences.h>
+#include <ArduinoJson.h>
 
 static constexpr uint16_t DOTS_PER_MM = 8;   // 203 DPI = 8 dots/mm
 static constexpr uint16_t LINE_DOTS   = 30;   // Standardzeilenhöhe ESC @
@@ -26,20 +27,37 @@ void ThermalPrinter::restart(uint32_t baud) {
 }
 
 void ThermalPrinter::testPrint() {
+    float backfeedMm = loadBackfeedMm();
+    if (backfeedMm > 0) backfeedDots((uint16_t)(backfeedMm * DOTS_PER_MM));
     init();
-    align(1);
-    bold(true);
-    printLine("*** Testdruck ***");
-    bold(false);
+
+    float labelMm  = loadLabelMm();
+    float nachlMm  = loadGapMm();
+    float offsetMm = loadFeedOffsetMm();
+
+    // Obere Rahmenlinie = Etiketten-Oberkante
     align(0);
-    printLine("ESP32 Lebensmittel-Scanner");
-    printLine("Baudrate: " + String(_baud));
-    printLine("Etikett:  " + String(loadLabelMm()) + " mm");
-    printLine("Abstand:  " + String(loadGapMm()) + " mm");
-    printLine("Schnitt:  " + String(loadUseCut() ? "ja" : "nein"));
-    printLine("");
+    printLine("________________________________");  // 32 '_'
+
+    // Info zentriert
     align(1);
-    qrCode("TEST001");
+    printLine("Etikett: " + String(labelMm, 1) + " mm");
+    printLine("Nachlauf:" + String(nachlMm, 1) + " mm");
+    if (offsetMm != 0.0f)
+        printLine("Offset:  " + String(offsetMm, 1) + " mm");
+    if (backfeedMm > 0.0f)
+        printLine("Rücklauf:" + String(backfeedMm, 1) + " mm");
+    align(0);
+
+    // Fülle Etikett bis zur unteren Rahmenlinie (exakt labelMm)
+    uint16_t labelDots = (uint16_t)(labelMm * DOTS_PER_MM + 0.5f);
+    if (labelDots > _contentDots + LINE_DOTS)
+        feedDots(labelDots - _contentDots - LINE_DOTS);
+
+    // Untere Rahmenlinie = Etiketten-Unterkante
+    printLine("--------------------------------");  // 32 '-'
+
+    // Vorschub zum nächsten Etikett (inkl. Offset)
     feedToNextLabel();
     if (loadUseCut()) cut();
 }
@@ -54,21 +72,21 @@ void ThermalPrinter::saveBaud(uint32_t baud) {
     Preferences p; p.begin("printer", false);
     p.putUInt("baud", baud); p.end();
 }
-uint16_t ThermalPrinter::loadLabelMm() {
+float ThermalPrinter::loadLabelMm() {
     Preferences p; p.begin("printer", false);
-    uint16_t v = p.getUShort("label_mm", 29); p.end(); return v;
+    float v = p.getFloat("label_mm", 29.0f); p.end(); return v;
 }
-void ThermalPrinter::saveLabelMm(uint16_t mm) {
+void ThermalPrinter::saveLabelMm(float mm) {
     Preferences p; p.begin("printer", false);
-    p.putUShort("label_mm", mm); p.end();
+    p.putFloat("label_mm", mm); p.end();
 }
-uint16_t ThermalPrinter::loadGapMm() {
+float ThermalPrinter::loadGapMm() {
     Preferences p; p.begin("printer", false);
-    uint16_t v = p.getUShort("gap_mm", 6); p.end(); return v;
+    float v = p.getFloat("gap_mm", 10.0f); p.end(); return v;
 }
-void ThermalPrinter::saveGapMm(uint16_t mm) {
+void ThermalPrinter::saveGapMm(float mm) {
     Preferences p; p.begin("printer", false);
-    p.putUShort("gap_mm", mm); p.end();
+    p.putFloat("gap_mm", mm); p.end();
 }
 bool ThermalPrinter::loadUseCut() {
     Preferences p; p.begin("printer", false);
@@ -78,6 +96,23 @@ void ThermalPrinter::saveUseCut(bool cut) {
     Preferences p; p.begin("printer", false);
     p.putBool("use_cut", cut); p.end();
 }
+float ThermalPrinter::loadBackfeedMm() {
+    Preferences p; p.begin("printer", false);
+    float v = p.getFloat("backfeed_mm", 0.0f); p.end(); return v;
+}
+void ThermalPrinter::saveBackfeedMm(float mm) {
+    Preferences p; p.begin("printer", false);
+    p.putFloat("backfeed_mm", mm); p.end();
+}
+float ThermalPrinter::loadFeedOffsetMm() {
+    Preferences p; p.begin("printer", false);
+    float v = p.getFloat("feed_off_mm", 0.0f); p.end(); return v;
+}
+void ThermalPrinter::saveFeedOffsetMm(float mm) {
+    Preferences p; p.begin("printer", false);
+    p.putFloat("feed_off_mm", mm); p.end();
+}
+
 
 // ── ESC/POS Hilfsbefehle ──────────────────────────────────────
 
@@ -101,15 +136,33 @@ void ThermalPrinter::printLine(const String &text) {
     _contentDots += LINE_DOTS;
 }
 
-void ThermalPrinter::feedMm(uint16_t mm) {
-    uint16_t dots = mm * DOTS_PER_MM;
-    while (dots > 0) {
-        uint8_t chunk = (dots > 255) ? 255 : (uint8_t)dots;
+void ThermalPrinter::feedDots(uint16_t dots) {
+    uint16_t rem = dots;
+    while (rem > 0) {
+        uint8_t chunk = (rem > 255) ? 255 : (uint8_t)rem;
         _serial.write(0x1B); _serial.write('J'); _serial.write(chunk);
-        dots -= chunk;
-        if (dots > 0) delay(20);
+        rem -= chunk;
+        _serial.flush();
+        // Motorlauf abwarten: ~8 dots/mm, ca. 70mm/s → ~1.8ms/dot + Puffer
+        delay((uint16_t)chunk * 2 + 50);
     }
-    _contentDots += mm * DOTS_PER_MM;
+    _contentDots += dots;  // logische Dots tracken (unkorrigiert)
+}
+
+void ThermalPrinter::backfeedDots(uint16_t dots) {
+    // ESC K n – Rücklauf um n Punkte (falls vom Drucker unterstützt)
+    uint16_t rem = dots;
+    while (rem > 0) {
+        uint8_t chunk = (rem > 255) ? 255 : (uint8_t)rem;
+        _serial.write(0x1B); _serial.write('K'); _serial.write(chunk);
+        rem -= chunk;
+        _serial.flush();
+        delay((uint16_t)chunk * 2 + 50);
+    }
+}
+
+void ThermalPrinter::feedMm(uint16_t mm) {
+    feedDots(mm * DOTS_PER_MM);
 }
 
 void ThermalPrinter::cut() {
@@ -151,49 +204,123 @@ void ThermalPrinter::qrCode(const String &data, uint8_t moduleSize) {
 }
 
 void ThermalPrinter::feedToNextLabel() {
-    uint16_t labelDots = loadLabelMm() * DOTS_PER_MM;
-    uint16_t gapDots   = loadGapMm()   * DOTS_PER_MM;
-    int16_t  remaining = (int16_t)(labelDots + gapDots) - (int16_t)_contentDots;
-    // Mindestens Abstand vorschieben, auch wenn Inhalt das Etikett überläuft
-    uint16_t feedDots  = (remaining > (int16_t)gapDots) ? (uint16_t)remaining : gapDots;
-    Serial.printf("[Printer] contentDots=%d labelMm=%d gapMm=%d feedDots=%d\n",
-                  _contentDots, loadLabelMm(), loadGapMm(), feedDots);
-    if (feedDots > 0) feedMm(feedDots / DOTS_PER_MM + 1);
+    // Einfache Formel: Etikett + Nachlauf + Versatz → Zielposition
+    float totalMm = loadLabelMm() + loadGapMm() + loadFeedOffsetMm();
+    uint16_t targetDots = (uint16_t)(totalMm * DOTS_PER_MM + 0.5f);
+    Serial.printf("[Printer] contentDots=%d totalMm=%.1f targetDots=%d\n",
+                  _contentDots, totalMm, targetDots);
+    if (targetDots > _contentDots)
+        feedDots(targetDots - _contentDots);
 }
 
 // ── Label ─────────────────────────────────────────────────────
-//
-// Layout (kompakt, passt auf 29mm Etiketten):
-//   [QR-Code zentriert]          ~95 dots (moduleSize=3)
-//   [Produktname fett zentriert] 30 dots
-//   Einlag: TT.MM.JJJJ          30 dots
-//   MHD:    TT.MM.JJJJ          30 dots  (nur wenn vorhanden)
-//   Menge:  X Stk.               30 dots  (nur wenn > 1)
-// Summe ohne MHD/Menge: ~155 dots ≈ 19.4mm → passt auf 29mm
 
 void ThermalPrinter::printLabel(const String &name, const String &labelCode,
                                  const String &storageDate, const String &expiryDate,
                                  int qty) {
+    float backfeedMm = loadBackfeedMm();
+    if (backfeedMm > 0) {
+        Serial.printf("[Printer] Backfeed %.1f mm\n", backfeedMm);
+        backfeedDots((uint16_t)(backfeedMm * DOTS_PER_MM));
+    }
     init();
 
-    // QR-Code zentriert
-    align(1);
-    qrCode(labelCode, 3);
-    _serial.write('\n'); _contentDots += 8;
+    // Load layout from NVS
+    Preferences prefs; prefs.begin("llayout", false);
+    String layoutJson = prefs.getString("json", "{}");
+    prefs.end();
 
-    // Produktname (fett, max. 18 Zeichen bei 58mm)
-    bold(true);
-    String n = name.length() > 18 ? name.substring(0, 18) : name;
-    printLine(n);
-    bold(false);
+    struct Elem {
+        char  id[8];
+        float x_mm;   // horizontal start
+        float y_mm;   // vertical start (from top of label)
+        float size_mm; // QR: physical size; Text: ignored (w_mm)
+        float h_mm;    // Text: height → determines font multiplier
+        bool  visible;
+    };
+    Elem elems[5] = {
+        {"qr",      23.0f,  2.0f, 11.0f,  0.0f, true},
+        {"name",     0.0f, 14.0f,  0.0f,  5.0f, true},
+        {"storage",  0.0f, 20.0f,  0.0f,  4.0f, true},
+        {"expiry",   0.0f, 25.0f,  0.0f,  4.0f, true},
+        {"qty",      0.0f, 30.0f,  0.0f,  4.0f, false},
+    };
 
-    // Datum + Menge linksbündig
+    JsonDocument doc;
+    if (!deserializeJson(doc, layoutJson)) {
+        JsonArray arr = doc["elements"];
+        if (arr) {
+            for (JsonObject jel : arr) {
+                const char* id = jel["id"] | "";
+                for (auto& e : elems) {
+                    if (strncmp(e.id, id, 7) == 0) {
+                        e.x_mm    = jel["x_mm"]    | e.x_mm;
+                        e.y_mm    = jel["y_mm"]    | e.y_mm;
+                        if (!jel["visible"].isNull())
+                            e.visible = jel["visible"].as<bool>();
+                        if (strcmp(e.id, "qr") == 0)
+                            e.size_mm = jel["size_mm"] | e.size_mm;
+                        else
+                            e.h_mm = jel["h_mm"] | e.h_mm;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Sort by y_mm ascending (thermal printer prints top-to-bottom)
+    for (int i = 0; i < 4; i++)
+        for (int j = 0; j < 4 - i; j++)
+            if (elems[j].y_mm > elems[j+1].y_mm) { Elem t = elems[j]; elems[j] = elems[j+1]; elems[j+1] = t; }
+
+    // Left-align base setting
     align(0);
-    printLine("Einlag: " + storageDate);
-    if (!expiryDate.isEmpty())
-        printLine("MHD:    " + expiryDate);
-    if (qty > 1)
-        printLine("Menge:  " + String(qty) + " Stk.");
+
+    for (auto& el : elems) {
+        if (!el.visible) continue;
+
+        uint16_t targetDots = (uint16_t)(el.y_mm * DOTS_PER_MM);
+        if (targetDots > _contentDots)
+            feedDots(targetDots - _contentDots);
+
+        // Set absolute horizontal position (ESC $ nL nH)
+        uint16_t xDots = (uint16_t)(el.x_mm * DOTS_PER_MM);
+        _serial.write(0x1B); _serial.write('$');
+        _serial.write((uint8_t)(xDots & 0xFF)); _serial.write((uint8_t)(xDots >> 8));
+
+        if (strncmp(el.id, "qr", 7) == 0) {
+            // size_mm → module size: 29 modules (incl. quiet zone) × modSize dots = size
+            uint8_t modSize = (uint8_t)roundf(el.size_mm * DOTS_PER_MM / 29.0f);
+            if (modSize < 1) modSize = 1;
+            if (modSize > 5) modSize = 5;
+            qrCode(labelCode, modSize);
+            _serial.write('\n'); _contentDots += 8;
+        } else {
+            // h_mm → font height multiplier (1x=3.75mm, 2x=7.5mm, 3x=11.25mm)
+            uint8_t fm = (uint8_t)roundf(el.h_mm / 3.75f);
+            if (fm < 1) fm = 1;
+            if (fm > 3) fm = 3;
+            uint8_t gsn = (fm == 1) ? 0x00 : (fm == 2) ? 0x11 : 0x22;
+            _serial.write(0x1D); _serial.write('!'); _serial.write(gsn);
+
+            if (strncmp(el.id, "name", 7) == 0) {
+                bold(true);
+                printLine(name);
+                bold(false);
+            } else if (strncmp(el.id, "storage", 7) == 0) {
+                printLine("Einlag: " + storageDate);
+            } else if (strncmp(el.id, "expiry", 7) == 0) {
+                if (!expiryDate.isEmpty()) printLine("MHD:    " + expiryDate);
+            } else if (strncmp(el.id, "qty", 7) == 0) {
+                if (qty > 1) printLine("Menge:  " + String(qty) + " Stk.");
+            }
+            _contentDots += LINE_DOTS * (fm - 1);
+        }
+    }
+
+    // Reset font size to normal
+    _serial.write(0x1D); _serial.write('!'); _serial.write((uint8_t)0x00);
 
     feedToNextLabel();
     if (loadUseCut()) cut();

@@ -109,8 +109,10 @@ State         state          = State::BOOTING;
 ProductInfo   currentProduct;
 DateInput     dateInput;
 String        currentBarcode;
-InventoryItem retrieveItem;   // Artikel bei Auslagerungs-Scan
-InventoryItem lastAddedItem;  // Für Drucker nach SAVING
+InventoryItem retrieveItem;    // Artikel bei Auslagerungs-Scan
+InventoryItem lastAddedItem;   // Für Drucker nach SAVING
+InventoryItem lastRemovedItem; // Cache für Re-Einlagerung
+bool          g_isRestore = false; // true = Re-Einlagerung
 int           currentCatIndex = 0;  // Aktive Kategorie im Hauptscreen
 int           mainOffset      = 0;  // Scroll-Offset Hauptliste
 int           browseIndex     = 0;
@@ -140,7 +142,7 @@ struct WifiCfg { String ssid, password; };
 
 WifiCfg loadWifiCfg() {
     Preferences prefs;
-    prefs.begin("wifi", true);
+    prefs.begin("wifi", false);
     String s = prefs.getString("ssid",     WIFI_SSID);
     String p = prefs.getString("password", WIFI_PASSWORD);
     prefs.end();
@@ -177,7 +179,7 @@ static unsigned long _mqttLastCheck = 0;
 
 MqttCfg loadMqttCfg() {
     MqttCfg c;
-    Preferences p; p.begin("mqtt", true);
+    Preferences p; p.begin("mqtt", false);
     c.host   = p.getString("host",   "");
     c.port   = p.getUShort("port",   1883);
     c.prefix = p.getString("prefix", "lebensmittel");
@@ -264,7 +266,7 @@ static TelegramCfg _telegramCfg;
 
 TelegramCfg loadTelegramCfg() {
     TelegramCfg c;
-    Preferences p; p.begin("telegram", true);
+    Preferences p; p.begin("telegram", false);
     c.token  = p.getString("token",  "");
     c.chatId = p.getString("chatid", "");
     p.end();
@@ -361,9 +363,13 @@ String generateLabelCode() {
     uint32_t n = prefs.getUInt("cnt", 0) + 1;
     prefs.putUInt("cnt", n);
     prefs.end();
-    char buf[10];
-    snprintf(buf, sizeof(buf), "L%05u", n);
+    char buf[20];
+    snprintf(buf, sizeof(buf), "LebNumber%05u", n);
     return buf;
+}
+
+static bool isLabelCode(const String &bc) {
+    return bc.startsWith("LebNumber");
 }
 
 // ── Haushalt-Hilfsfunktionen ──────────────────────────────────
@@ -490,7 +496,7 @@ void setup() {
         shoppingList.begin();
     }
 
-    { Preferences p; p.begin("dev", true); g_useNumpad = p.getBool("numpad", false); p.end(); }
+    { Preferences p; p.begin("dev", false); g_useNumpad = p.getBool("numpad", false); p.end(); }
     loadUIConfig();
     display.setBrightness(g_uiCfg.brightness);
     loadFontConfig();
@@ -532,7 +538,15 @@ void loop() {
     int16_t ty     = touch.tapY();
     Gesture gest   = touch.lastGesture();
 
-    if (tapped) lastActivity = millis();
+    if (tapped) {
+        lastActivity = millis();
+        Serial.printf("[Touch] tap x=%d y=%d state=%d\n", tx, ty, (int)state);
+    }
+
+    // Heartbeat alle 5 s: loop() läuft noch, aktueller Zustand
+    { static unsigned long _hb = 0;
+      if (millis() - _hb > 5000) { _hb = millis();
+          Serial.printf("[Loop] state=%d heap=%u\n", (int)state, ESP.getFreeHeap()); } }
 
     auto hit = [&](int16_t bx, int16_t by, int16_t bw, int16_t bh) {
         return tapped && tx>=bx && tx<bx+bw && ty>=by && ty<by+bh;
@@ -556,11 +570,21 @@ void loop() {
             display.setBrightness(220);
             setState(State::MAIN);
         } else {
-            bool isLabel = (bc.length() == 6 && bc[0] == 'L');
-            const InventoryItem *found = isLabel ? inventory.findByLabel(bc) : nullptr;
-            if (found) {
-                retrieveItem = *found;
-                setState(State::RETRIEVE);
+            if (isLabelCode(bc)) {
+                const InventoryItem *found = inventory.findByLabel(bc);
+                if (found) {
+                    retrieveItem  = *found;
+                    g_isRestore   = false;
+                    setState(State::RETRIEVE);
+                } else if (!lastRemovedItem.labelBarcode.isEmpty() &&
+                           lastRemovedItem.labelBarcode == bc) {
+                    retrieveItem  = lastRemovedItem;
+                    g_isRestore   = true;
+                    setState(State::RETRIEVE);
+                } else {
+                    display.showError("Label nicht gefunden");
+                    setState(State::ERROR);
+                }
             } else {
                 currentBarcode = bc;
                 setState(State::FETCHING);
@@ -967,25 +991,36 @@ void loop() {
     // ── RETRIEVE ─────────────────────────────────────────────
     case State::RETRIEVE: {
         if (screenDirty) {
+            // Aktion sofort ausführen, keine Bestätigung nötig
+            if (g_isRestore) {
+                retrieveItem.addedDate = todayStr();
+                if (inventory.addItem(retrieveItem)) {
+                    lastAddedItem   = retrieveItem;
+                    lastRemovedItem = InventoryItem{};
+                    buzzOk();
+                }
+            } else {
+                int storageDays = max(0, -daysUntilExpiry(retrieveItem.addedDate));
+                storageStats.record(retrieveItem, todayStr(), storageDays);
+                shoppingList.add(retrieveItem.name, retrieveItem.category);
+                serverSync.onItemRemoved(retrieveItem, storageDays);
+                mqttPublishRetrieve(retrieveItem, storageDays);
+                telegramSend("<b>\xF0\x9F\x93\xA4 Ausgelagert:</b> " + retrieveItem.name +
+                             "\nLagerdauer: " + String(storageDays) + " Tage");
+                inventory.removeByLabel(retrieveItem.labelBarcode);
+                lastRemovedItem = retrieveItem;
+                buzzOk();
+            }
+            // Kurze Bestätigungsanzeige (kein Button nötig)
             int days = daysUntilExpiry(retrieveItem.expiryDate);
             display.showRetrieve(retrieveItem.name,
                                   isoToDisplay(retrieveItem.addedDate),
                                   isoToDisplay(retrieveItem.expiryDate),
-                                  days);
+                                  days, g_isRestore, true);
             screenDirty = false;
         }
-        if (hit(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H)) {
-            int storageDays = max(0, -daysUntilExpiry(retrieveItem.addedDate));
-            storageStats.record(retrieveItem, todayStr(), storageDays);
-            shoppingList.add(retrieveItem.name, retrieveItem.category);
-            serverSync.onItemRemoved(retrieveItem, storageDays);
-            mqttPublishRetrieve(retrieveItem, storageDays);
-            telegramSend("<b>\xF0\x9F\x93\xA4 Ausgelagert:</b> " + retrieveItem.name +
-                         "\nLagerdauer: " + String(storageDays) + " Tage");
-            inventory.removeByLabel(retrieveItem.labelBarcode);
-            setState(State::MAIN);
-        }
-        if (hit(TBTN_X, TBTN_SECONDARY_Y, TBTN_W, TBTN_H) || hardBack)
+        // Nach 3 s oder Tipp zurück zum Hauptmenü
+        if (tapped || hardBack || millis()-stateEnter > 3000)
             setState(State::MAIN);
         break;
     }

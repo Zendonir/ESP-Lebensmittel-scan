@@ -410,23 +410,33 @@ void DisplayManager::showError(const String &msg) {
 // ── Auslagerung (Label-Barcode gescannt) ──────────────────────
 
 void DisplayManager::showRetrieve(const String &name, const String &storageDate,
-                                   const String &expiryDate, int daysLeft) {
+                                   const String &expiryDate, int daysLeft, bool reStore, bool autoMode) {
     _gfx->fillScreen(COLOR_BG);
-    drawHeader("Auslagerung", COLOR_ACCENT);
+    drawHeader(reStore ? "Re-Einlagerung" : "Auslagerung", COLOR_ACCENT);
     String n = name.length() > 28 ? name.substring(0, 28) : name;
     textCenter(n, W / 2, H/2 - 80, g_fontCfg.body,  COLOR_TEXT);
-    textCenter("Eingelagert: " + storageDate, W / 2, H/2 - 42, g_fontCfg.small, COLOR_SUBTEXT);
-    textCenter("MHD: " + expiryDate,          W / 2, H/2 - 20, g_fontCfg.small, COLOR_SUBTEXT);
-    uint16_t sc = (daysLeft < 0)             ? COLOR_DANGER
-                : (daysLeft <= DANGER_DAYS)  ? COLOR_DANGER
-                : (daysLeft <= WARNING_DAYS) ? COLOR_WARN
-                :                              COLOR_OK;
-    textCenter(daysLabel(daysLeft), W / 2, H/2 + 20, g_fontCfg.value, sc);
-    if (daysLeft >= 0) textCenter("verbleibend", W / 2, H/2 + 60, g_fontCfg.small, COLOR_SUBTEXT);
-    drawTouchButton(TBTN_X, TBTN_SECONDARY_Y, TBTN_W, TBTN_H,
-                    "Behalten", COLOR_SURFACE, COLOR_SUBTEXT, g_fontCfg.small);
-    drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H,
-                    "Auslagern", COLOR_BTN_OK, COLOR_TEXT, g_fontCfg.btn);
+    if (reStore) {
+        textCenter("Neu einlagern?", W / 2, H/2 - 42, g_fontCfg.small, COLOR_SUBTEXT);
+    } else {
+        textCenter("Eingelagert: " + storageDate, W / 2, H/2 - 42, g_fontCfg.small, COLOR_SUBTEXT);
+        textCenter("MHD: " + expiryDate,          W / 2, H/2 - 20, g_fontCfg.small, COLOR_SUBTEXT);
+        uint16_t sc = (daysLeft < 0)             ? COLOR_DANGER
+                    : (daysLeft <= DANGER_DAYS)  ? COLOR_DANGER
+                    : (daysLeft <= WARNING_DAYS) ? COLOR_WARN
+                    :                              COLOR_OK;
+        textCenter(daysLabel(daysLeft), W / 2, H/2 + 20, g_fontCfg.value, sc);
+        if (daysLeft >= 0) textCenter("verbleibend", W / 2, H/2 + 60, g_fontCfg.small, COLOR_SUBTEXT);
+    }
+    if (autoMode) {
+        textCenter(reStore ? "✓ Eingelagert" : "✓ Ausgelagert",
+                   W / 2, H - 60, g_fontCfg.btn, COLOR_OK);
+    } else {
+        drawTouchButton(TBTN_X, TBTN_SECONDARY_Y, TBTN_W, TBTN_H,
+                        "Abbrechen", COLOR_SURFACE, COLOR_SUBTEXT, g_fontCfg.small);
+        drawTouchButton(TBTN_X, TBTN_PRIMARY_Y, TBTN_W, TBTN_H,
+                        reStore ? "Einlagern" : "Auslagern",
+                        reStore ? COLOR_ACCENT : COLOR_BTN_OK, COLOR_TEXT, g_fontCfg.btn);
+    }
     _gfx->flush();
 }
 
